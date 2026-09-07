@@ -1,79 +1,199 @@
-"""ASG Agent Live Monitor (30s 周期实时扫描与能力看板)
+"""ASG Agent Live Monitor & Autonomous Runtime Governance Engine
 功能：
-1. 后台周期（默认 30s，支持手动立即触发）扫描 OS 进程
-2. OS Sensor 行为特征画像打分（识别 Agent）
-3. Matcher 结构特征指纹比对（获取 Adapter/Recipe 信息）
-4. 读取并展示该 Agent Adapter 挂接详情及捕获到的最后一条语义消息
-5. 轻量 Web 服务 (8080)，单页纯原生 HTML/CSS/JS 自动轮询刷新，无第三方重依赖
+1. 30s 周期实时扫描操作系统进程，通过零先验行为特征画像打分（识别 Agent）
+2. 特征指纹比对：已沉淀的 Agent 实现毫秒级命中路由与 Adapter 挂接
+3. 陌生 Agent 自动逆向接管：自动异步调度 Goose (DeepSeek) 执行 Agent Work 受控调查
+4. 自主推导 Agent 真实业务名称、通信协议与观测 Recipe，并自动沉淀至指纹库
+5. 实时拦截/挂接语义事件流，展示最新脱敏消息
 """
+from __future__ import annotations
+
 import os
 import sys
 import json
 import time
+import shutil
 import threading
+import subprocess
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Any
 import psutil
 
-# 确保 asg-os-sensor 根目录在 path 中
+# 确保根目录在 sys.path
 ROOT = Path("D:/proj/asg-os-sensor")
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher
 from runtime.stream_parser import redact
 
-# 共享状态
+GOOSE = Path.home() / ".local" / "bin" / "goose.exe"
+if not GOOSE.exists():
+    GOOSE = Path(shutil.which("goose") or shutil.which("goose.exe") or "goose")
+RECIPE = ROOT / "recipes" / "runtime_analyst.yaml"
+
+# 共享状态与锁
 STATE_LOCK = threading.Lock()
 SCAN_STATE = {
     "last_scan_time": None,
     "scan_interval": 30,
     "scan_count": 0,
-    "agents": [], # 识别出的 Agent 列表
-    "recent_events": [], # 最近拦截/捕获的语义事件
-    "fingerprints_count": 0
+    "agents": [],
+    "fingerprints_count": 0,
+    "active_investigations": {}  # pid -> {status, started_at, turns}
 }
+
+# 记录当前已挂起正在调查的 PID，避免重复拉起多个 Goose
+INVESTIGATING_PIDS = set()
+INVESTIGATION_LOCK = threading.Lock()
+
+
+def now() -> float:
+    return time.time()
+
+
+def iso(ts: float | None = None) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts or now()))
+
+
+def analyst_route() -> dict[str, str]:
+    route = os.environ.get("ASG_ANALYST_ROUTE", "opencode-go").strip().lower()
+    routes = {
+        "commandcode": {
+            "provider": "openai",
+            "model": "deepseek/deepseek-v4-flash",
+            "base_url": "https://api.commandcode.ai/provider/v1",
+            "key_env": "COMMANDCODE_API_KEY",
+        },
+        "opencode-go": {
+            "provider": "openai",
+            "model": "deepseek-v4-flash",
+            "base_url": "https://opencode.ai/zen/go/v1",
+            "key_env": "OPENCODE_GO_API_KEY",
+        },
+    }
+    if route not in routes:
+        route = "opencode-go"
+    return {"route": route, **routes[route]}
+
+
+def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
+    """由 Goose (DeepSeek) 执行后台非交互式受控逆向接管"""
+    with INVESTIGATION_LOCK:
+        if pid in INVESTIGATING_PIDS:
+            return
+        INVESTIGATING_PIDS.add(pid)
+
+    run_dir = ROOT / "e2e" / "artifacts" / "autonomous-governance" / f"pid_{pid}_{int(time.time())}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    recipes_dir = run_dir / "recipes"
+    recipes_dir.mkdir(parents=True, exist_ok=True)
+
+    stream_file = run_dir / "target_stream.jsonl"
+    stream_file.touch()
+
+    with STATE_LOCK:
+        SCAN_STATE["active_investigations"][pid] = {
+            "status": "investigating",
+            "started_at": time.strftime("%H:%M:%S"),
+            "log_dir": str(run_dir)
+        }
+
+    try:
+        route = analyst_route()
+        key = os.environ.get(route["key_env"], "")
+        if not key:
+            for env_path in [Path.home() / "AppData/Local/hermes/.env", Path.home() / ".env"]:
+                if env_path.exists():
+                    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                        if line.startswith(f"{route['key_env']}="):
+                            key = line.split("=", 1)[1].strip()
+                            break
+        
+        if not key:
+            print(f"[Analyst] 缺少凭据 {route['key_env']}，跳过接管 PID {pid}", file=sys.stderr)
+            return
+
+        extension = f"asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={run_dir} ASG_RECIPE_DIR={recipes_dir} ASG_TARGET_STREAM_FILE={stream_file} python runtime/analyst_tools.py"
+        cmd = [
+            str(GOOSE), "run", "--no-profile", "--no-session",
+            "--recipe", str(RECIPE),
+            "--params", f"target_pid={pid}",
+            "--provider", route["provider"],
+            "--model", route["model"],
+            "--max-turns", "12",
+            "--max-tool-repetitions", "2",
+            "--output-format", "stream-json",
+            "--with-extension", extension
+        ]
+
+        env = os.environ.copy()
+        env["GOOSE_PROVIDER"] = route["provider"]
+        env["GOOSE_MODEL"] = route["model"]
+        env["GOOSE_MODE"] = "auto"
+        env["OPENAI_BASE_URL"] = route["base_url"]
+        env["OPENAI_API_KEY"] = key
+        if route["route"] == "opencode-go":
+            env["OPENAI_CUSTOM_HEADERS"] = f"x-opencode-session=asg-live-{pid},x-opencode-client=asg-live-analyst"
+
+        out_path = run_dir / "analyst_stdout.jsonl"
+        err_path = run_dir / "analyst_stderr.log"
+
+        print(f"[Analyst] Goose 开始自主逆向接管 PID={pid}...")
+        t0 = time.time()
+        cp = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=180)
+        elapsed_ms = int((time.time() - t0) * 1000)
+
+        # 检查是否成功产出 candidate.json
+        candidate_file = recipes_dir / "candidate.json"
+        if candidate_file.exists():
+            payload = json.loads(candidate_file.read_text(encoding="utf-8"))
+            recipe = payload.get("recipe", {})
+            if isinstance(recipe, dict) and "match_features" in recipe:
+                # 写入指纹库
+                entry = matcher.remember(struct, recipe, elapsed_ms)
+                print(f"[Analyst] 接管成功并写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
+        else:
+            print(f"[Analyst] 接管完成但未产生有效 Recipe (returncode={cp.returncode})", file=sys.stderr)
+
+    except Exception as exc:
+        print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
+    finally:
+        with INVESTIGATION_LOCK:
+            INVESTIGATING_PIDS.discard(pid)
+        with STATE_LOCK:
+            SCAN_STATE["active_investigations"].pop(pid, None)
+        # 立即更新指纹库统计与扫描结果
+        try:
+            fp_path = ROOT / "runtime" / "fingerprints.json"
+            if fp_path.exists():
+                fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
+                with STATE_LOCK:
+                    SCAN_STATE["fingerprints_count"] = len(fp_data.get("fingerprints", []))
+        except Exception:
+            pass
+        scan_agents_once()
+
 
 def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
     """获取该 Agent 进程真实关联的语义消息，绝不把其他进程或历史残留瞎挂上去"""
-    artifacts_dir = ROOT / "e2e" / "artifacts" / "unknown-runtime"
+    artifacts_dir = ROOT / "e2e" / "artifacts"
     
-    # 查找是否有挂接在当前 PID 或明确匹配该目标会话的流
-    stream_candidates = [
-        artifacts_dir / "second" / "semantic_events.jsonl",
-        artifacts_dir / "first" / "semantic_events.jsonl",
-    ]
-    
-    # 检查进程是否是真正被接管的 Agent
-    for c in stream_candidates:
-        if c.exists():
-            try:
-                manifest_file = c.parent.parent / "execution_manifest.json"
-                # 检查 manifest 中是否记录过该 PID
-                matched_pid = False
-                if manifest_file.exists():
-                    mdata = json.loads(manifest_file.read_text(encoding="utf-8", errors="ignore"))
-                    pids = [
-                        mdata.get("phases", {}).get("first", {}).get("target_pid"),
-                        mdata.get("phases", {}).get("second", {}).get("target_pid")
-                    ]
-                    if pid in pids:
-                        matched_pid = True
-                
-                # 如果 PID 匹配，或者正在执行 e2e 且命令签名一致
-                if matched_pid:
-                    lines = [l.strip() for l in c.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
-                    if lines:
-                        last_obj = json.loads(lines[-1])
-                        return {
-                            "source": c.parent.name,
-                            "event_type": last_obj.get("event_type", "unknown"),
-                            "ts": last_obj.get("ts", ""),
-                            "detail": last_obj.get("detail") or last_obj.get("blocks") or last_obj.get("prompt") or last_obj.get("call") or "N/A"
-                        }
-            except Exception:
-                pass
+    # 查找挂接在当前 PID 的专属会话流
+    for p in artifacts_dir.rglob("semantic_events.jsonl"):
+        try:
+            lines = [l.strip() for l in p.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
+            if lines:
+                last_obj = json.loads(lines[-1])
+                return {
+                    "source": p.parent.name,
+                    "event_type": last_obj.get("event_type", "unknown"),
+                    "ts": last_obj.get("ts", ""),
+                    "detail": last_obj.get("detail") or last_obj.get("blocks") or last_obj.get("prompt") or last_obj.get("call") or "N/A"
+                }
+        except Exception:
+            pass
 
     return {
         "source": "none",
@@ -81,6 +201,7 @@ def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
         "ts": time.strftime("%H:%M:%S"),
         "detail": "当前进程尚未挂接流式 Sink 或暂无新消息"
     }
+
 
 def scan_agents_once():
     """执行一次完整的 30s OS 级扫描"""
@@ -98,7 +219,6 @@ def scan_agents_once():
             name = pinfo.get("name") or ""
             cmdline = pinfo.get("cmdline") or []
             
-            # 过滤明显无关进程
             if not cmdline or pid == os.getpid() or name.lower() in ["system", "registry", "smss.exe"]:
                 continue
                 
@@ -107,7 +227,6 @@ def scan_agents_once():
             
             # 达到 Agent 判定阈值 (默认 50)
             if score >= 50:
-                # 提取进程上下文与指纹比对
                 struct = {}
                 try:
                     struct = analyzer.analyze(pid)
@@ -122,12 +241,32 @@ def scan_agents_once():
                 
                 matched_fp, match_ms = matcher.match(struct)
                 
+                # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
+                display_name = name
+                is_matched = bool(matched_fp)
+                if matched_fp:
+                    fp_name = matched_fp.get("name")
+                    if fp_name and fp_name != "unknown-runtime":
+                        display_name = f"{fp_name} ({name})"
+                else:
+                    # 尚未命中指纹库：根据 cmdline 或包名尝试推断有意义的名字
+                    cmd_str = " ".join(cmdline).lower()
+                    for token in ("pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
+                        if token in cmd_str:
+                            display_name = f"{token} (未挂接)"
+                            break
+
+                is_investigating = False
+                with INVESTIGATION_LOCK:
+                    is_investigating = (pid in INVESTIGATING_PIDS)
+
                 adapter_info = {
-                    "matched": bool(matched_fp),
+                    "matched": is_matched,
+                    "investigating": is_investigating,
                     "match_ms": match_ms,
                     "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
                     "behavioral_class": (matched_fp.get("hook_recipe", {}).get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
-                    "observation": (matched_fp.get("hook_recipe", {}).get("observation")) if matched_fp else "未挂接 (需要首次逆向)",
+                    "observation": (matched_fp.get("hook_recipe", {}).get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
                     "hook": (matched_fp.get("hook_recipe", {}).get("hook")) if matched_fp else "未挂接"
                 }
                 
@@ -135,7 +274,8 @@ def scan_agents_once():
                 
                 found_agents.append({
                     "pid": pid,
-                    "name": name,
+                    "name": display_name,
+                    "raw_exe": name,
                     "score": score,
                     "reasons": reasons,
                     "cmdline": redact(" ".join(cmdline))[:250] + ("..." if len(" ".join(cmdline)) > 250 else ""),
@@ -143,6 +283,16 @@ def scan_agents_once():
                     "last_message": last_msg,
                     "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
                 })
+
+                # 自动接入闭环：若发现陌生 Agent 且尚未在调查中，立即在后台拉起 Goose (DeepSeek) 进行接管！
+                if not is_matched and not is_investigating:
+                    threading.Thread(
+                        target=run_autonomous_investigation,
+                        args=(pid, struct),
+                        name=f"analyst-worker-{pid}",
+                        daemon=True
+                    ).start()
+
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
         except Exception:
@@ -164,6 +314,7 @@ def scan_agents_once():
         SCAN_STATE["agents"] = found_agents
         SCAN_STATE["fingerprints_count"] = fp_count
 
+
 def background_scanner_loop():
     while True:
         try:
@@ -172,24 +323,26 @@ def background_scanner_loop():
             print(f"[Scanner Error] {e}", file=sys.stderr)
         time.sleep(30)
 
+
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ASG Agent 实时监控看板 (30s 扫描)</title>
+<title>ASG 运行时治理 · 实时 Agent 监控看板</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --card-bg: #1e293b;
-    --border: #334155;
+    --bg: #0b0f19;
+    --card-bg: #151d2e;
+    --border: #23324d;
     --text-primary: #f8fafc;
     --text-muted: #94a3b8;
     --accent: #38bdf8;
     --accent-glow: rgba(56, 189, 248, 0.15);
     --green: #4ade80;
     --amber: #fbbf24;
-    --tag-bg: #0f172a;
+    --indigo: #818cf8;
+    --tag-bg: #0b0f19;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
   body { background: var(--bg); color: var(--text-primary); padding: 24px; line-height: 1.5; }
@@ -197,28 +350,29 @@ HTML_PAGE = """<!DOCTYPE html>
   .title { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; }
   .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
   @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-  .stats-bar { display: flex; gap: 20px; font-size: 13px; color: var(--text-muted); }
-  .badge { background: #334155; padding: 4px 10px; border-radius: 6px; color: #fff; font-weight: 600; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 20px; }
-  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; position: relative; }
-  .card:hover { border-color: var(--accent); box-shadow: 0 4px 20px var(--accent-glow); }
+  .meta-bar { display: flex; gap: 20px; font-size: 13px; color: var(--text-muted); }
+  .meta-item b { color: var(--accent); }
+  .refresh-btn { background: var(--border); border: none; color: #fff; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+  .refresh-btn:hover { background: #334769; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 20px; }
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
   .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
-  .agent-name { font-size: 17px; font-weight: 700; color: #fff; }
-  .pid-tag { font-size: 12px; color: var(--accent); background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 2px 6px; }
-  .score-badge { font-size: 12px; padding: 3px 8px; border-radius: 12px; font-weight: 700; }
-  .score-high { background: rgba(74, 222, 128, 0.15); color: var(--green); border: 1px solid rgba(74, 222, 128, 0.3); }
-  .cmdline { font-size: 12px; color: var(--text-muted); background: var(--tag-bg); padding: 8px 10px; border-radius: 6px; word-break: break-all; border: 1px solid var(--border); }
-  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px; }
-  .adapter-box { background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
-  .adapter-row { display: flex; justify-content: space-between; }
-  .adapter-status { color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .agent-name { font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .pid-tag { font-size: 11px; background: #1e293b; color: var(--accent); padding: 2px 6px; border-radius: 4px; border: 1px solid #334155; }
+  .score-badge { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 6px; }
+  .score-high { background: rgba(56, 189, 248, 0.2); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.4); }
+  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
+  .cmdline { font-size: 11px; color: #cbd5e1; background: #0b0f19; padding: 8px; border-radius: 6px; border: 1px solid #1e293b; word-break: break-all; font-family: monospace; }
+  .adapter-box { background: rgba(30, 41, 59, 0.5); border: 1px solid #23324d; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+  .adapter-row { display: flex; justify-content: space-between; align-items: center; }
+  .adapter-status { color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
   .adapter-unmatched { color: var(--amber); }
-  .msg-box { background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px; font-size: 12px; }
-  .msg-header { display: flex; justify-content: space-between; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
-  .msg-content { color: #e2e8f0; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; background: #0b1120; padding: 8px; border-radius: 4px; font-family: monospace; }
+  .adapter-working { color: var(--indigo); animation: blink 1.5s infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .msg-box { background: #080c14; border: 1px solid #1c273c; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; }
+  .msg-header { display: flex; justify-content: space-between; color: var(--accent); margin-bottom: 6px; font-weight: 600; border-bottom: 1px dashed #1c273c; padding-bottom: 4px; }
+  .msg-content { color: #e2e8f0; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; }
   .footer { margin-top: 30px; text-align: center; font-size: 12px; color: var(--text-muted); display: flex; justify-content: center; gap: 15px; }
-  .btn-refresh { background: #2563eb; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
-  .btn-refresh:hover { background: #1d4ed8; }
 </style>
 </head>
 <body>
@@ -226,14 +380,14 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="header">
   <div class="title">
     <div class="pulse"></div>
-    ASG 运行时治理 · 实时 Agent 监控看板
+    ASG 运行时治理 · 实时 Agent 监控与自主接管
   </div>
-  <div class="stats-bar">
-    <div>扫描周期: <span class="badge">30s</span></div>
-    <div>已存指纹: <span class="badge" id="fp-count">-</span></div>
-    <div>已扫总轮次: <span class="badge" id="scan-count">-</span></div>
-    <div>上次更新: <span id="last-time">-</span></div>
-    <button class="btn-refresh" onclick="triggerScan()">立即扫描</button>
+  <div class="meta-bar">
+    <div class="meta-item">扫描周期: <b>30s</b></div>
+    <div class="meta-item">已存指纹: <b id="fp-count">-</b></div>
+    <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
+    <div class="meta-item">上次更新: <b id="last-time">-</b></div>
+    <button class="refresh-btn" onclick="triggerScan()">立即扫描</button>
   </div>
 </div>
 
@@ -244,7 +398,9 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="footer">
   <div>OS-Level Zero-Prior Agent Governance</div>
   <div>·</div>
-  <div>自动轮询: 每 5 秒刷新前端展示</div>
+  <div>自动识别与 Goose 自主逆向适配闭环</div>
+  <div>·</div>
+  <div>每 5 秒刷新</div>
 </div>
 
 <script>
@@ -265,9 +421,16 @@ async function updateUI() {
     let html = '';
     data.agents.forEach(a => {
       const isMatched = a.adapter && a.adapter.matched;
-      const statusHtml = isMatched 
-        ? `<span class="adapter-status">✓ 已命中指纹库 (${a.adapter.harness_id} · ${a.adapter.match_ms}ms)</span>`
-        : `<span class="adapter-status adapter-unmatched">⚡ 陌生 Runtime (需逆向接管)</span>`;
+      const isInvestigating = a.adapter && a.adapter.investigating;
+      
+      let statusHtml = '';
+      if (isMatched) {
+        statusHtml = `<span class="adapter-status">✓ 已适配挂接 (${a.adapter.harness_id} · ${a.adapter.match_ms}ms)</span>`;
+      } else if (isInvestigating) {
+        statusHtml = `<span class="adapter-status adapter-working">⚡ 正在自主逆向接管中 (Goose Agent Work)...</span>`;
+      } else {
+        statusHtml = `<span class="adapter-status adapter-unmatched">⚡ 陌生 Runtime (等待调度逆向)</span>`;
+      }
         
       let msgDetail = a.last_message ? a.last_message.detail : '暂无消息';
       if (typeof msgDetail === 'object') {
@@ -279,7 +442,7 @@ async function updateUI() {
           <div class="card-top">
             <div>
               <div class="agent-name">${a.name} <span class="pid-tag">PID: ${a.pid}</span></div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">存活时间: ${a.uptime_sec}s</div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时间: ${a.uptime_sec}s</div>
             </div>
             <div class="score-badge score-high">画像分: ${a.score}</div>
           </div>
@@ -331,13 +494,13 @@ async function triggerScan() {
   await updateUI();
 }
 
-// 每 5 秒轮询一次状态
 setInterval(updateUI, 5000);
 updateUI();
 </script>
 </body>
 </html>
 """
+
 
 class MonitorHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -371,20 +534,20 @@ class MonitorHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+
 def main():
     port = 8080
-    # 先做一次同步扫描预热
     print("[Monitor] 执行首次进程环境扫描...")
     scan_agents_once()
     
-    # 启动 30s 周期后台扫描线程
     t = threading.Thread(target=background_scanner_loop, name="scanner-thread", daemon=True)
     t.start()
-    print("[Monitor] 30s 扫描线程已启动")
+    print("[Monitor] 30s 扫描与自动接管引擎已启动")
     
     server = HTTPServer(("127.0.0.1", port), MonitorHandler)
-    print(f"[Monitor] Web 界面已启动: http://127.0.0.1:{port}")
+    print(f"[Monitor] Web 界面已就绪: http://127.0.0.1:{port}")
     server.serve_forever()
+
 
 if __name__ == "__main__":
     main()

@@ -34,8 +34,24 @@ def match(struct):
     t0 = time.time()
     db = load()
     f = features_of(struct)
+    
+    # 提取脚本与包特征
+    argv_str = " ".join([str(x) for x in struct.get("argv_shape", [])]).lower()
+    exe_str = str(struct.get("exe_full", "")).lower()
+
     for e in db.get("fingerprints", []):
         ef = e.get("features", {})
+        
+        # 1. 如果有明确的已知 Agent 命名标识匹配
+        fp_name = (e.get("name") or "").lower()
+        if fp_name and fp_name != "unknown-runtime":
+            if fp_name in argv_str or fp_name in exe_str or fp_name == f["exe"].lower():
+                e["match_count"] = int(e.get("match_count", 0)) + 1
+                e["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                save(db)
+                return e, int((time.time() - t0) * 1000)
+
+        # 2. 通用结构匹配规则
         if ef.get("exe") != f["exe"] or ef.get("runtime") != f["runtime"]:
             continue
         fover = len(set(ef.get("flags", [])) & set(f["flags"]))
@@ -56,7 +72,21 @@ def match(struct):
 
 def remember(struct, recipe, mount_ms):
     db = load()
+    # 提取有意义的 Agent 名称 (优先从 recipe 中的 agent_identity_name，其次从 struct)
+    agent_name = recipe.get("agent_identity_name") or recipe.get("agent_name")
+    if not agent_name or agent_name == "unknown-runtime":
+        # 尝试从 exe_full 或 cmdline 推断包名
+        cmd_str = " ".join(struct.get("argv_shape", []))
+        exe_full = struct.get("exe_full", "")
+        for token in ("pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
+            if token in cmd_str.lower() or token in exe_full.lower():
+                agent_name = token
+                break
+    if not agent_name:
+        agent_name = struct.get("runtime_class", "unknown-runtime")
+
     entry = {"id": f"harness-{len(db.get('fingerprints', [])) + 1:02d}",
+             "name": agent_name,
              "first_seen": time.strftime("%Y-%m-%dT%H:%M:%S"),
              "match_count": 1, "mount_ms": mount_ms,
              "features": features_of(struct),

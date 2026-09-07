@@ -85,6 +85,811 @@
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
    "last_seen": "2026-09-07T16:53:46"
+  },
+  {
+   "id": "harness-02",
+   "name": "python-agent-harness",
+   "first_seen": "2026-09-07T23:59:43",
+   "match_count": 9,
+   "mount_ms": 26825,
+   "features": {
+    "exe": "goose.exe",
+    "runtime": "native",
+    "flags": [
+     "--no-profile",
+     "--no-session",
+     "--params",
+     "--recipe"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "conhost.exe",
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "one-shot-agent-cli-recipe-driven",
+     "argv_signature": [
+      "--no-profile",
+      "--no-session",
+      "--recipe",
+      "--params",
+      "--provider",
+      "--model",
+      "--max-turns",
+      "--max-tool-repetitions",
+      "--with-extension"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 1,
+      "descendant_count": 3,
+      "ephemeral": false,
+      "running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 1,
+      "family": 2,
+      "type": 1,
+      "has_remote": true
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": [
+       ".jsonl",
+       ".db",
+       ".db-shm",
+       ".db-wal",
+       ".mui",
+       ".log"
+      ]
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": []
+     },
+     "cwd_class": "local-workspace",
+     "config_candidates_in_argv": [
+      {
+       "flag_context": "--recipe",
+       "filename_class": "runtime_analyst.yaml",
+       "is_file_like": true
+      },
+      {
+       "flag_context": "--with-extension",
+       "filename_class": "analyst_tools.py",
+       "is_file_like": false
+      }
+     ]
+    },
+    "agent_identity_name": "python-agent-harness",
+    "observation": "Passive read-only polling of the supervisor-exposed JSON event stream only. The runtime is a recipe-driven one-shot agent CLI (argv: --no-profile --no-session --recipe <yaml> --params --provider --model --max-turns --max-tool-repetitions --with-extension <py>). Fingerprint by the argv flag signature plus the open-path shape (.jsonl event logs, .db/.db-shm/.db-wal SQLite state store, .log files) and the single established outbound TCP. Never attach to the process, never inject input, never write to the workspace or config directories. Re-observe on a live re-run to capture the full event cycle once the stream begins emitting lines.",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe and consume newline-delimited envelopes as they appear, recording type distribution and cycle boundaries. No active hook into process memory, no file watchers, no plugin/path hooking, no touching the process tree. The .db/.db-wal state store is treated as off-limits (secret-bearing) and is never read.",
+    "redaction": "Redact all envelope field values not on an allowlist of structural keys (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat the .db/.db-wal/.db-shm state store and any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "high: agent-like runtime confirmed by recipe-driven argv signature (--recipe/--params/--provider/--model/--max-turns/--max-tool-repetitions) + single established outbound TCP + SQLite state store (.db/.db-wal) + running process tree with 3 descendants. medium: config file location not directly observable (no config path in argv beyond the --recipe yaml; open paths show only .jsonl/.db/.log/.mui); configuration appears flag/env driven and read early at startup, with --no-profile/--no-session disabling persistent profile/session stores.",
+    "fallback": "If the target remains unavailable or the stream stays empty: classify from the retained supervisor stream snapshot only (counts + type distribution) and the argv signature, do not force re-observation. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If probe_help/observe become available for a live PID: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\.local\\bin\\goose.exe",
+   "last_seen": "2026-09-08T00:00:24"
+  },
+  {
+   "id": "harness-03",
+   "name": "agent-cli-session-runtime",
+   "first_seen": "2026-09-07T23:59:44",
+   "match_count": 1,
+   "mount_ms": 27603,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "conhost.exe",
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "agent-cli-with-session-persistence",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 2,
+      "descendant_count": 2,
+      "ephemeral": false,
+      "still_running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": [
+       ".jsonl",
+       ".log"
+      ],
+      "depth": 8
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "has_stream": true,
+      "has_tool": false
+     },
+     "cwd_class": "local-workspace",
+     "config_candidates_in_argv": [],
+     "probe_help": {
+      "help_line_count": 43,
+      "version_line_count": 1,
+      "returncode": 0
+     }
+    },
+    "agent_identity_name": "agent-cli-session-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) but is available and probe_help confirms stream capability. The target is still running with 2 children and has open .jsonl and .log paths at depth 8, suggesting session/event persistence. Re-observe the stream over time to capture event envelopes as they are emitted. Never attach to the process, never inject input, never write to workspace or config directories. Do not read the .jsonl or .log file contents directly; only observe the supervisor-exposed stream.",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe and record envelope type distribution and cycle boundaries as events arrive. No active hook into process memory, no file watchers, no plugin/path hooking. If the stream remains empty, record that as a negative observation and rely on process-shape and open-path evidence for classification.",
+    "redaction": "Redact all envelope field values not on an allowlist of structural fields (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise. Do not read .jsonl or .log file contents.",
+    "confidence": "medium: agent-like runtime indicated by supervisor-exposed stream availability, probe_help stream capability, 2-child process tree, and .jsonl/.log open paths suggesting session persistence. However, the stream is currently empty (no event envelopes observed), no network activity, and no config candidates in argv, so the protocol details and configuration location cannot be confirmed with high confidence. The .jsonl/.log open paths at depth 8 are consistent with an agent writing session/event logs, but their exact role is unverified.",
+    "fallback": "If the stream remains empty and no event envelopes are observed: classify from process-shape and open-path evidence only (2 children, .jsonl/.log open paths, still running), and lower confidence on protocol details. If the target exits before observation: retain the supervisor stream snapshot (counts + type distribution) if available. If new open paths with config-like extensions appear: re-scan and re-evaluate config location. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-04",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-07T23:59:51",
+   "match_count": 1,
+   "mount_ms": 41509,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "exited_after_single_cycle": false
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "types": [],
+      "line_count": 0,
+      "json_line_count": 0,
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     }
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) and the process is running with no children, no network connections, and no open paths. The --help probe returned 437 lines with JSON content (has_json: true), indicating a JSON-capable CLI surface. The --version probe returned a single line. Since the stream is empty and no output has been produced, poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories. Do not attempt to read configuration from argv (no config candidates present) or open paths (none observed).",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe to the stream and record any emitted lines, classifying them by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, parse them by top-level type discriminator and record the schema.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: process is running but idle with no observable output, no network, no open paths, and no config candidates in argv. The only distinguishing evidence is the --help output (437 lines, JSON-capable) and --version (1 line). Agent identity cannot be determined from available evidence; no package/script/entrypoint tokens were discovered in open paths or argv. The empty stream and lack of activity prevent confirmation of agent-like behavior.",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-05",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-08T00:00:17",
+   "match_count": 1,
+   "mount_ms": 27298,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "conhost.exe",
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "unobservable-target",
+     "argv_signature": [],
+     "process_shape": {
+      "depth": null,
+      "child_count": null,
+      "descendant_count": null,
+      "ephemeral": null,
+      "running": false,
+      "observable": false
+     },
+     "network_shape": {
+      "established_tcp_count": null,
+      "has_remote": null
+     },
+     "open_path_shape": {
+      "config_like": null,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": [],
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "target_availability": "unavailable",
+     "target_pid": 74120
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The target PID 74120 is unavailable: get_target_context, observe_runtime_surface, observe_tree, and probe_help all returned 'target PID unavailable: 74120'. The supervisor-exposed stream is available but empty (0 lines, 0 JSON lines, no samples), so there is no retained event snapshot to classify from. No process tree, runtime class, open paths, argv, or config surface could be observed. Do not attach to the process, do not inject input, do not write to workspace or config directories. Poll the supervisor-exposed stream periodically to detect if the target becomes observable or begins emitting envelopes. Re-attempt observe_tree/observe_runtime_surface/probe_help if the target becomes available on a re-run.",
+    "hook": "Event-sink hook on the supervisor-exposed stream only: subscribe and record any emitted lines, classifying by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking, no touching the process tree. Since the target is unavailable and the stream is empty, record this as a negative observation and rely on the supervisor to re-expose the target if it becomes available.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: the target PID 74120 is unavailable across all live-observation tools (get_target_context, observe_runtime_surface, observe_tree, probe_help all returned 'target PID unavailable'), and the supervisor-exposed stream is empty (0 lines, 0 JSON lines). No process structure, runtime class, configuration surface, protocol, or semantic output could be established from direct evidence. The prior recipe memory contains fingerprints for other harnesses (claude.exe, goose.exe, python.exe, node.exe) but none correspond to PID 74120, so no identity can be inferred. Agent-like behavior cannot be confirmed or refuted from available evidence.",
+    "fallback": "If the target remains unavailable: classify from the retained supervisor stream snapshot only (counts + type distribution) if one becomes available, do not force re-observation. If the target becomes available on a re-run: re-run probe_help, re-scan open paths for config-like extensions, re-check argv for a config-file flag, and observe the process tree before committing a config-location or identity fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the stream begins producing output: re-observe to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-06",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-08T00:00:17",
+   "match_count": 1,
+   "mount_ms": 25250,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "exited_after_single_cycle": false
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "types": [],
+      "line_count": 0,
+      "json_line_count": 0,
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     }
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) and the process is running with no children, no network connections, and no open paths. The --help probe returned 437 lines with JSON content (has_json: true), indicating a JSON-capable CLI surface. The --version probe returned a single line. Since the stream is empty and no output has been produced, poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories. Do not attempt to read configuration from argv (no config candidates present) or open paths (none observed).",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe to the stream and record any emitted lines, classifying them by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, parse them by top-level type discriminator and record the schema.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: process is running but idle with no observable output, no network, no open paths, and no config candidates in argv. The only distinguishing evidence is the --help output (437 lines, JSON-capable) and --version (1 line). Agent identity cannot be determined from available evidence; no package/script/entrypoint tokens were discovered in open paths or argv. The empty stream and lack of activity prevent confirmation of agent-like behavior.",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-07",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-08T00:02:04",
+   "match_count": 1,
+   "mount_ms": 28927,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "exited_after_single_cycle": false,
+      "running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "types": [],
+      "line_count": 0,
+      "json_line_count": 0,
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     }
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) and the process is running with no children, no network connections, and no open paths. The --help probe returned 437 lines with JSON content (has_json: true), indicating a JSON-capable CLI surface. The --version probe returned a single line. Since the stream is empty and no output has been produced, poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories. Do not attempt to read configuration from argv (no config candidates present) or open paths (none observed).",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe to the stream and record any emitted lines, classifying them by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, parse them by top-level type discriminator and record the schema.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: process is running but idle with no observable output, no network, no open paths, and no config candidates in argv. The only distinguishing evidence is the --help output (437 lines, JSON-capable) and --version (1 line). Agent identity cannot be determined from available evidence; no package/script/entrypoint tokens were discovered in open paths or argv. The empty stream and lack of activity prevent confirmation of agent-like behavior. The profile matches prior fingerprints harness-04 and harness-06 (node.exe-based idle standalone CLI with identical help/version surface), but identity cannot be confirmed from redacted argv and absent open paths.",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-08",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-08T00:02:45",
+   "match_count": 1,
+   "mount_ms": 41034,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "exited_after_single_cycle": false,
+      "running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "types": [],
+      "line_count": 0,
+      "json_line_count": 0,
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     }
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) and the process is running with no children, no network connections, and no open paths. The --help probe returned 437 lines with JSON content (has_json: true), indicating a JSON-capable CLI surface. The --version probe returned a single line. Since the stream is empty and no output has been produced, poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories. Do not attempt to read configuration from argv (no config candidates present) or open paths (none observed).",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe to the stream and record any emitted lines, classifying them by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, parse them by top-level type discriminator and record the schema.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: process is running but idle with no observable output, no network, no open paths, and no config candidates in argv. The only distinguishing evidence is the --help output (437 lines, JSON-capable) and --version (1 line). Agent identity cannot be determined from available evidence; no package/script/entrypoint tokens were discovered in open paths or argv (both redacted/absent). The empty stream and lack of activity prevent confirmation of agent-like behavior. The profile matches prior fingerprints harness-04, harness-06, and harness-07 (node.exe-based idle standalone CLI with identical help/version surface), but identity cannot be confirmed from redacted argv and absent open paths.",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-09",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-08T00:04:01",
+   "match_count": 1,
+   "mount_ms": 75409,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": [],
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     }
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) and the process is running with no children, no network connections, and no open paths. The --help probe returned 437 lines with JSON content (has_json: true), indicating a JSON-capable CLI surface; --version returned a single line. Since the stream is empty and no output has been produced, poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories. Do not attempt to read configuration from argv (no config candidates present) or open paths (none observed).",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe to the stream and record any emitted lines, classifying them by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, parse them by top-level type discriminator and record the schema.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: process is running but idle with no observable output, no network, no open paths, and no config candidates in argv. The only distinguishing evidence is the --help output (437 lines, JSON-capable) and --version (1 line). Agent identity cannot be determined from available evidence; no package/script/entrypoint tokens were discovered in open paths or argv (both redacted/absent). The empty stream and lack of activity prevent confirmation of agent-like behavior. The profile matches prior fingerprints harness-04, harness-06, harness-07, and harness-08 (idle standalone CLI with identical 437-line JSON-capable help and 1-line version surface), but identity cannot be confirmed from redacted argv and absent open paths.",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-10",
+   "name": "unknown-runtime",
+   "first_seen": "2026-09-08T00:05:08",
+   "match_count": 1,
+   "mount_ms": 66462,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<value>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": [],
+      "samples": []
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": [],
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     }
+    },
+    "agent_identity_name": "unknown-runtime",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is currently empty (0 lines, 0 JSON lines) and the process is running with no children, no network connections, and no open paths. The --help probe returned 437 lines with JSON content (has_json: true, has_stream: false, has_tool: false), indicating a JSON-capable CLI surface; --version returned a single line. Since the stream is empty and no output has been produced, poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories. Do not attempt to read configuration from argv (no config candidates present) or open paths (none observed).",
+    "hook": "Event-sink hook on the supervisor-exposed stream: subscribe to the stream and record any emitted lines, classifying them by JSON structure if present. No active hook into process memory, no file watchers, no plugin/path hooking. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, parse them by top-level type discriminator and record the schema.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+    "confidence": "low: process is running but idle with no observable output, no network, no open paths, and no config candidates in argv. The only distinguishing evidence is the --help output (437 lines, JSON-capable) and --version (1 line). Agent identity cannot be determined from available evidence; no package/script/entrypoint tokens were discovered in open paths or argv (both redacted/absent). The profile matches prior fingerprints harness-04/06/07/08/09 (idle standalone CLI with identical 437-line JSON-capable help and 1-line version surface), but identity cannot be confirmed from redacted argv and absent open paths. Agent-like behavior cannot be confirmed or refuted from available evidence.",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-11",
+   "name": "pi-coding-agent",
+   "first_seen": "2026-09-08T00:07:16",
+   "match_count": 4,
+   "mount_ms": 97867,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<pi-coding-agent:cli.js>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "running": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": [],
+      "samples": []
+     },
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": []
+    },
+    "agent_identity_name": "pi-coding-agent",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is available but currently empty (0 lines, 0 JSON lines, no samples). The target PID 628 is running with 0 children, 0 descendants, no network connections, and no open paths. The argv token <pi-coding-agent:cli.js> identifies the entrypoint as a node-style CLI script (cli.js) for a package/script named pi-coding-agent; this is the sole identity token and is used for naming, not the raw executable. The --help probe returned 437 lines with JSON content (has_json: true, has_stream: false, has_tool: false) and --version returned 1 line, both with returncode 0, indicating a JSON-capable CLI surface. No config candidates appear in argv and no config-like open paths exist, so configuration location is not directly observable; treat configuration as flag/env driven and read early at startup. Poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories, and do not read any file contents.",
+    "hook": "Event-sink hook on the supervisor-exposed stream only: subscribe and record any emitted lines, classifying them by JSON structure if present, and parse newline-delimited envelopes by top-level type discriminator if a schema emerges. No active hook into process memory, no file watchers, no plugin/path hooking, no touching the process tree. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, record the schema (types, assistant fields, result fields) and cycle boundaries.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise. Do not read .jsonl/.log/.db or any file contents directly.",
+    "confidence": "medium: agent identity is inferred with reasonable confidence from the argv package/script token <pi-coding-agent:cli.js> (a node-style cli.js entrypoint for pi-coding-agent), and the JSON-capable 437-line help surface matches prior idle-standalone-cli-json-capable fingerprints (harness-04/06/07/08/09/10). However, agent-like behavior cannot be fully confirmed: the supervisor-exposed stream is empty (0 lines), there is no network activity, no children, and no open paths, so no event cycle, protocol, or semantic output has been observed. Configuration location is not observable (no config candidates in argv, no open paths, cwd unavailable).",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution) and the argv identity token, do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe",
+   "last_seen": "2026-09-08T00:09:48"
+  },
+  {
+   "id": "harness-12",
+   "name": "pi-coding-agent",
+   "first_seen": "2026-09-08T00:08:20",
+   "match_count": 1,
+   "mount_ms": 62981,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<pi-coding-agent:cli.js>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "running": true,
+      "ppid_present": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": [],
+      "samples": []
+     },
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false,
+      "returncode": 0
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false,
+      "returncode": 0
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": []
+    },
+    "agent_identity_name": "pi-coding-agent",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is available but currently empty (0 lines, 0 JSON lines, no samples). The target PID 628 is running as a single-node tree (depth 0, ppid present, 0 children, 0 descendants) with no network connections and no open paths. The argv token <pi-coding-agent:cli.js> identifies the entrypoint as a node-style CLI script (cli.js) for a package/script named pi-coding-agent; this is the sole identity token and is used for naming, not the raw executable. The --help probe returned 437 lines with JSON content (has_json: true, has_stream: false, has_tool: false) and --version returned 1 line, both with returncode 0, indicating a JSON-capable CLI surface. No config candidates appear in argv and no config-like open paths exist, so configuration location is not directly observable; treat configuration as flag/env driven and read early at startup. Poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories, and do not read any file contents.",
+    "hook": "Event-sink hook on the supervisor-exposed stream only: subscribe and record any emitted lines, classifying them by JSON structure if present, and parse newline-delimited envelopes by top-level type discriminator if a schema emerges. No active hook into process memory, no file watchers, no plugin/path hooking, no touching the process tree. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, record the schema (types, assistant fields, result fields) and cycle boundaries.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise. Do not read .jsonl/.log/.db or any file contents directly.",
+    "confidence": "medium: agent identity is inferred with reasonable confidence from the argv package/script token <pi-coding-agent:cli.js> (a node-style cli.js entrypoint for pi-coding-agent), and the JSON-capable 437-line help surface matches prior idle-standalone-cli-json-capable fingerprints (harness-04/06/07/08/09/10). However, agent-like behavior cannot be fully confirmed: the supervisor-exposed stream is empty (0 lines), there is no network activity, no children, and no open paths, so no event cycle, protocol, or semantic output has been observed. Configuration location is not observable (no config candidates in argv, no open paths, cwd unavailable).",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution) and the argv identity token, do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
+  },
+  {
+   "id": "harness-13",
+   "name": "pi-coding-agent",
+   "first_seen": "2026-09-08T00:09:31",
+   "match_count": 1,
+   "mount_ms": 70842,
+   "features": {
+    "exe": "node.exe",
+    "runtime": "node",
+    "flags": [],
+    "config_dirs": []
+   },
+   "children_classes": [],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class_hint": "unknown-runtime",
+     "behavioral_class": "idle-standalone-cli-json-capable",
+     "argv_signature": [
+      "<value>",
+      "<pi-coding-agent:cli.js>"
+     ],
+     "process_shape": {
+      "depth": 0,
+      "child_count": 0,
+      "descendant_count": 0,
+      "ephemeral": false,
+      "running": true,
+      "ppid_present": true
+     },
+     "network_shape": {
+      "established_tcp_count": 0,
+      "has_remote": false
+     },
+     "open_path_shape": {
+      "config_like": false,
+      "observed_extensions": []
+     },
+     "stream_schema": {
+      "available": true,
+      "line_count": 0,
+      "json_line_count": 0,
+      "types": [],
+      "samples": []
+     },
+     "help_surface": {
+      "line_count": 437,
+      "has_json": true,
+      "has_stream": false,
+      "has_tool": false,
+      "returncode": 0
+     },
+     "version_surface": {
+      "line_count": 1,
+      "has_json": false,
+      "returncode": 0
+     },
+     "cwd_class": "unavailable",
+     "config_candidates_in_argv": []
+    },
+    "agent_identity_name": "pi-coding-agent",
+    "observation": "Passive read-only polling of the supervisor-exposed stream only. The stream is available but currently empty (0 lines, 0 JSON lines, no samples). The target PID 628 is running as a single-node tree (depth 0, ppid present, 0 children, 0 descendants) with no network connections and no open paths. The argv token <pi-coding-agent:cli.js> identifies the entrypoint as a node-style CLI script (cli.js) for a package/script named pi-coding-agent; this is the sole identity token and is used for naming, not the raw executable. The --help probe returned 437 lines with JSON content (has_json: true, has_stream: false, has_tool: false) and --version returned 1 line, both with returncode 0, indicating a JSON-capable CLI surface. No config candidates appear in argv and no config-like open paths exist, so configuration location is not directly observable; treat configuration as flag/env driven and read early at startup. Poll the stream periodically to detect when the process emits output. Never attach to the process, never inject input, never write to the workspace or config directories, and do not read any file contents.",
+    "hook": "Event-sink hook on the supervisor-exposed stream only: subscribe and record any emitted lines, classifying them by JSON structure if present, and parse newline-delimited envelopes by top-level type discriminator if a schema emerges. No active hook into process memory, no file watchers, no plugin/path hooking, no touching the process tree. Since the process has no children and no network activity, there is no subprocess or remote endpoint to observe. If the stream begins producing JSON envelopes, record the schema (types, assistant fields, result fields) and cycle boundaries.",
+    "redaction": "Redact all stream line values and field values not on an allowlist of structural keys (type, role, subtype, message_role, content_block_types, has_text, has_tool_call). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port) if any appear. Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise. Do not read .jsonl/.log/.db or any file contents directly.",
+    "confidence": "medium: agent identity is inferred with reasonable confidence from the argv package/script token <pi-coding-agent:cli.js> (a node-style cli.js entrypoint for pi-coding-agent), and the JSON-capable 437-line help surface matches prior idle-standalone-cli-json-capable fingerprints (harness-04/06/07/08/09/10) and the prior pi-coding-agent fingerprints (harness-11/12) for this same PID 628. However, agent-like behavior cannot be fully confirmed: the supervisor-exposed stream is empty (0 lines), there is no network activity, no children, and no open paths, so no event cycle, protocol, or semantic output has been observed. Configuration location is not observable (no config candidates in argv, no open paths, cwd unavailable).",
+    "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution) and the argv identity token, do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe"
   }
  ],
  "version": 1

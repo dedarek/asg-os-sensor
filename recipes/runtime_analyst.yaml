@@ -26,7 +26,8 @@ prompt: |
   3. Determine the agent's observable configuration location, runtime hooks, and protocol without reading secrets.
   4. Decide the least invasive generic observation and adapter strategy.
   5. Call propose_recipe with a complete JSON object containing:
-     match_features, observation, hook, redaction, confidence, fallback.
+     match_features, agent_identity_name, observation, hook, redaction, confidence, fallback.
+     - Note on agent_identity_name: Infer a clean human-readable agent identity name (e.g. 'pi-coding-agent', 'claude-code', etc.) solely from package/script/entrypoint tokens discovered in open paths or argv, rather than raw executable filenames like 'node.exe'.
   6. Finish with a concise evidence-backed report, detailing what configuration locations, protocol characteristics, and hook approaches were discovered.
 settings:
   temperature: 0

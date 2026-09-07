@@ -93,7 +93,21 @@ def analyze(pid):
         cmd = p.cmdline()
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         cmd = []
-    argv_shape = [(a if a.startswith("-") else "<val>") for a in cmd[1:7]]
+    
+    # 抽象命令行形状，但对脚本/分发入口保留语义标识以供指纹与名称关联
+    argv_shape = []
+    for a in cmd[1:7]:
+        if a.startswith("-"):
+            argv_shape.append(a)
+        elif any(ext in a.lower() for ext in [".js", ".py", ".ts", "dist", "bundle", "cli", "agent"]):
+            p_name = Path(a).name
+            for token in ("pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
+                if token in a.lower():
+                    p_name = f"<{token}:{p_name}>"
+                    break
+            argv_shape.append(p_name)
+        else:
+            argv_shape.append("<val>")
     parents = []
     try:
         q = p

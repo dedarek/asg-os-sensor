@@ -177,8 +177,13 @@ class Sensor:
         # 排除网关/桥接服务自身、测试脚本与静态分析工具
         if any(x in cmd for x in ("gateway run", "serve --host", "cpolar.exe", "lark-cli.exe",
                                   "monitor_dashboard.py", "mini_bridge.py", "semantica.explorer",
-                                  "run_sample_70.py")):
-            return -1, ["排除基础设施守护进程/测试脚本"]
+                                  "run_sample_70.py", "recipes/runtime_analyst.yaml", "autonomous-governance",
+                                  "analyst_tools.py")):
+            return -1, ["排除基础设施守护进程/测试/治理工具脚本"]
+
+        # 排除 Analyst 自身的 Goose 进程 (防止治理端自我递归)
+        if "goose" in pname and ("target_pid" in cmd or "runtime_analyst" in cmd):
+            return -1, ["排除Analyst治理引擎自身"]
 
         # 排除单纯的 MCP 工具服务器 (MCP server 是供 agent 调用的外部工具/管道，不是 Agent 本体)
         if "mcp-server" in cmd:

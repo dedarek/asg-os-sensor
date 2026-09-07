@@ -81,9 +81,23 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
         children = len(p.children(recursive=False))
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         children = 0
-    # Blind Analyst view: identity-bearing process fields never cross the
-    # Supervisor boundary. Raw OS evidence remains in the Sensor audit stream.
-    argv_raw = [(str(x) if str(x).startswith("-") else "<value>") for x in cmd]
+    # Blind Analyst view: identity-bearing process fields are abstracted, but package tokens & script names are retained for identity discovery
+    argv_raw = []
+    for x in cmd:
+        xs = str(x)
+        if xs.startswith("-"):
+            argv_raw.append(xs)
+        elif any(ext in xs.lower() for ext in [".js", ".py", ".ts", ".sh", "bundle", "cli", "agent"]):
+            # 保留执行脚本/包的语义名，便于 Analyst 推断 Agent 身份 (如 pi-coding-agent/dist/bundle/cli.js)
+            p_token = Path(xs).name
+            if any(k in xs.lower() for k in ["pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"]):
+                for k in ["pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"]:
+                    if k in xs.lower():
+                        p_token = f"<{k}:{p_token}>"
+                        break
+            argv_raw.append(p_token)
+        else:
+            argv_raw.append("<value>")
     config_candidates = []
     for i, arg in enumerate(cmd):
         arg_s = str(arg)
