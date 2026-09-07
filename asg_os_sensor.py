@@ -159,40 +159,67 @@ class Sensor:
 
         # 运行时编排的通用结构信号：
         # 严格防误报：排除常规桌面/Chromium子进程模式与非Agent服务
-        if any(x in cmd for x in ("--type=utility", "--type=renderer", "--type=gpu-process", "--utility-sub-type")):
+        if any(x in cmd for x in ("--type=utility", "--type=renderer", "--type=gpu-process", "--utility-sub-type", "--embedded-browser-webview")):
             return -1, ["排除Chromium/Electron内部辅助进程"]
 
-        # 排除网关/桥接服务自身与普通命令行工具
-        if any(x in cmd for x in ("gateway run", "serve --host", "cpolar.exe", "lark-cli.exe")):
-            return -1, ["排除基础设施守护进程/CLI工具"]
+        # 排除系统级终端包装器自身 (bash/cmd/powershell 只是执行容器，由被拉起的子进程体现 agent)
+        pname = (proc.info.get("name") or "").lower()
+        if pname in ("bash.exe", "sh.exe", "wsl.exe", "conhost.exe"):
+            return -1, ["排除系统Shell/终端包装器自身"]
+
+        # 排除 Hermes 桌面外壳自身与临时交互工具
+        if "hermes.exe" in pname or "hermes-agent\\apps\\desktop" in cmd:
+            return -1, ["排除Hermes桌面宿主外壳"]
+
+        if "tmp." in cmd and "resp.json" in cmd:
+            return -1, ["排除临时CLI管道"]
+
+        # 排除网关/桥接服务自身、测试脚本与静态分析工具
+        if any(x in cmd for x in ("gateway run", "serve --host", "cpolar.exe", "lark-cli.exe",
+                                  "monitor_dashboard.py", "mini_bridge.py", "semantica.explorer",
+                                  "run_sample_70.py")):
+            return -1, ["排除基础设施守护进程/测试脚本"]
+
+        # 排除单纯的 MCP 工具服务器 (MCP server 是供 agent 调用的外部工具/管道，不是 Agent 本体)
+        if "mcp-server" in cmd:
+            return -1, ["排除MCP工具服务端(非主动Agent编排器)"]
 
         has_agent_intent = False
 
-        # 1. 结构化任务与编排参数 (最强信号，权重 30)
+        # 1. Agent 核心包路径、包名或标识 (通用 Agent 包特征)
+        if any(x in cmd for x in ("pi-coding-agent", "piagent", "claude-code", "codex", "agent", "opencode", "goose")):
+            score += 30
+            reasons.append("Agent编排运行时标识(+30)")
+            has_agent_intent = True
+
+        # 2. 结构化任务与模型/编排参数
         if any(x in cmd for x in ("--model", "--system-prompt", "--output-format", "--stream",
-                                  "--permission-mode", "mcp-server", "--max-turns",
-                                  "--agent", "anthropic", "openai", "deepseek")):
+                                  "--permission-mode", "--max-turns",
+                                  "anthropic", "openai", "deepseek")):
             score += 30
             reasons.append("模型编排与治理参数(+30)")
             has_agent_intent = True
 
-        # 2. 命令行携带自然语言 prompt / 任务指令 (权重 20)
+        # 3. 命令行携带自然语言 prompt / 任务指令
         if any(x in cmd for x in ("prompt", "run ", "-p ", "say ", "analyze", "inspect", "list files", "count ")):
             score += 20
             reasons.append("自然语言任务驱动(+20)")
             has_agent_intent = True
 
-        # 3. 结构化流协议 (权重 20)
+        # 4. 结构化流协议
         if any(x in cmd for x in ("stream-json", "--jsonl", "json-stream")):
             score += 20
             reasons.append("结构化流协议(+20)")
             has_agent_intent = True
 
-        # 4. 辅助状态信号 (仅在已具备 Agent 意图时才累加，避免普通联网进程误判)
-        if has_agent_intent:
-            if len(cmdline) >= 3:
+        # 5. 辅助状态信号 (只要有一定 Agent 迹象，辅助信号就能助推确认)
+        if has_agent_intent or len(cmdline) >= 2:
+            if len(cmdline) >= 2:
                 score += 10
                 reasons.append("参数化启动(+10)")
+            if any(ext in cmd for ext in (".js", ".py", ".ts", "dist/bundle", "bin/")):
+                score += 10
+                reasons.append("脚本/运行时分发包(+10)")
             try:
                 children = proc.children(recursive=True)
                 if children:
@@ -204,7 +231,7 @@ class Sensor:
                 conns = proc.net_connections(kind="inet")
                 if conns:
                     score += 10
-                    reasons.append(f"外部模型连接={len(conns)}(+10)")
+                    reasons.append(f"外部网络连接={len(conns)}(+10)")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
