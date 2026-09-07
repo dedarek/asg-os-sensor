@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher
+from runtime.stream_parser import redact
 
 # 共享状态
 STATE_LOCK = threading.Lock()
@@ -34,29 +35,52 @@ SCAN_STATE = {
     "fingerprints_count": 0
 }
 
-def get_last_semantic_message(pid: int, exe_name: str) -> dict:
-    """尝试获取该 Agent 产生的最后一条语义消息"""
+def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
+    """获取该 Agent 进程真实关联的语义消息，绝不把其他进程或历史残留瞎挂上去"""
     artifacts_dir = ROOT / "e2e" / "artifacts" / "unknown-runtime"
-    # 查找最新的 semantic_events.jsonl
-    candidates = [
+    
+    # 查找是否有挂接在当前 PID 或明确匹配该目标会话的流
+    stream_candidates = [
         artifacts_dir / "second" / "semantic_events.jsonl",
         artifacts_dir / "first" / "semantic_events.jsonl",
     ]
-    for c in candidates:
+    
+    # 检查进程是否是真正被接管的 Agent
+    for c in stream_candidates:
         if c.exists():
             try:
-                lines = [l.strip() for l in c.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
-                if lines:
-                    last_obj = json.loads(lines[-1])
-                    return {
-                        "source": c.parent.name,
-                        "event_type": last_obj.get("event_type", "unknown"),
-                        "ts": last_obj.get("ts", ""),
-                        "detail": last_obj.get("detail") or last_obj.get("blocks") or last_obj.get("prompt") or last_obj.get("call") or "N/A"
-                    }
+                manifest_file = c.parent.parent / "execution_manifest.json"
+                # 检查 manifest 中是否记录过该 PID
+                matched_pid = False
+                if manifest_file.exists():
+                    mdata = json.loads(manifest_file.read_text(encoding="utf-8", errors="ignore"))
+                    pids = [
+                        mdata.get("phases", {}).get("first", {}).get("target_pid"),
+                        mdata.get("phases", {}).get("second", {}).get("target_pid")
+                    ]
+                    if pid in pids:
+                        matched_pid = True
+                
+                # 如果 PID 匹配，或者正在执行 e2e 且命令签名一致
+                if matched_pid:
+                    lines = [l.strip() for l in c.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
+                    if lines:
+                        last_obj = json.loads(lines[-1])
+                        return {
+                            "source": c.parent.name,
+                            "event_type": last_obj.get("event_type", "unknown"),
+                            "ts": last_obj.get("ts", ""),
+                            "detail": last_obj.get("detail") or last_obj.get("blocks") or last_obj.get("prompt") or last_obj.get("call") or "N/A"
+                        }
             except Exception:
                 pass
-    return {"source": "none", "event_type": "N/A", "ts": "N/A", "detail": "暂无活跃语义事件"}
+
+    return {
+        "source": "none",
+        "event_type": "未监听",
+        "ts": time.strftime("%H:%M:%S"),
+        "detail": "当前进程尚未挂接流式 Sink 或暂无新消息"
+    }
 
 def scan_agents_once():
     """执行一次完整的 30s OS 级扫描"""
@@ -107,14 +131,14 @@ def scan_agents_once():
                     "hook": (matched_fp.get("hook_recipe", {}).get("hook")) if matched_fp else "未挂接"
                 }
                 
-                last_msg = get_last_semantic_message(pid, name)
+                last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
                 
                 found_agents.append({
                     "pid": pid,
                     "name": name,
                     "score": score,
                     "reasons": reasons,
-                    "cmdline": " ".join(cmdline)[:250] + ("..." if len(" ".join(cmdline)) > 250 else ""),
+                    "cmdline": redact(" ".join(cmdline))[:250] + ("..." if len(" ".join(cmdline)) > 250 else ""),
                     "adapter": adapter_info,
                     "last_message": last_msg,
                     "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
