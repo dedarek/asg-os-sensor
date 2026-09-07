@@ -1,0 +1,36 @@
+{
+  "evidence_id": "ev-1788771165205-61d9f22626",
+  "ts": "2026-09-07T08:52:45.205732+00:00",
+  "method": "tools/call",
+  "request_id": 5,
+  "tool": "observe_tree",
+  "args": {},
+  "result": {
+    "tree": [
+      {
+        "pid": 34536,
+        "ppid_present": true,
+        "identity": "unknown-runtime",
+        "argv_shape": [
+          "<value>",
+          "--bare",
+          "--print",
+          "--verbose",
+          "--output-format",
+          "<value>",
+          "--permission-mode",
+          "<value>",
+          "--no-session-persistence",
+          "<value>"
+        ],
+        "config_candidates_in_argv": [],
+        "cwd_class": "local-workspace",
+        "status": "running",
+        "children": 0,
+        "create_time": 1788771159.324682,
+        "depth": 0
+      }
+    ]
+  },
+  "error": null
+}

@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "C:\\Users\\yyyyc\\.local\\bin\\goose.exe",
+    "run",
+    "--no-profile",
+    "--no-session",
+    "--recipe",
+    "D:\\proj\\asg-os-sensor\\recipes\\runtime_analyst.yaml",
+    "--params",
+    "target_pid=34536",
+    "--provider",
+    "openai",
+    "--model",
+    "deepseek-v4-flash",
+    "--max-turns",
+    "12",
+    "--max-tool-repetitions",
+    "2",
+    "--output-format",
+    "stream-json",
+    "--with-extension",
+    "asg-runtime-tools:ASG_TARGET_PID=34536 ASG_AUDIT_DIR=D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first ASG_RECIPE_DIR=D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first\\recipes ASG_TARGET_STREAM_FILE=D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first\\target_stream.jsonl python runtime/analyst_tools.py"
+  ],
+  "environment": {
+    "GOOSE_PROVIDER": "openai",
+    "GOOSE_MODEL": "deepseek-v4-flash",
+    "OPENAI_BASE_URL": "https://opencode.ai/zen/go/v1",
+    "credential_env": "OPENCODE_GO_API_KEY",
+    "GOOSE_MODE": "auto"
+  },
+  "returncode": 0
+}

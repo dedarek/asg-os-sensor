@@ -1,0 +1,36 @@
+{
+  "evidence_id": "ev-1788771171577-ce9fa38bd6",
+  "ts": "2026-09-07T08:52:51.577309+00:00",
+  "method": "tools/call",
+  "request_id": 6,
+  "tool": "inspect_stream",
+  "args": {},
+  "result": {
+    "available": true,
+    "path_class": "supervisor-exposed-stream",
+    "line_count": 3,
+    "json_line_count": 3,
+    "samples": [
+      {
+        "keys": "[REDACTED]",
+        "type": "system"
+      },
+      {
+        "keys": "[REDACTED]",
+        "type": "assistant",
+        "message_role": "assistant",
+        "content_block_types": [
+          "text"
+        ],
+        "has_text": true,
+        "has_tool_call": false
+      },
+      {
+        "keys": "[REDACTED]",
+        "type": "result",
+        "subtype": "success"
+      }
+    ]
+  },
+  "error": null
+}

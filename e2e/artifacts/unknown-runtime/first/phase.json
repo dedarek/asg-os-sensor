@@ -1,0 +1,413 @@
+{
+  "label": "first",
+  "pid": 34536,
+  "argv": [
+    "C:/Users/yyyyc/AppData/Local/hermes/node/node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+    "--bare",
+    "--print",
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "--permission-mode",
+    "dontAsk",
+    "--no-session-persistence",
+    "List files in the current directory and count them."
+  ],
+  "identified": {
+    "ts": "2026-09-07T08:52:40.298153+00:00",
+    "event_type": "proc.agent_identified",
+    "pid": 34536,
+    "pname": "claude.exe",
+    "cmdline": "C:/Users/yyyyc/AppData/Local/hermes/node/node_modules/@anthropic-ai/claude-code/bin/claude.exe --bare --print --verbose --output-format stream-json --permission-mode dontAsk --no-session-persistence List files in the current directory and count them.",
+    "agent_score": 70,
+    "rule": "R1",
+    "disposition": "ALERT",
+    "details": "画像命中: 参数化启动(+10); 结构化编排参数(+20); 结构化流协议(+20); 子进程树=2(+20)"
+  },
+  "structure": {
+    "pid": 34536,
+    "exe": "claude.exe",
+    "exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+    "argv_shape": [
+      "--bare",
+      "--print",
+      "--verbose",
+      "--output-format",
+      "<val>",
+      "--permission-mode"
+    ],
+    "parents": [
+      "python.exe",
+      "python.exe",
+      "python.exe"
+    ],
+    "cwd": "D:\\proj\\asg-os-sensor",
+    "config_dirs": [],
+    "children_classes": [
+      "conhost.exe",
+      "git.exe"
+    ],
+    "listen": false,
+    "runtime": "native",
+    "hook_recipe": "sandbox-or-uprobe",
+    "analyze_ms": 179
+  },
+  "matcher": {
+    "hit": false,
+    "elapsed_ms": 8
+  },
+  "started_at": "2026-09-07T08:52:25Z",
+  "path": "first-seen-autonomous-investigation",
+  "analyst": {
+    "returncode": 0,
+    "elapsed_ms": 49967,
+    "command": [
+      "C:\\Users\\yyyyc\\.local\\bin\\goose.exe",
+      "run",
+      "--no-profile",
+      "--no-session",
+      "--recipe",
+      "D:\\proj\\asg-os-sensor\\recipes\\runtime_analyst.yaml",
+      "--params",
+      "target_pid=34536",
+      "--provider",
+      "openai",
+      "--model",
+      "deepseek-v4-flash",
+      "--max-turns",
+      "12",
+      "--max-tool-repetitions",
+      "2",
+      "--output-format",
+      "stream-json",
+      "--with-extension",
+      "asg-runtime-tools:ASG_TARGET_PID=34536 ASG_AUDIT_DIR=D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first ASG_RECIPE_DIR=D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first\\recipes ASG_TARGET_STREAM_FILE=D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first\\target_stream.jsonl python runtime/analyst_tools.py"
+    ],
+    "tool_calls": [
+      {
+        "ts": "2026-09-07T08:52:45.206733+00:00",
+        "request_id": 5,
+        "tool": "observe_tree",
+        "args": {},
+        "evidence_id": "ev-1788771165205-61d9f22626",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:52:45.209482+00:00",
+        "request_id": 3,
+        "tool": "get_prior_recipe",
+        "args": {},
+        "evidence_id": "ev-1788771165208-9a22a6c921",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:52:45.320170+00:00",
+        "request_id": 2,
+        "tool": "get_target_context",
+        "args": {},
+        "evidence_id": "ev-1788771165319-e26a88987f",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:52:45.507880+00:00",
+        "request_id": 4,
+        "tool": "observe_runtime_surface",
+        "args": {},
+        "evidence_id": "ev-1788771165506-7371ee5201",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:52:51.566310+00:00",
+        "request_id": 7,
+        "tool": "probe_help",
+        "args": {},
+        "evidence_id": "ev-1788771171565-bf21a9e8fb",
+        "error": "RuntimeError: target PID unavailable: 34536"
+      },
+      {
+        "ts": "2026-09-07T08:52:51.578309+00:00",
+        "request_id": 6,
+        "tool": "inspect_stream",
+        "args": {},
+        "evidence_id": "ev-1788771171577-ce9fa38bd6",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:52:55.754024+00:00",
+        "request_id": 9,
+        "tool": "observe_runtime_surface",
+        "args": {},
+        "evidence_id": "ev-1788771175753-bf21a9e8fb",
+        "error": "RuntimeError: target PID unavailable: 34536"
+      },
+      {
+        "ts": "2026-09-07T08:52:55.756023+00:00",
+        "request_id": 8,
+        "tool": "inspect_stream",
+        "args": {},
+        "evidence_id": "ev-1788771175755-ce9fa38bd6",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:52:57.543893+00:00",
+        "request_id": 11,
+        "tool": "observe_tree",
+        "args": {},
+        "evidence_id": "ev-1788771177542-bf21a9e8fb",
+        "error": "RuntimeError: target PID unavailable: 34536"
+      },
+      {
+        "ts": "2026-09-07T08:52:57.546892+00:00",
+        "request_id": 10,
+        "tool": "get_target_context",
+        "args": {},
+        "evidence_id": "ev-1788771177545-bf21a9e8fb",
+        "error": "RuntimeError: target PID unavailable: 34536"
+      },
+      {
+        "ts": "2026-09-07T08:53:00.888954+00:00",
+        "request_id": 12,
+        "tool": "inspect_stream",
+        "args": {},
+        "evidence_id": "ev-1788771180887-ce9fa38bd6",
+        "error": null
+      },
+      {
+        "ts": "2026-09-07T08:53:22.572452+00:00",
+        "request_id": 13,
+        "tool": "propose_recipe",
+        "args": {
+          "recipe": {
+            "match_features": {
+              "runtime_class_hint": "unknown-runtime",
+              "behavioral_class": "one-shot-agent-cli-json-event-stream",
+              "argv_signature": [
+                "--bare",
+                "--print",
+                "--verbose",
+                "--output-format",
+                "--permission-mode",
+                "--no-session-persistence"
+              ],
+              "process_shape": {
+                "depth": 0,
+                "child_count": 0,
+                "descendant_count": 0,
+                "ephemeral": true,
+                "exited_after_single_cycle": true
+              },
+              "network_shape": {
+                "established_tcp_count": 1,
+                "family": 2,
+                "type": 1,
+                "has_remote": true
+              },
+              "open_path_shape": {
+                "config_like": false,
+                "observed_extensions": [
+                  ".mui"
+                ]
+              },
+              "stream_schema": {
+                "types": [
+                  "system",
+                  "assistant",
+                  "result"
+                ],
+                "assistant_fields": [
+                  "message_role",
+                  "content_block_types",
+                  "has_text",
+                  "has_tool_call"
+                ],
+                "result_fields": [
+                  "subtype"
+                ],
+                "observed_assistant_content": [
+                  "text"
+                ],
+                "observed_result_subtype": [
+                  "success"
+                ]
+              },
+              "cwd_class": "local-workspace",
+              "config_candidates_in_argv": []
+            },
+            "observation": "Passive read-only polling of the supervisor-exposed JSON event stream only. Parse newline-delimited envelopes by the top-level 'type' discriminator (system/assistant/result). Fingerprint the runtime by the argv flag signature (--bare/--print/--verbose/--output-format/--permission-mode/--no-session-persistence) combined with the event envelope schema. Never attach to the process, never inject input, never write to the workspace or config directories. Re-observe on a live re-run to capture the full cycle and detect tool_call-bearing assistant/result records.",
+            "hook": "Event-sink hook on the supervisor-exposed stream: consume assistant and result records to map message_role/content-block and tool-result structure. No active hook into process memory, no file watchers, no plugin/path hooking. If the process is re-observed while alive, hook = subscribe to stream and record cycle boundaries; do not touch the process tree.",
+            "redaction": "Redact all envelope field values not on the allowlist (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+            "confidence": "high: agent-like runtime confirmed by argv shape + single system/assistant/result event cycle + established TCP + clean exit. medium: config file location not directly observable (no config path in argv, no config-like open paths, only .mui resource); configuration appears flag/env driven and read early at startup, with default session store disabled by --no-session-persistence.",
+            "fallback": "If the target remains unavailable: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If probe_help/observe become available for a live PID: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details."
+          }
+        },
+        "evidence_id": "ev-1788771202570-33a5de0ec4",
+        "error": null
+      }
+    ]
+  },
+  "candidate": {
+    "status": "committed",
+    "committed_at": "2026-09-07T08:53:30Z",
+    "recipe": {
+      "match_features": {
+        "runtime_class_hint": "unknown-runtime",
+        "behavioral_class": "one-shot-agent-cli-json-event-stream",
+        "argv_signature": [
+          "--bare",
+          "--print",
+          "--verbose",
+          "--output-format",
+          "--permission-mode",
+          "--no-session-persistence"
+        ],
+        "process_shape": {
+          "depth": 0,
+          "child_count": 0,
+          "descendant_count": 0,
+          "ephemeral": true,
+          "exited_after_single_cycle": true
+        },
+        "network_shape": {
+          "established_tcp_count": 1,
+          "family": 2,
+          "type": 1,
+          "has_remote": true
+        },
+        "open_path_shape": {
+          "config_like": false,
+          "observed_extensions": [
+            ".mui"
+          ]
+        },
+        "stream_schema": {
+          "types": [
+            "system",
+            "assistant",
+            "result"
+          ],
+          "assistant_fields": [
+            "message_role",
+            "content_block_types",
+            "has_text",
+            "has_tool_call"
+          ],
+          "result_fields": [
+            "subtype"
+          ],
+          "observed_assistant_content": [
+            "text"
+          ],
+          "observed_result_subtype": [
+            "success"
+          ]
+        },
+        "cwd_class": "local-workspace",
+        "config_candidates_in_argv": []
+      },
+      "observation": "Passive read-only polling of the supervisor-exposed JSON event stream only. Parse newline-delimited envelopes by the top-level 'type' discriminator (system/assistant/result). Fingerprint the runtime by the argv flag signature (--bare/--print/--verbose/--output-format/--permission-mode/--no-session-persistence) combined with the event envelope schema. Never attach to the process, never inject input, never write to the workspace or config directories. Re-observe on a live re-run to capture the full cycle and detect tool_call-bearing assistant/result records.",
+      "hook": "Event-sink hook on the supervisor-exposed stream: consume assistant and result records to map message_role/content-block and tool-result structure. No active hook into process memory, no file watchers, no plugin/path hooking. If the process is re-observed while alive, hook = subscribe to stream and record cycle boundaries; do not touch the process tree.",
+      "redaction": "Redact all envelope field values not on the allowlist (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+      "confidence": "high: agent-like runtime confirmed by argv shape + single system/assistant/result event cycle + established TCP + clean exit. medium: config file location not directly observable (no config path in argv, no config-like open paths, only .mui resource); configuration appears flag/env driven and read early at startup, with default session store disabled by --no-session-persistence.",
+      "fallback": "If the target remains unavailable: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If probe_help/observe become available for a live PID: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details."
+    }
+  },
+  "adapter": {
+    "mounted": true,
+    "parser_stdout": "parsed resp=1",
+    "parser_stderr": "",
+    "event_count": 3,
+    "event_types": [
+      "llm.session",
+      "llm.response",
+      "llm.session"
+    ],
+    "source": "D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first\\target_stream.jsonl",
+    "adapter": "auto-runtime-stream"
+  },
+  "memory_entry": {
+    "id": "harness-01",
+    "first_seen": "2026-09-07T16:53:30",
+    "match_count": 1,
+    "mount_ms": 213,
+    "features": {
+      "exe": "claude.exe",
+      "runtime": "native",
+      "flags": [
+        "--bare",
+        "--output-format",
+        "--permission-mode",
+        "--print",
+        "--verbose"
+      ],
+      "config_dirs": []
+    },
+    "children_classes": [
+      "conhost.exe",
+      "git.exe"
+    ],
+    "hook_recipe": {
+      "match_features": {
+        "runtime_class_hint": "unknown-runtime",
+        "behavioral_class": "one-shot-agent-cli-json-event-stream",
+        "argv_signature": [
+          "--bare",
+          "--print",
+          "--verbose",
+          "--output-format",
+          "--permission-mode",
+          "--no-session-persistence"
+        ],
+        "process_shape": {
+          "depth": 0,
+          "child_count": 0,
+          "descendant_count": 0,
+          "ephemeral": true,
+          "exited_after_single_cycle": true
+        },
+        "network_shape": {
+          "established_tcp_count": 1,
+          "family": 2,
+          "type": 1,
+          "has_remote": true
+        },
+        "open_path_shape": {
+          "config_like": false,
+          "observed_extensions": [
+            ".mui"
+          ]
+        },
+        "stream_schema": {
+          "types": [
+            "system",
+            "assistant",
+            "result"
+          ],
+          "assistant_fields": [
+            "message_role",
+            "content_block_types",
+            "has_text",
+            "has_tool_call"
+          ],
+          "result_fields": [
+            "subtype"
+          ],
+          "observed_assistant_content": [
+            "text"
+          ],
+          "observed_result_subtype": [
+            "success"
+          ]
+        },
+        "cwd_class": "local-workspace",
+        "config_candidates_in_argv": []
+      },
+      "observation": "Passive read-only polling of the supervisor-exposed JSON event stream only. Parse newline-delimited envelopes by the top-level 'type' discriminator (system/assistant/result). Fingerprint the runtime by the argv flag signature (--bare/--print/--verbose/--output-format/--permission-mode/--no-session-persistence) combined with the event envelope schema. Never attach to the process, never inject input, never write to the workspace or config directories. Re-observe on a live re-run to capture the full cycle and detect tool_call-bearing assistant/result records.",
+      "hook": "Event-sink hook on the supervisor-exposed stream: consume assistant and result records to map message_role/content-block and tool-result structure. No active hook into process memory, no file watchers, no plugin/path hooking. If the process is re-observed while alive, hook = subscribe to stream and record cycle boundaries; do not touch the process tree.",
+      "redaction": "Redact all envelope field values not on the allowlist (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+      "confidence": "high: agent-like runtime confirmed by argv shape + single system/assistant/result event cycle + established TCP + clean exit. medium: config file location not directly observable (no config path in argv, no config-like open paths, only .mui resource); configuration appears flag/env driven and read early at startup, with default session store disabled by --no-session-persistence.",
+      "fallback": "If the target remains unavailable: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If probe_help/observe become available for a live PID: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details."
+    },
+    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"
+  },
+  "duration_ms": 65596
+}

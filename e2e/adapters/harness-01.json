@@ -1,0 +1,33 @@
+{
+ "harness_ref": "first-seen-harness",
+ "runtime": "native",
+ "hook": {
+  "type": "supervised-stream",
+  "launch": [
+   "-p",
+   "{task}",
+   "--output-format",
+   "stream-json",
+   "--verbose"
+  ],
+  "parser": "runtime/stream_parser.py",
+  "surface": [
+   "stdout stream-json events"
+  ]
+ },
+ "config_dirs_observed": [],
+ "children_classes": [
+  "cmd.exe",
+  "conhost.exe",
+  "findstr.exe",
+  "tasklist.exe"
+ ],
+ "redaction": [
+  "authorization",
+  "cookie",
+  "x-api-key",
+  "access_token",
+  "refresh_token",
+  "sk-*"
+ ]
+}

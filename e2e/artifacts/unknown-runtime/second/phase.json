@@ -1,0 +1,71 @@
+{
+  "label": "second",
+  "pid": 31948,
+  "argv": [
+    "C:/Users/yyyyc/AppData/Local/hermes/node/node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+    "--bare",
+    "--print",
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "--permission-mode",
+    "dontAsk",
+    "--no-session-persistence",
+    "List files in the current directory and count them."
+  ],
+  "identified": {
+    "ts": "2026-09-07T08:53:46.072148+00:00",
+    "event_type": "proc.agent_identified",
+    "pid": 31948,
+    "pname": "claude.exe",
+    "cmdline": "C:/Users/yyyyc/AppData/Local/hermes/node/node_modules/@anthropic-ai/claude-code/bin/claude.exe --bare --print --verbose --output-format stream-json --permission-mode dontAsk --no-session-persistence List files in the current directory and count them.",
+    "agent_score": 70,
+    "rule": "R1",
+    "disposition": "ALERT",
+    "details": "画像命中: 参数化启动(+10); 结构化编排参数(+20); 结构化流协议(+20); 子进程树=1(+20)"
+  },
+  "structure": {
+    "pid": 31948,
+    "exe": "claude.exe",
+    "exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+    "argv_shape": [
+      "--bare",
+      "--print",
+      "--verbose",
+      "--output-format",
+      "<val>",
+      "--permission-mode"
+    ],
+    "parents": [
+      "python.exe",
+      "python.exe",
+      "python.exe"
+    ],
+    "cwd": "D:\\proj\\asg-os-sensor",
+    "config_dirs": [],
+    "children_classes": [],
+    "listen": false,
+    "runtime": "native",
+    "hook_recipe": "sandbox-or-uprobe",
+    "analyze_ms": 169
+  },
+  "matcher": {
+    "hit": true,
+    "elapsed_ms": 25
+  },
+  "started_at": "2026-09-07T08:53:30Z",
+  "path": "remembered-recipe",
+  "recipe_source": "runtime/fingerprints.json",
+  "adapter": {
+    "mounted": true,
+    "parser_stdout": "parsed resp=0",
+    "parser_stderr": "",
+    "event_count": 1,
+    "event_types": [
+      "llm.session"
+    ],
+    "source": "D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\second\\target_stream.jsonl",
+    "adapter": "auto-runtime-stream"
+  },
+  "duration_ms": 15770
+}

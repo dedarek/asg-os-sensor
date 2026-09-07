@@ -1,0 +1,57 @@
+# ASG OS级治理 PoC — asg-os-sensor
+# 用户态演示版: 无需驱动/无需改agent代码, 纯 psutil+PyYAML 实现 EDR 思路的三层采集
+# 明天现场运行:  python asg_os_sensor.py --interval 1
+# 停止: Ctrl+C
+
+interval: 1.0
+events_file: events.jsonl
+
+# agent 画像打分阈值
+agent_score_threshold: 50
+
+# 敏感文件模式 (Windows演示路径 + 通用posix路径)
+sensitive_patterns:
+  - "id_rsa"
+  - ".ssh"
+  - "shadow"
+  - "passwd"
+  - "honey"
+  - ".aws/credentials"
+  - "secrets"
+
+# 危险命令行模式
+dangerous_cmdline:
+  - "rm -rf"
+  - "format "
+  - "mimikatz"
+  - "sekurlsa"
+  - "powershell -enc"
+  - "curl evil"
+  - "wget evil"
+
+# Blind-mode policy: no vendor or endpoint prior is used for agent identification.
+# Runtime classification must come from process behavior, structure, and observed
+# supervised semantic surfaces.
+llm_endpoints: []
+
+# 出站 allowlist (IP/主机名/本地). 命中之外即 R3 告警
+egress_allowlist:
+  - "127.0.0.1"
+  - "::1"
+  - "localhost"
+
+# 演示安全锁: BLOCK 只对命令行含该标记的进程执行 kill,
+# 防止误杀系统进程。生产环境此处应对接 eBPF/WFP 驱动。
+demo_kill_marker: "asg-os-sensor-demo-evil"
+
+# 排除列表 (标准 EDR 标配): 命中即跳过画像, 不发事件.
+# 只排除 terminal 包装器自身 (其 cmdline 会嵌入待测命令原文, 不排除会误杀测试 shell).
+# 注意: 此处刻意不用宽路径豁免 —— 曾用 AppData/Local/hermes 一刀切,
+# 实测把 hermes 虚拟环境下所有 python(含被测 agent)全部致盲, R1/R2/R3 全漏.
+# 教训: 排除项越窄越好, 可信进程走白名单注册, 不走路径豁免.
+exclude_cmdline_substr:
+  - "hermes-snap"
+  - "git/bin"
+
+# 可选: 转发到 ASG 网关 ingest (本机 8090 在跑就自动转发, 不在也不报错)
+asg_ingest_url: "http://127.0.0.1:8090/api/events/ingest"

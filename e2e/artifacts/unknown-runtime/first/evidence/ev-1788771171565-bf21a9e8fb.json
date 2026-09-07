@@ -1,0 +1,10 @@
+{
+  "evidence_id": "ev-1788771171565-bf21a9e8fb",
+  "ts": "2026-09-07T08:52:51.565322+00:00",
+  "method": "tools/call",
+  "request_id": 7,
+  "tool": "probe_help",
+  "args": {},
+  "result": {},
+  "error": "RuntimeError: target PID unavailable: 34536"
+}
