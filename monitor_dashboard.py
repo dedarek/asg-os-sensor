@@ -409,56 +409,196 @@ HTML_PAGE = """<!DOCTYPE html>
 <title>ASG 运行时治理 · 实时 Agent 监控看板</title>
 <style>
   :root {
-    --bg: #0b0f19;
-    --card-bg: #151d2e;
-    --border: #23324d;
+    --bg: #090d16;
+    --card-bg: #111827;
+    --card-border: #1f293d;
+    --card-hover-border: #334155;
     --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
     --text-muted: #94a3b8;
+    --text-dim: #64748b;
     --accent: #38bdf8;
     --accent-glow: rgba(56, 189, 248, 0.15);
-    --green: #4ade80;
+    --green: #34d399;
+    --green-bg: rgba(52, 211, 153, 0.12);
+    --green-border: rgba(52, 211, 153, 0.35);
     --amber: #fbbf24;
+    --amber-bg: rgba(251, 191, 36, 0.12);
+    --amber-border: rgba(251, 191, 36, 0.35);
     --indigo: #818cf8;
-    --tag-bg: #0b0f19;
+    --indigo-bg: rgba(129, 140, 248, 0.12);
+    --indigo-border: rgba(129, 140, 248, 0.35);
+    --code-bg: #070b12;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
-  body { background: var(--bg); color: var(--text-primary); padding: 24px; line-height: 1.5; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
-  .title { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; }
-  .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  body { background: var(--bg); color: var(--text-primary); padding: 24px; line-height: 1.5; min-height: 100vh; }
+  
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 16px; flex-wrap: wrap; gap: 16px; }
+  .title { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; letter-spacing: -0.3px; }
+  .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s infinite; }
   @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-  .meta-bar { display: flex; gap: 20px; font-size: 13px; color: var(--text-muted); }
-  .meta-item b { color: var(--accent); }
-  .refresh-btn { background: var(--border); border: none; color: #fff; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
-  .refresh-btn:hover { background: #334769; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 20px; }
-  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-  .agent-name { font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .pid-tag { font-size: 11px; background: #1e293b; color: var(--accent); padding: 2px 7px; border-radius: 4px; border: 1px solid #334155; font-family: monospace; }
-  .score-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
-  .score-high { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
-  .score-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  .score-tag { font-size: 10px; background: rgba(51, 65, 85, 0.5); color: #cbd5e1; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(71, 85, 105, 0.4); }
-  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 5px; letter-spacing: 0.5px; }
-  .cmdline { font-size: 11px; color: #cbd5e1; background: #080c14; padding: 8px 10px; border-radius: 6px; border: 1px solid #1c273c; word-break: break-all; font-family: monospace; line-height: 1.4; }
-  .adapter-box { background: rgba(15, 23, 42, 0.6); border: 1px solid #23324d; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
-  .adapter-group-title { font-size: 11px; font-weight: 700; color: #94a3b8; display: flex; align-items: center; gap: 6px; margin-top: 4px; padding-bottom: 3px; border-bottom: 1px solid rgba(51, 65, 85, 0.4); }
-  .adapter-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: start; line-height: 1.4; }
-  .adapter-label { color: var(--text-muted); font-size: 11px; }
-  .adapter-val { color: #f1f5f9; font-size: 11px; word-break: break-word; }
+  
+  .meta-bar { display: flex; align-items: center; gap: 18px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
+  .meta-item b { color: var(--accent); font-family: monospace; font-size: 13px; }
+  .refresh-btn { 
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); 
+    border: 1px solid #334155; 
+    color: #e2e8f0; 
+    padding: 7px 16px; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    font-size: 12px; 
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    transition: all 0.2s ease; 
+  }
+  .refresh-btn:hover { 
+    background: linear-gradient(180deg, #334155 0%, #1e293b 100%); 
+    border-color: #475569; 
+    color: #fff; 
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+  }
+  
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 22px; align-items: stretch; }
+  .card { 
+    background: var(--card-bg); 
+    border: 1px solid var(--card-border); 
+    border-radius: 12px; 
+    padding: 20px; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 16px; 
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35); 
+    transition: border-color 0.2s ease, transform 0.2s ease;
+    height: 100%;
+  }
+  .card:hover { border-color: var(--card-hover-border); }
+  
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 56px; }
+  .agent-name { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 1.3; }
+  .pid-tag { font-size: 11px; background: #0f172a; color: var(--accent); padding: 2px 8px; border-radius: 4px; border: 1px solid #1e293b; font-family: monospace; font-weight: 600; }
+  
+  .score-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .score-high { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .score-mid { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .score-low { background: rgba(148, 163, 184, 0.12); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.3); }
+  
+  .score-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; justify-content: flex-end; max-width: 240px; }
+  .score-tag { font-size: 10px; background: #0f172a; color: #94a3b8; padding: 2px 7px; border-radius: 4px; border: 1px solid #1e293b; white-space: nowrap; }
+  
+  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; letter-spacing: 0.6px; }
+  
+  .cmdline { 
+    font-size: 11px; 
+    color: #cbd5e1; 
+    background: var(--code-bg); 
+    padding: 10px 12px; 
+    border-radius: 6px; 
+    border: 1px solid #162032; 
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; 
+    line-height: 1.45; 
+    max-height: 80px;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0b0f19;
+  }
+  
+  .adapter-box { 
+    background: rgba(10, 15, 26, 0.65); 
+    border: 1px solid #1c273c; 
+    border-radius: 8px; 
+    padding: 14px; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 9px; 
+    font-size: 12px; 
+    flex: 1;
+  }
+  .adapter-group-title { 
+    font-size: 11px; 
+    font-weight: 700; 
+    color: #94a3b8; 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+    margin-top: 5px; 
+    padding-bottom: 4px; 
+    border-bottom: 1px solid rgba(31, 41, 61, 0.8); 
+    letter-spacing: 0.3px;
+  }
+  .adapter-row { display: grid; grid-template-columns: 115px 1fr; gap: 8px; align-items: start; line-height: 1.45; }
+  .adapter-label { color: var(--text-muted); font-size: 11px; font-weight: 500; }
+  .adapter-val { color: var(--text-secondary); font-size: 11px; word-break: break-word; }
+  
   .adapter-status { color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
   .adapter-unmatched { color: var(--amber); }
   .adapter-working { color: var(--indigo); animation: blink 1.5s infinite; }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-  .msg-box { background: #080c14; border: 1px solid #1c273c; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; }
-  .msg-header { display: flex; justify-content: space-between; color: var(--accent); margin-bottom: 6px; font-weight: 600; border-bottom: 1px dashed #1c273c; padding-bottom: 4px; }
+  
+  .tool-list { display: flex; flex-direction: column; gap: 6px; }
+  .tool-item { 
+    background: #090e17; 
+    border: 1px solid #1b263b; 
+    border-radius: 5px; 
+    padding: 7px 9px; 
+    font-size: 11px; 
+    line-height: 1.45;
+  }
+  .tool-badge { 
+    display: inline-block; 
+    background: rgba(56, 189, 248, 0.15); 
+    color: #38bdf8; 
+    border: 1px solid rgba(56, 189, 248, 0.35); 
+    padding: 1px 6px; 
+    border-radius: 4px; 
+    font-family: monospace; 
+    font-size: 10px; 
+    font-weight: 600;
+    margin-right: 5px;
+  }
+  .tool-detail { color: #94a3b8; font-family: monospace; font-size: 10.5px; word-break: break-word; margin-top: 4px; }
+  
+  .stream-badge { 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    font-size: 11px; 
+    color: #cbd5e1; 
+    padding: 8px 12px; 
+    background: rgba(30, 41, 59, 0.45); 
+    border-radius: 6px; 
+    border: 1px solid #334155; 
+    margin-top: auto;
+  }
+  .stream-badge b { color: #f8fafc; font-weight: 600; }
+  
+  .msg-box { background: var(--code-bg); border: 1px solid #1e293b; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; margin-top: auto; }
+  .msg-header { display: flex; justify-content: space-between; color: var(--accent); margin-bottom: 6px; font-weight: 600; border-bottom: 1px dashed #1e293b; padding-bottom: 4px; }
   .msg-content { color: #e2e8f0; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; }
-  .stream-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); padding: 4px 8px; background: rgba(15, 23, 42, 0.4); border-radius: 4px; border: 1px dashed #334155; }
-  .btn-reinvestigate { background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; font-size: 10px; border-radius: 4px; padding: 3px 8px; cursor: pointer; transition: all 0.2s; }
-  .btn-reinvestigate:hover { background: rgba(99, 102, 241, 0.3); }
-  .btn-reinvestigate:disabled { opacity: 0.5; cursor: not-allowed; }
-  .footer { margin-top: 30px; text-align: center; font-size: 12px; color: var(--text-muted); display: flex; justify-content: center; gap: 15px; }
+  
+  .btn-reinvestigate { 
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.22) 0%, rgba(79, 70, 229, 0.12) 100%); 
+    border: 1px solid rgba(129, 140, 248, 0.45); 
+    color: #a5b4fc; 
+    font-size: 11px; 
+    font-weight: 600;
+    border-radius: 5px; 
+    padding: 4px 10px; 
+    cursor: pointer; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    transition: all 0.2s ease; 
+  }
+  .btn-reinvestigate:hover { 
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.35) 0%, rgba(79, 70, 229, 0.25) 100%); 
+    border-color: rgba(165, 180, 252, 0.6);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.35);
+  }
+  .btn-reinvestigate:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  
+  .footer { margin-top: 36px; text-align: center; font-size: 12px; color: var(--text-dim); display: flex; justify-content: center; gap: 15px; }
 </style>
 </head>
 <body>
@@ -490,8 +630,43 @@ HTML_PAGE = """<!DOCTYPE html>
 </div>
 
 <script>
+function renderTools(tools) {
+  if (!Array.isArray(tools) || tools.length === 0) {
+    return '<span style="color: #64748b;">标准 Agent 工具集 (未声明外部扩展)</span>';
+  }
+  return '<div class="tool-list">' + tools.map(t => {
+    if (typeof t !== 'string') t = JSON.stringify(t);
+    // 识别 MCP 服务特征
+    if (t.toLowerCase().includes('mcp')) {
+      return `
+        <div class="tool-item">
+          <div><span class="tool-badge">MCP 服务</span><b style="color: #38bdf8;">${escapeHtml(t.split(':')[0])}</b></div>
+          ${t.includes(':') ? `<div class="tool-detail">${escapeHtml(t.substring(t.indexOf(':') + 1).trim())}</div>` : ''}
+        </div>
+      `;
+    }
+    // 识别子进程或命令行特征
+    if (t.toLowerCase().includes('subprocess') || t.toLowerCase().includes('worker') || t.toLowerCase().includes('child')) {
+      return `
+        <div class="tool-item">
+          <div><span class="tool-badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-color: rgba(251, 191, 36, 0.35);">衍生执行</span><span style="color: #f1f5f9;">${escapeHtml(t)}</span></div>
+        </div>
+      `;
+    }
+    return `
+      <div class="tool-item">
+        <span style="color: #cbd5e1;">${escapeHtml(t)}</span>
+      </div>
+    `;
+  }).join('') + '</div>';
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function formatUptime(sec) {
-  if (!sec || isNaN(sec) || sec < 0) return '0秒';
   if (sec < 60) return sec + '秒';
   if (sec < 3600) return Math.floor(sec / 60) + '分 ' + (sec % 60) + '秒';
   if (sec < 86400) {
@@ -573,6 +748,8 @@ async function updateUI() {
       const btnText = isInvestigating ? '⚡ 正在重推导...' : '⚡ Goose 深度重测';
       const btnDisabled = isInvestigating ? 'disabled' : '';
 
+      const scoreClass = a.score >= 80 ? 'score-high' : (a.score >= 50 ? 'score-mid' : 'score-low');
+
       html += `
         <div class="card">
           <div class="card-top">
@@ -581,7 +758,7 @@ async function updateUI() {
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
             </div>
             <div style="text-align: right;">
-              <div class="score-badge score-high">画像分: ${a.score}</div>
+              <div class="score-badge ${scoreClass}">画像分: ${a.score}</div>
               ${reasonTags}
             </div>
           </div>
@@ -614,7 +791,7 @@ async function updateUI() {
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">可用 Tools / MCP:</span>
-                <span class="adapter-val" style="color: #f1f5f9;">${Array.isArray(a.adapter.registered_tools_and_mcp) && a.adapter.registered_tools_and_mcp.length ? a.adapter.registered_tools_and_mcp.join(', ') : '标准 Agent 工具集'}</span>
+                <div class="adapter-val">${renderTools(a.adapter.registered_tools_and_mcp)}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">行规/Prompt 约束:</span>
