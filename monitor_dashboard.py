@@ -599,6 +599,32 @@ HTML_PAGE = """<!DOCTYPE html>
   .btn-reinvestigate:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
   
   .footer { margin-top: 36px; text-align: center; font-size: 12px; color: var(--text-dim); display: flex; justify-content: center; gap: 15px; }
+
+  /* KPI 指标卡片 */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+  .kpi-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; }
+  .kpi-val { font-size: 22px; font-weight: 700; color: #fff; font-family: monospace; display: flex; align-items: baseline; gap: 6px; }
+  .kpi-sub { font-size: 11px; color: var(--text-dim); font-weight: normal; }
+
+  /* 抽屉与模态框 */
+  .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+  .drawer-overlay.active { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: -640px; width: 600px; height: 100vh; background: #0f1626; border-left: 1px solid var(--card-border); z-index: 1001; box-shadow: -8px 0 30px rgba(0,0,0,0.6); display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .drawer.active { right: 0 !important; transform: translateX(0) !important; }
+  .drawer-header { padding: 18px 24px; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(10, 15, 26, 0.8); }
+  .drawer-title { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .drawer-close { background: transparent; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; border-radius: 4px; }
+  .drawer-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
+  .drawer-body { padding: 20px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; font-size: 12px; }
+  
+  .fp-item { background: #090e18; border: 1px solid #1c273c; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .fp-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #162032; padding-bottom: 6px; }
+  .fp-badge { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 7px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: 600; }
+  .fp-code { background: #05080f; border: 1px solid #131c2d; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; color: #cbd5e1; max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+
+  .inspect-trigger { cursor: pointer; border-bottom: 1px dotted rgba(56, 189, 248, 0.4); transition: color 0.2s; }
+  .inspect-trigger:hover { color: #38bdf8 !important; }
 </style>
 </head>
 <body>
@@ -610,15 +636,58 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
   <div class="meta-bar">
     <div class="meta-item">扫描周期: <b>30s</b></div>
-    <div class="meta-item">已存指纹: <b id="fp-count">-</b></div>
+    <div class="meta-item">已存指纹: <b id="fp-count" style="cursor: pointer; text-decoration: underline;" onclick="openFpDrawer()">-</b></div>
     <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
     <div class="meta-item">上次更新: <b id="last-time">-</b></div>
     <button class="refresh-btn" onclick="triggerScan()">立即扫描</button>
   </div>
 </div>
 
+<!-- 全局治理指标 KPI 栏 -->
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="kpi-label">在线治理 Agent 实体</div>
+    <div class="kpi-val"><span id="kpi-agent-count">0</span><span class="kpi-sub" id="kpi-instance-count">0 实例活跃</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">配方接管与挂接率</div>
+    <div class="kpi-val"><span id="kpi-hook-rate" style="color: var(--green);">100%</span><span class="kpi-sub" id="kpi-hook-detail">已完成适配</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">活跃外联与通信暴露面</div>
+    <div class="kpi-val"><span id="kpi-net-count" style="color: var(--accent);">0</span><span class="kpi-sub" id="kpi-net-detail">监听/外联端点</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">零先验指纹资产库</div>
+    <div class="kpi-val"><span id="kpi-fp-total" style="color: var(--indigo); cursor: pointer;" onclick="openFpDrawer()">3</span><span class="kpi-sub" style="cursor: pointer;" onclick="openFpDrawer()">条可演进指纹 ↗</span></div>
+  </div>
+</div>
+
 <div class="grid" id="agents-grid">
   <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 60px;">正在进行初次扫描...</div>
+</div>
+
+<!-- 指纹库滑出抽屉 -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeAllDrawers()"></div>
+<div class="drawer" id="fp-drawer">
+  <div class="drawer-header">
+    <div class="drawer-title">📁 零先验 Agent 指纹与接管配方库 (fingerprints.json)</div>
+    <button class="drawer-close" onclick="closeAllDrawers()">✕</button>
+  </div>
+  <div class="drawer-body" id="fp-drawer-body">
+    <div style="text-align: center; color: var(--text-muted); padding: 40px;">正在加载指纹库...</div>
+  </div>
+</div>
+
+<!-- 深度透视抽屉 (Deep Inspector) -->
+<div class="drawer" id="inspect-drawer">
+  <div class="drawer-header">
+    <div class="drawer-title" id="inspect-title">🔍 Agent 治理深度透视 (Deep Inspector)</div>
+    <button class="drawer-close" onclick="closeAllDrawers()">✕</button>
+  </div>
+  <div class="drawer-body" id="inspect-drawer-body">
+    <div style="text-align: center; color: var(--text-muted); padding: 40px;">正在读取深度全景信息...</div>
+  </div>
 </div>
 
 <div class="footer">
@@ -679,6 +748,127 @@ function formatUptime(sec) {
 
 const reinvestigatingPids = new Set();
 
+let currentAgentsData = [];
+
+function openFpDrawer() {
+  document.getElementById('drawer-overlay').classList.add('active');
+  document.getElementById('fp-drawer').classList.add('active');
+  loadFingerprints();
+}
+
+function closeAllDrawers() {
+  document.getElementById('drawer-overlay').classList.remove('active');
+  document.getElementById('fp-drawer').classList.remove('active');
+  document.getElementById('inspect-drawer').classList.remove('active');
+}
+
+async function loadFingerprints() {
+  const container = document.getElementById('fp-drawer-body');
+  container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">正在加载指纹库...</div>';
+  try {
+    const res = await fetch('/api/fingerprints');
+    const data = await res.json();
+    const fps = data.fingerprints || [];
+    if (fps.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">指纹库暂无条目</div>';
+      return;
+    }
+    container.innerHTML = fps.map(fp => {
+      const recipe = fp.hook_recipe || {};
+      const matchFeat = recipe.match_features || {};
+      return `
+        <div class="fp-item">
+          <div class="fp-header">
+            <div>
+              <span class="fp-badge">${fp.id}</span>
+              <b style="color: #fff; margin-left: 6px;">${fp.name}</b>
+            </div>
+            <span style="color: var(--text-muted); font-size: 11px;">命中: ${fp.match_count || 1} 次 · ${fp.first_seen || ''}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+            <div><b>原生宿主:</b> <span style="color: #38bdf8; font-family: monospace;">${fp.features ? fp.features.exe : ''} (${recipe.host_platform || 'CLI'})</span></div>
+            <div><b>演进来源:</b> <span style="color: #fbbf24; font-family: monospace;">${matchFeat.evolves_prior_harness || '零先验初次推导'}</span></div>
+            <div><b>模型判定:</b> <span style="color: #34d399; font-family: monospace;">${recipe.model_routing ? (recipe.model_routing.model || '未暴露') : '未暴露'}</span></div>
+          </div>
+          <div class="section-label" style="margin-top: 4px; margin-bottom: 2px;">推导配方结构 (Hook Recipe)</div>
+          <div class="fp-code">${escapeHtml(JSON.stringify(recipe, null, 2))}</div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = `<div style="color: #ef4444; padding: 20px;">加载失败: ${e.message}</div>`;
+  }
+}
+
+async function openInspector(pid) {
+  if (!currentAgentsData || currentAgentsData.length === 0) {
+    try {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+      currentAgentsData = data.agents || [];
+    } catch(e) {}
+  }
+  const agent = currentAgentsData.find(a => a.pid === pid) || currentAgentsData[0];
+  if (!agent) return;
+  document.getElementById('inspect-title').innerText = `🔍 ${agent.name} (PID: ${agent.pid}) 全景透视`;
+  const container = document.getElementById('inspect-drawer-body');
+  
+  const adapter = agent.adapter || {};
+  const parsedCfg = adapter.parsed_config || {};
+  const net = adapter.network_surface || {};
+  const memoryCtx = adapter.memory_context || {};
+  
+  container.innerHTML = `
+    <div class="fp-item">
+      <div class="fp-header">
+        <b style="color: #38bdf8;">🏢 完整运行与宿主上下文</b>
+        <span class="pid-tag">PID: ${agent.pid}</span>
+      </div>
+      <div style="font-size: 11px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px;">
+        <div><b>原生可执行文件:</b> <span style="color: #fff; font-family: monospace;">${agent.raw_exe}</span></div>
+        <div><b>进程存活时长:</b> <span style="color: #fff;">${formatUptime(agent.uptime_sec)}</span></div>
+        <div><b>工作区路径 (CWD):</b> <span style="color: #38bdf8; font-family: monospace;">${adapter.workspace_cwd || '未知'}</span></div>
+        <div><b>宿主治理层级:</b> <span style="color: #cbd5e1;">${adapter.host_platform || 'CLI'}</span></div>
+      </div>
+    </div>
+
+    <div class="fp-item">
+      <div class="fp-header">
+        <b style="color: #34d399;">🧠 模型调用与通信路由</b>
+        <span class="fp-badge">${adapter.harness_id || 'unregistered'}</span>
+      </div>
+      <div class="fp-code">${escapeHtml(JSON.stringify(adapter.model_routing || {}, null, 2))}</div>
+    </div>
+
+    <div class="fp-item">
+      <div class="fp-header">
+        <b style="color: #818cf8;">⚙️ 提取与脱敏配置文件 (Parsed Config)</b>
+        <span style="font-size: 10px; color: var(--green);">已安全脱敏</span>
+      </div>
+      <div class="fp-code">${escapeHtml(JSON.stringify(parsedCfg, null, 2))}</div>
+    </div>
+
+    <div class="fp-item">
+      <div class="fp-header">
+        <b style="color: #f59e0b;">🌐 网络与通信表面 (Network Surface)</b>
+      </div>
+      <div class="fp-code">${escapeHtml(JSON.stringify(net, null, 2))}</div>
+    </div>
+
+    <div class="fp-item">
+      <div class="fp-header">
+        <b style="color: #cbd5e1;">📋 挂载规则与提示词 (System Prompt Rules)</b>
+      </div>
+      <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+        ${Array.isArray(adapter.system_prompt_rules) && adapter.system_prompt_rules.length ? adapter.system_prompt_rules.map(r => `<div>• ${escapeHtml(r)}</div>`).join('') : '<span style="color: var(--text-muted);">未挂载本地规则文件</span>'}
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('drawer-overlay').classList.add('active');
+  document.getElementById('inspect-drawer').classList.add('active');
+}
+
 async function updateUI() {
   try {
     const res = await fetch('/api/state');
@@ -686,6 +876,34 @@ async function updateUI() {
     document.getElementById('last-time').innerText = data.last_scan_time || '初始化中';
     document.getElementById('scan-count').innerText = data.scan_count;
     document.getElementById('fp-count').innerText = data.fingerprints_count;
+    document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
+    
+    currentAgentsData = data.agents || [];
+    
+    // 更新全局 KPI 指标
+    const totalAgents = currentAgentsData.length;
+    let totalInstances = 0;
+    let matchedCount = 0;
+    let totalPorts = 0;
+    currentAgentsData.forEach(a => {
+      totalInstances += (a.instances ? a.instances.length : 1);
+      if (a.adapter && a.adapter.matched) matchedCount++;
+      if (a.adapter && a.adapter.network_surface) {
+        const lp = a.adapter.network_surface.listening_ports || [];
+        const rp = a.adapter.network_surface.remote_peers || [];
+        totalPorts += (lp.length + rp.length);
+      }
+    });
+    
+    document.getElementById('kpi-agent-count').innerText = totalAgents;
+    document.getElementById('kpi-instance-count').innerText = `${totalInstances} 实例活跃`;
+    const rate = totalAgents > 0 ? Math.round((matchedCount / totalAgents) * 100) : 100;
+    document.getElementById('kpi-hook-rate').innerText = `${rate}%`;
+    document.getElementById('kpi-hook-detail').innerText = `${matchedCount}/${totalAgents} 完成适配`;
+    const netColor = totalPorts > 0 ? 'var(--amber)' : 'var(--green)';
+    document.getElementById('kpi-net-count').style.color = netColor;
+    document.getElementById('kpi-net-count').innerText = totalPorts;
+    document.getElementById('kpi-net-detail').innerText = totalPorts > 0 ? `${totalPorts} 端点受纳管` : '全链路收敛安全';
     
     const grid = document.getElementById('agents-grid');
     if (!data.agents || data.agents.length === 0) {
@@ -754,7 +972,7 @@ async function updateUI() {
         <div class="card">
           <div class="card-top">
             <div>
-              <div class="agent-name">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount}</div>
+              <div class="agent-name inspect-trigger" onclick="openInspector(${a.pid})" title="点击查看深度全景档案">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount}</div>
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
             </div>
             <div style="text-align: right;">
@@ -771,7 +989,10 @@ async function updateUI() {
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
               <div class="section-label" style="margin-bottom: 0;">Agent 深度治理全景档案 (Goose 自主逆向推导)</div>
-              <button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="btn-reinvestigate" ${btnDisabled}>${btnText}</button>
+              <div style="display: flex; gap: 6px;">
+                <button onclick="openInspector(${a.pid})" class="btn-reinvestigate" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">🔍 深度透视</button>
+                <button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="btn-reinvestigate" ${btnDisabled}>${btnText}</button>
+              </div>
             </div>
             <div class="adapter-box">
               <div class="adapter-group-title">🏢 身份与运行环境</div>
@@ -799,7 +1020,7 @@ async function updateUI() {
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">配置解析提取:</span>
-                <span class="adapter-val" style="color: #cbd5e1;">${a.adapter.parsed_config && Object.keys(a.adapter.parsed_config).length ? Object.entries(a.adapter.parsed_config).map(([k,v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' | ') : '由 Goose 自动读取解析中...'}</span>
+                <span class="adapter-val inspect-trigger" onclick="openInspector(${a.pid})" style="color: #cbd5e1;" title="点击展开完整配置">${a.adapter.parsed_config && Object.keys(a.adapter.parsed_config).length ? Object.entries(a.adapter.parsed_config).map(([k,v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' | ') : '由 Goose 自动读取解析中...'}</span>
               </div>
 
               <div class="adapter-group-title">🌐 执行与通信画像</div>
@@ -842,8 +1063,19 @@ async function triggerReinvestigate(pid) {
   await updateUI();
 }
 
+function handleHashRouting() {
+  const hash = window.location.hash;
+  if (hash === '#fp') {
+    openFpDrawer();
+  } else if (hash.startsWith('#inspect:')) {
+    const targetPid = parseInt(hash.split(':')[1]);
+    if (targetPid) openInspector(targetPid);
+  }
+}
+
+window.addEventListener('hashchange', handleHashRouting);
 setInterval(updateUI, 5000);
-updateUI();
+updateUI().then(handleHashRouting);
 </script>
 </body>
 </html>
@@ -864,6 +1096,19 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(data.encode("utf-8"))
+        elif self.path == "/api/fingerprints":
+            fp_path = ROOT / "runtime" / "fingerprints.json"
+            fps = []
+            if fp_path.exists():
+                try:
+                    fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
+                    fps = fp_data.get("fingerprints", [])
+                except Exception:
+                    pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"fingerprints": fps}, ensure_ascii=False).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
