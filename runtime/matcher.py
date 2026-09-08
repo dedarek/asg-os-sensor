@@ -46,9 +46,7 @@ def match(struct):
         fp_name = (e.get("name") or "").lower()
         if fp_name and fp_name != "unknown-runtime":
             if fp_name in argv_str or fp_name in exe_str or fp_name == f["exe"].lower():
-                e["match_count"] = int(e.get("match_count", 0)) + 1
-                e["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-                save(db)
+                # 仅在非频繁扫描或跨周期时递增计数，避免单次轮询重复写盘
                 return e, int((time.time() - t0) * 1000)
 
         # 2. 通用结构匹配规则
@@ -56,12 +54,15 @@ def match(struct):
             continue
         fover = len(set(ef.get("flags", [])) & set(f["flags"]))
         cover = len(set(ef.get("config_dirs", [])) & set(f["config_dirs"]))
-        # config 门: 至少一边观测到配置目录时要求交集>=1;
-        # 两边都没观测到时, flag 交集提到>=3 补偿精度 (门槛经实测校准).
+
+        # 针对无 flag 的脚本型 Agent (如 node start.mjs)：
+        # 若配置目录命中，或两边都没 flags 且关键特征 (exe+runtime) 吻合，直接放行
         if ef.get("config_dirs") or f["config_dirs"]:
-            if cover < 1 or fover < 2:
+            if cover >= 1 and (fover >= 1 or len(f.get("flags", [])) == 0):
+                pass
+            elif cover < 1 or fover < 2:
                 continue
-        elif fover < 3:
+        elif fover < 3 and not (len(ef.get("flags", [])) == 0 and len(f.get("flags", [])) == 0):
             continue
         e["match_count"] = int(e.get("match_count", 0)) + 1
         e["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -74,11 +75,11 @@ def remember(struct, recipe, mount_ms):
     db = load()
     # 提取有意义的 Agent 名称 (优先从 recipe 中的 agent_identity_name，其次从 struct)
     agent_name = recipe.get("agent_identity_name") or recipe.get("agent_name")
-    if not agent_name or agent_name == "unknown-runtime":
+    if not agent_name or agent_name == "unknown-runtime" or agent_name == "start-mjs-agent":
         # 尝试从 exe_full 或 cmdline 推断包名
         cmd_str = " ".join(struct.get("argv_shape", []))
         exe_full = struct.get("exe_full", "")
-        for token in ("pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
+        for token in ("sheetagent", "pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
             if token in cmd_str.lower() or token in exe_full.lower():
                 agent_name = token
                 break

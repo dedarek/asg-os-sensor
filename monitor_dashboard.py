@@ -230,7 +230,8 @@ def scan_agents_once():
                 struct = {}
                 try:
                     struct = analyzer.analyze(pid)
-                except Exception:
+                except Exception as e:
+                    print(f"[Analyze Error PID={pid}] {e}", file=sys.stderr)
                     struct = {
                         "pid": pid,
                         "exe": name,
@@ -240,6 +241,7 @@ def scan_agents_once():
                     }
                 
                 matched_fp, match_ms = matcher.match(struct)
+                print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
                 
                 # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
                 display_name = name
@@ -251,7 +253,7 @@ def scan_agents_once():
                 else:
                     # 尚未命中指纹库：根据 cmdline 或包名尝试推断有意义的名字
                     cmd_str = " ".join(cmdline).lower()
-                    for token in ("pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
+                    for token in ("sheetagent", "pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
                         if token in cmd_str:
                             display_name = f"{token} (未挂接)"
                             break
