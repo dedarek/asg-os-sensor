@@ -47,6 +47,7 @@ SCAN_STATE = {
 # 记录当前已挂起正在调查的 PID，避免重复拉起多个 Goose
 INVESTIGATING_PIDS = set()
 INVESTIGATION_LOCK = threading.Lock()
+INVESTIGATION_SEMAPHORE = threading.Semaphore(2)  # 最多同时允许 2 个 Goose 并发，防止跑满 API 与进程雪崩
 
 
 def now() -> float:
@@ -85,7 +86,8 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
             return
         INVESTIGATING_PIDS.add(pid)
 
-    run_dir = ROOT / "e2e" / "artifacts" / "autonomous-governance" / f"pid_{pid}_{int(time.time())}"
+    with INVESTIGATION_SEMAPHORE:
+        run_dir = ROOT / "e2e" / "artifacts" / "autonomous-governance" / f"pid_{pid}_{int(time.time())}"
     run_dir.mkdir(parents=True, exist_ok=True)
     recipes_dir = run_dir / "recipes"
     recipes_dir.mkdir(parents=True, exist_ok=True)
@@ -122,7 +124,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
             "--params", f"target_pid={pid}",
             "--provider", route["provider"],
             "--model", route["model"],
-            "--max-turns", "12",
+            "--max-turns", "6",
             "--max-tool-repetitions", "2",
             "--output-format", "stream-json",
             "--with-extension", extension
@@ -329,6 +331,38 @@ def scan_agents_once():
         except Exception:
             continue
 
+    # 同类型 Agent 聚合 (Group by Agent Identity / Harness):
+    # 将属于同一 Harness 或同名 Agent 的多个运行实例合并为一个治理卡片，避免同类型进程分散刷屏
+    grouped_agents = {}
+    for a in found_agents:
+        # 聚类 Key：优先以命中的 harness_id 聚合；若未命中则以推导身份或执行入口聚合
+        hid = a.get("adapter", {}).get("harness_id")
+        if hid and hid != "unregistered":
+            group_key = f"harness:{hid}"
+        else:
+            group_key = f"raw:{a.get('name')}"
+
+        if group_key not in grouped_agents:
+            # 建立主卡片，记录实例集合
+            a_copy = dict(a)
+            a_copy["instances"] = [a["pid"]]
+            a_copy["all_pids"] = [a["pid"]]
+            grouped_agents[group_key] = a_copy
+        else:
+            # 聚合到已有同类卡片中
+            main_card = grouped_agents[group_key]
+            main_card["instances"].append(a["pid"])
+            main_card["all_pids"].append(a["pid"])
+            # 保留更高的画像分与最新的消息
+            if a["score"] > main_card["score"]:
+                main_card["score"] = a["score"]
+                main_card["reasons"] = a["reasons"]
+            if a.get("adapter", {}).get("matched") and not main_card.get("adapter", {}).get("matched"):
+                main_card["adapter"] = a["adapter"]
+                main_card["name"] = a["name"]
+
+    final_agents = list(grouped_agents.values())
+
     # 更新指纹库统计
     fp_count = 0
     fp_path = ROOT / "runtime" / "fingerprints.json"
@@ -342,7 +376,7 @@ def scan_agents_once():
     with STATE_LOCK:
         SCAN_STATE["last_scan_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
         SCAN_STATE["scan_count"] += 1
-        SCAN_STATE["agents"] = found_agents
+        SCAN_STATE["agents"] = final_agents
         SCAN_STATE["fingerprints_count"] = fp_count
 
 
@@ -468,11 +502,14 @@ async function updateUI() {
         msgDetail = JSON.stringify(msgDetail, null, 2);
       }
 
+      const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
+      const pidsList = (a.instances && a.instances.length > 1) ? `PIDs: ${a.instances.join(', ')}` : `PID: ${a.pid}`;
+
       html += `
         <div class="card">
           <div class="card-top">
             <div>
-              <div class="agent-name">${a.name} <span class="pid-tag">PID: ${a.pid}</span></div>
+              <div class="agent-name">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount}</div>
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时间: ${a.uptime_sec}s</div>
             </div>
             <div class="score-badge score-high">画像分: ${a.score}</div>

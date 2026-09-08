@@ -4,13 +4,14 @@
    "id": "harness-01",
    "name": "codex",
    "first_seen": "2026-09-08T14:27:43",
-   "match_count": 110,
+   "match_count": 528,
    "mount_ms": 35000,
    "features": {
     "exe": "node.exe",
     "runtime": "node",
     "flags": [],
-    "config_dirs": []
+    "config_dirs": [],
+    "entry_token": "codex.js"
    },
    "children_classes": [],
    "hook_recipe": {
@@ -59,13 +60,13 @@
     "fallback": "If the stream remains empty and no configuration surface is observable, rely on the codex.js script token, the node.exe worker child lineage, the terminal parent lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active codex CLI agent. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>', 'codex.js'] argv shape and node.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'codex' derived from the codex.js script token and the node worker subprocess model."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe",
-   "last_seen": "2026-09-08T14:45:43"
+   "last_seen": "2026-09-08T16:05:56"
   },
   {
    "id": "harness-02",
    "name": "hermes-agent",
    "first_seen": "2026-09-08T14:42:48",
-   "match_count": 1,
+   "match_count": 5,
    "mount_ms": 35000,
    "features": {
     "exe": "python.exe",
@@ -73,7 +74,8 @@
     "flags": [
      "-m"
     ],
-    "config_dirs": []
+    "config_dirs": [],
+    "entry_token": "hermes_cli.main"
    },
    "children_classes": [
     "agentgateway.exe",
@@ -126,13 +128,14 @@
     "confidence": 0.78,
     "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'hermes-agent/python.exe' executable token, the 'hermes_cli.main' module token, the '-m' flag, the empty parent lineage (standalone agent), the rich descendant tree (graph server, gateway, ACP workers, dashboards), and the --help/--version probe shapes (43-line stream-capable help, 1-line version) to characterize the runtime as an active standalone Python agent CLI. If the stream later emits output, parse text/JSON lines consistent with the stream-oriented CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['hermes-agent/python.exe', '-m', 'hermes_cli.main', ...] argv shape. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'hermes-agent' derived from the hermes-agent/python.exe executable token and the hermes_cli.main module token."
    },
-   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe",
+   "last_seen": "2026-09-08T16:05:56"
   },
   {
    "id": "harness-03",
    "name": "WorkBuddy / sheetagent",
    "first_seen": "2026-09-08T14:42:49",
-   "match_count": 7,
+   "match_count": 184,
    "mount_ms": 35000,
    "features": {
     "exe": "node.exe",
@@ -140,7 +143,8 @@
     "flags": [],
     "config_dirs": [
      ".sheetagent"
-    ]
+    ],
+    "entry_token": "start.mjs"
    },
    "children_classes": [
     "conhost.exe"
@@ -203,7 +207,7 @@
     "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'sheetagent/start.mjs' script token, the WorkBuddy.exe parent lineage, the node.exe child lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active WorkBuddy-hosted sheetagent Node.js CLI worker. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle worker and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>','sheetagent/start.mjs'] argv shape and WorkBuddy.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'WorkBuddy / sheetagent' derived from the sheetagent/start.mjs script token and the WorkBuddy.exe host lineage."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
-   "last_seen": "2026-09-08T14:45:40"
+   "last_seen": "2026-09-08T16:05:56"
   }
  ],
  "version": 1
