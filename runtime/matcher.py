@@ -103,9 +103,8 @@ def remember(struct, recipe, mount_ms):
         is_targeted = evolves_target and existing.get("id") == evolves_target
         ef = existing.get("features", {})
         is_same_harness = (
-            ef.get("exe") == f["exe"]
-            and ef.get("runtime") == f["runtime"]
-            and ef.get("config_dirs") == f["config_dirs"]
+            (ef.get("exe") == f["exe"] and ef.get("runtime") == f["runtime"] and ef.get("config_dirs") == f["config_dirs"])
+            or (f.get("entry_token") and ef.get("entry_token") == f.get("entry_token"))
         )
 
         if is_targeted or is_same_harness:

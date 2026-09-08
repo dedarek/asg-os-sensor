@@ -4,8 +4,8 @@
    "id": "harness-01",
    "name": "codex",
    "first_seen": "2026-09-08T14:27:43",
-   "match_count": 528,
-   "mount_ms": 35000,
+   "match_count": 739,
+   "mount_ms": 61349,
    "features": {
     "exe": "node.exe",
     "runtime": "node",
@@ -36,10 +36,17 @@
      "child_parent_lineage_contains": [
       "node.exe"
      ],
+     "child_execution_tree": [
+      "codex.exe"
+     ],
      "script_token": "[REDACTED]",
      "config_candidates_in_argv": [],
+     "config_surface": "empty",
      "open_path_shapes": [],
-     "network_shape": [],
+     "network_shape": {
+      "listeners": [],
+      "outbound_connections": []
+     },
      "stream_available": true,
      "stream_empty": true,
      "help_surface": {
@@ -50,24 +57,48 @@
      },
      "version_surface": {
       "line_count": 1
-     }
+     },
+     "evolves_prior_harness": "harness-01"
     },
     "agent_identity_name": "codex",
-    "observation": "Passive read-only observation only. PID 32680 is an active agent-like runtime: status running (create_time 1788846845.136483) with a live 1-descendant worker tree (PID 4376 spawned ~0.8s later), executing the codex.js CLI entry script (argv shape ['<value>', 'codex.js']) and launched from a terminal shell (parent lineage powershell.exe -> WindowsTerminal.exe) rather than a desktop IDE harness, so it is a standalone agent. Runtime class is Node.js: the target hosts a node.exe-lineage worker child (child parent_lineage contains node.exe), and the read-only probe of the observed executable returned a 437-line --help surface (has_json=true, has_stream=false, has_tool=false) and a 1-line --version, both returncode 0, consistent with a Node-hosted CLI agent with machine-readable output support. The child (PID 4376) is the native codex worker binary (prior-memory fingerprint harness-02: package path @openai/codex, tool-capable 132-line help, ESTABLISHED outbound TCP) - the agent's backend/worker subprocess. The primary semantic output surface is the supervisor-exposed stream (available but currently empty: 0 lines, 0 JSON); monitor it for emergent text/JSON lines. Configuration location: no config candidates in argv and no open path shapes (open_path_shapes empty); cwd_class is unavailable, so configuration is not reachable through the observed surface without secrets exposure and was not read. Protocol: terminal CLI with a JSON-capable help surface and a native worker subprocess holding an outbound connection; the supervisor-exposed stream is the passive observable channel. The target is an active codex agent runtime, currently idle on its output stream.",
-    "hook": "Least invasive: no injection, no command execution, no file modification, no signal delivery, no memory attachment, no network interception, no reading of any config content. Use a passive stream tap on the supervisor-exposed stream that parses text/JSON lines as they appear, plus periodic read-only re-observation of the runtime surface and tree to detect newly appearing open paths, config candidates, children, or network transitions. The read-only --help/--version probes are the only executable interaction and must not be used to trigger side effects. No network sockets are open on the target surface; the child's ESTABLISHED outbound connection must not be probed or connected to. If an active hook is later required, the JSON-capable help surface and the native worker child indicate a possible protocol adaptation point, but the Analyst does not activate any hook; the Supervisor verifies and activates.",
-    "redaction": "Redact all credential-like material (API keys, tokens, cookies, private keys, auth headers, session material) from any stream/help samples and from any config content. Do not read or expose any config values or the child's connection addresses/ports. Redact the raw argv <value> tokens and raw executable paths. Preserve non-sensitive structural tokens and shapes: the 'codex.js' script token, the node.exe lineage shape, the powershell.exe/WindowsTerminal.exe parent lineage, line counts (437 help, 1 version), the JSON/stream/tool capability booleans, path classes, and the empty open_path/network/config-candidate shapes.",
-    "confidence": 0.8,
-    "fallback": "If the stream remains empty and no configuration surface is observable, rely on the codex.js script token, the node.exe worker child lineage, the terminal parent lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active codex CLI agent. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>', 'codex.js'] argv shape and node.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'codex' derived from the codex.js script token and the node worker subprocess model."
+    "host_platform": "Standalone CLI",
+    "workspace_cwd": "unavailable",
+    "model_routing": {
+     "model": "not observable (no config surface, no argv/config candidates, no endpoints exposed)",
+     "provider": "not observable",
+     "base_url": "not observable"
+    },
+    "registered_tools_and_mcp": [
+     "target help surface: JSON-capable output (has_json=true), no --tool flag, no stream flag",
+     "native worker child codex.exe (spawned by node.exe launcher running codex.js)",
+     "no MCP servers or tool config discoverable (config surface empty, no open config paths, no config candidates)"
+    ],
+    "system_prompt_rules": [],
+    "network_surface": {
+     "listeners": [],
+     "outbound_connections": [],
+     "note": "No sockets present at observation time; prior memory documented a transient ESTABLISHED outbound TCP on the child worker in earlier cycles, so re-check network peers on later cycles rather than assuming permanence."
+    },
+    "observation": "Passive read-only observation only. PID 32680 is an active agent-like runtime: status running (create_time 1788846845.136483) with a live 1-descendant worker tree (PID 4376, spawned ~0.8s later, no grandchildren), executing the codex.js CLI entry script (argv shape ['<value>', 'codex.js']) and launched from a terminal shell (parent lineage powershell.exe -> WindowsTerminal.exe) rather than a desktop IDE harness, so it is a standalone agent. This exactly matches prior-memory fingerprint harness-01 'codex' (match_count 727): identical argv shape, parent lineage, 437-line JSON-capable --help (has_json=true, has_stream=false, has_tool=false) and 1-line --version, both returncode 0, empty open_path/config-candidate/network shapes, stream available but empty. New evidence this cycle: inspect_execution_trace shows the child (PID 4376) is the native codex.exe worker (cmdline path class node_modules\\@openai\\codex\\...\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe) spawned by the node.exe lineage, and inspect_network_peers shows NO current listeners or outbound connections (the child's formerly documented ESTABLISHED outbound TCP is absent this cycle - idle state). Configuration location: not reachable - cwd_class unavailable, config_candidates_in_argv empty, inspect_config_surface returned no configs, open_path_shapes empty; no config values were read. Protocol: terminal CLI with a JSON-capable help surface and a native worker subprocess; the supervisor-exposed stream is the passive observable channel. The target is an active codex agent runtime, currently idle on its output stream and network-quiescent.",
+    "hook": "Least invasive: no injection, no command execution, no file modification, no signal delivery, no memory attachment, no network interception, no reading of any config content. Use a passive stream tap on the supervisor-exposed stream that parses text/JSON lines as they appear (has_json=true indicates JSON-capable output), plus periodic read-only re-observation of the runtime surface and tree to detect newly appearing open paths, config candidates, children, or network transitions. The read-only --help/--version probes are the only executable interaction and must not be used to trigger side effects. No sockets are currently open on the target or its child; if the child's outbound ESTABLISHED connection reappears on a later cycle, do NOT probe or connect to it. If an active hook is later required, the JSON-capable help surface and the native codex.exe worker child indicate a possible protocol adaptation point, but the Analyst does not activate any hook; the Supervisor verifies and activates.",
+    "redaction": [
+     "Redact all credential-like material (API keys, tokens, cookies, private keys, auth headers, session material) from any stream/help samples and from any config content.",
+     "Do not read or expose any config values or the child's connection addresses/ports.",
+     "Redact raw argv <value> tokens and raw executable paths (including the C:\\Users\\yyyyc\\... observed exe path).",
+     "Preserve non-sensitive structural tokens and shapes: the 'codex.js' script token, the node.exe lineage shape, the powershell.exe/WindowsTerminal.exe parent lineage, the codex.exe worker name and its node_modules\\@openai\\codex path class, line counts (437 help, 1 version), the JSON/stream/tool capability booleans, path classes, and the empty open_path/config-candidate/network shapes."
+    ],
+    "confidence": 0.88,
+    "fallback": "If the stream remains empty and no configuration surface is observable, rely on the codex.js script token, the node.exe-launched codex.exe worker child, the terminal parent lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active codex CLI agent, citing prior-memory harness-01. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>', 'codex.js'] argv shape and node.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'codex' derived from the codex.js script token, the codex.exe worker child, and the harness-01 fingerprint match."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe",
-   "last_seen": "2026-09-08T16:05:56"
+   "last_seen": "2026-09-08T17:49:02"
   },
   {
    "id": "harness-02",
    "name": "hermes-agent",
    "first_seen": "2026-09-08T14:42:48",
-   "match_count": 5,
-   "mount_ms": 35000,
+   "match_count": 216,
+   "mount_ms": 79662,
    "features": {
     "exe": "python.exe",
     "runtime": "python",
@@ -93,22 +124,41 @@
       "-m",
       "hermes_cli.main",
       "<value>",
+      "--host",
+      "<value>",
+      "--port",
       "<value>"
      ],
-     "parent_lineage": [],
-     "runtime_class": "unknown-runtime",
+     "child_cmdline_shape": [
+      "python.exe -m hermes_cli.main serve --host 127.0.0.1 --port 0"
+     ],
+     "parent_lineage": [
+      "Hermes.exe"
+     ],
+     "runtime_class": "python",
      "cwd_class": "local-workspace",
      "child_count": 2,
-     "descendant_count": 36,
-     "config_candidates_in_argv": [],
-     "open_path_shapes": [
-      {
-       "extension": ".log",
-       "depth": 8,
-       "is_config_like": false
-      }
+     "child_names": [
+      "conhost.exe",
+      "python.exe"
      ],
-     "network_shape": [],
+     "child_execution_tree": [
+      "conhost.exe (console host 0x4)",
+      "python.exe -m hermes_cli.main serve --host 127.0.0.1 --port 0 (uv cpython-3.11)",
+      "cmd.exe /c npx.CMD -y @modelcontextprotocol/server-github --env GITHUB_PERSONAL_ACCESS_TO...",
+      "conhost.exe (console host 0x4)",
+      "node.exe npx-cli.js -y @modelcontextprotocol/server-github",
+      "cmd.exe /d /s /c mcp-server-github --env GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED]",
+      "node.exe @modelcontextprotocol/server-github/dist/index.js --env GITHUB..."
+     ],
+     "config_candidates_in_argv": [],
+     "config_surface": "empty (inspect_config_surface returned 0 configs)",
+     "open_path_shapes": [],
+     "sensitive_files_accessed": [],
+     "network_shape": {
+      "listeners": [],
+      "outbound_connections": []
+     },
      "stream_available": true,
      "stream_empty": true,
      "help_surface": {
@@ -119,24 +169,52 @@
      },
      "version_surface": {
       "line_count": 1
-     }
+     },
+     "mcp_servers": [
+      "@modelcontextprotocol/server-github (spawned via npx -y, env GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED]"
+     ],
+     "evolves_prior_harness": "harness-02"
     },
     "agent_identity_name": "hermes-agent",
-    "observation": "Passive read-only observation only. PID 49632 is an active agent-like runtime: status running, Python-hosted (hermes-agent/python.exe executing the hermes_cli.main module via -m), with an empty parent_lineage (no desktop IDE/harness executable in the lineage), so it is a standalone agent CLI rather than a worker under a host platform. It is a rich orchestrating host: 2 direct children and 36 descendants including a re-invocation of hermes_cli.main (PID 68804), an npx-cli.js node launcher, a tools/asg_graph.json graph server (--port 8091 --no-browser), an agentgateway.exe gateway, headless browser automation workers (--headless --width --height --signal --server), mini_bridge.py and monitor_dashboard.py helpers, and an ACP-over-stdio worker chain (npm-loader.js --acp --stdio -> node worker --acp --stdio). The semantic output surface is the supervisor-exposed stream (available but currently empty: 0 lines, 0 JSON); monitor it for emergent text/JSON lines. The --help probe returned 43 lines with has_stream=true (stream-oriented output) and no JSON/tool flags, and --version returned 1 line, both exit 0, indicating a Python CLI agent with a stream-based output surface. No configuration surface is observable: config_candidates_in_argv is empty, open_path_shapes contains only a non-config .log file at depth 8, network_shape is empty, and cwd_class is local-workspace, so no config file location, settings flags, or open config paths are exposed through the observed surface; configuration is not reachable without reading secrets and was not read. Protocol: the target is a standalone Python agent CLI (hermes_cli.main) with a stream-oriented help surface; its descendants include ACP-over-stdio workers, but the target itself is the host agent. The supervisor-exposed stream is the passive observable channel. The target is an active agent runtime, currently idle on its output stream.",
-    "hook": "Least invasive: no injection, no command execution, no file modification, no signal delivery, no memory attachment, no network interception, no reading of any config content. Use a passive stream tap on the supervisor-exposed stream that parses text/JSON lines as they appear, plus periodic read-only re-observation of the runtime surface and tree to detect newly appearing open paths, config candidates, children, or network transitions. The read-only --help/--version probes are the only executable interaction and must not be used to trigger side effects. No network sockets exist in the observed surface, so there is no socket to avoid probing. If an active hook is later required, the stream-oriented help surface (has_stream=true) and the ACP-over-stdio worker descendants indicate possible protocol adaptation points, but the Analyst does not activate any hook; the Supervisor verifies and activates.",
-    "redaction": "Redact all credential-like material (API keys, tokens, cookies, private keys, auth headers, session material) from any stream/help samples and from any config content. Do not read or expose any config values. Redact the raw argv <value> tokens and raw executable paths. Preserve non-sensitive structural tokens and shapes: the 'hermes-agent/python.exe' and 'hermes_cli.main' module tokens, the '-m' flag, the descendant script tokens (npx-cli.js, tools/asg_graph.json, agentgateway.exe, mini_bridge.py, monitor_dashboard.py, npm-loader.js), the '--acp'/'--stdio' protocol flags, line counts (43 help, 1 version), the JSON/stream/tool capability booleans, path classes, the .log open-path shape, and the empty config-candidate/network shapes.",
-    "confidence": 0.78,
-    "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'hermes-agent/python.exe' executable token, the 'hermes_cli.main' module token, the '-m' flag, the empty parent lineage (standalone agent), the rich descendant tree (graph server, gateway, ACP workers, dashboards), and the --help/--version probe shapes (43-line stream-capable help, 1-line version) to characterize the runtime as an active standalone Python agent CLI. If the stream later emits output, parse text/JSON lines consistent with the stream-oriented CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['hermes-agent/python.exe', '-m', 'hermes_cli.main', ...] argv shape. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'hermes-agent' derived from the hermes-agent/python.exe executable token and the hermes_cli.main module token."
+    "host_platform": "Hermes.exe host harness (parent lineage ['Hermes.exe'])",
+    "workspace_cwd": "C:\\Users\\yyyyc\\AppData\\Local\\Temp (local-workspace; child serve worker cwd C:\\Users\\yyyyc)",
+    "model_routing": {
+     "model": "not observable",
+     "provider": "not observable",
+     "base_url": "not observable",
+     "note": "No config surface (inspect_config_surface returned 0 configs), no config candidates in argv, no outbound model-endpoint connections observed, and no model/provider tokens on the observed surface; routing not read to avoid secret exposure. Only tool-side child is the GitHub MCP server, which is a REST tool server, not an LLM endpoint."
+    },
+    "registered_tools_and_mcp": [
+     "MCP server @modelcontextprotocol/server-github: launched by cmd.exe -> node npx-cli.js -y @modelcontextprotocol/server-github -> mcp-server-github -> node dist/index.js --env GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED]",
+     "hermes_cli.main 'serve' subprocess (PID 2776, uv cpython-3.11, re-invocation binding 127.0.0.1 ephemeral port) - agent server worker",
+     "help probe: has_tool=false, has_stream=true -> no CLI tool-registry flag; tool surface is delivered via the spawned MCP server child"
+    ],
+    "system_prompt_rules": [],
+    "network_surface": {
+     "listeners": [],
+     "outbound_connections": [],
+     "note": "inspect_network_peers returned no local listening ports and no remote endpoints at observation time. Child cmdline shows 'serve --host 127.0.0.1 --port 0' (ephemeral loopback bind intended but not present in peer snapshot). The server-github MCP child will make outbound REST calls to GitHub when active; do NOT probe any host/port."
+    },
+    "observation": "Passive read-only observation only. PID 65328 is an active agent-like runtime matching committed prior-memory family harness-02 'hermes-agent' (Python hermes_cli.main module agent): status running, exe class hermes-agent/python.exe executing 'python.exe -m hermes_cli.main <cmd> --host <value> --port <value>', launched by the Hermes.exe host harness (parent lineage ['Hermes.exe']), cwd C:\\Users\\yyyyc\\AppData\\Local\\Temp (local-workspace). New evidence this cycle refines the prior fingerprint: (1) the parent lineage is ['Hermes.exe'] (prior harness-02 observation had an empty lineage), so the target is the hermes agent hosted by its Hermes.exe launcher, running in server ('serve') mode; (2) inspect_execution_trace shows the direct child PID 2776 is a re-invocation 'python.exe -m hermes_cli.main serve --host 127.0.0.1 --port 0' (uv cpython-3.11, ephemeral loopback port), with a deeper chain spawning the MCP tool server '@modelcontextprotocol/server-github' via cmd.exe -> node npx-cli.js -y -> mcp-server-github -> node dist/index.js, passing the credential env var GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED]; (3) a conhost.exe console host (0x4) is attached to the target. The --help probe returned 43 lines (has_stream=true, stream-oriented output; has_json=false, has_tool=false) and --version 1 line, both exit 0 - identical to the harness-02 recorded help surface. No configuration surface is observable: config_candidates_in_argv empty, inspect_config_surface returned 0 configs, open_path_shapes empty, sensitive_files_accessed empty; no config values were read. Network-quiescent: inspect_network_peers returned no listeners and no outbound connections despite the intended 127.0.0.1 ephemeral serve bind (not yet present/visible). The supervisor-exposed stream is available but empty (0 lines, 0 JSON). Protocol: Python agent CLI (hermes_cli.main, stream-oriented help surface) that serves a local loopback endpoint and spawns a GitHub MCP tool server child; the supervisor-exposed stream is the passive observable channel. The target is an active Hermes-hosted hermes-agent runtime, currently idle on its output stream and network-quiescent.",
+    "hook": "Least invasive: no injection, no command execution, no file modification, no signal delivery, no memory attachment, no network interception, no reading of any config content, no connection to the 127.0.0.1 serve port. Use a passive stream tap on the supervisor-exposed stream that parses text/JSON lines as they appear (has_stream=true indicates stream-oriented output), plus periodic read-only re-observation of the runtime surface/tree and network peers to detect newly appearing open paths, config candidates, children, MCP servers, or outbound connections (e.g. the GitHub MCP server becoming active). The read-only --help/--version probes are the only executable interaction and must not be used to trigger side effects. If the ephemeral 127.0.0.1 serve listener appears in a later network snapshot, do NOT connect or probe it. If an active hook is later required, the stream-oriented help surface (has_stream=true), the local 'serve' endpoint, and the npx-spawned MCP child chain are possible protocol adaptation points, but the Analyst does not activate any hook; the Supervisor verifies and activates.",
+    "redaction": [
+     "Redact all credential-like material (API keys, tokens, cookies, private keys, auth headers, session material) - notably GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED] from child cmdlines - from any stream/help samples and any config content.",
+     "Do not read or expose any config values, the ephemeral serve port number, or any future outbound endpoint addresses/ports.",
+     "Redact raw argv <value> tokens and raw executable paths (including the AppData\\Roaming\\uv\\... python.exe path, AppData\\Local\\hermes node/npx paths, and npm-cache _npx hash paths).",
+     "Preserve non-sensitive structural tokens and shapes: 'hermes_cli.main', 'serve', '--host 127.0.0.1', '--port 0', 'Hermes.exe' lineage, 'conhost.exe 0x4', the npx-cli.js/@modelcontextprotocol/server-github/dist/index.js path classes, '--env GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED], line counts (43 help, 1 version), the JSON/stream/tool capability booleans, path classes, and the empty config/network/open-path/stream shapes."
+    ],
+    "confidence": 0.82,
+    "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'hermes-agent/python.exe' + 'hermes_cli.main' module tokens, the '-m' flag, the Hermes.exe parent lineage, the 'serve --host 127.0.0.1 --port 0' child cmdline, the npx-spawned @modelcontextprotocol/server-github MCP child chain, and the --help/--version probe shapes (43-line stream-capable help, 1-line version) to characterize the runtime as an active Hermes-hosted hermes-agent Python CLI server, citing prior-memory harness-02. If the stream later emits output, parse text/JSON lines consistent with the stream-oriented CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime/network surface on a later cycle (watch for the ephemeral 127.0.0.1 listener and GitHub outbound traffic); if the target terminates, re-scan for a respawned process sharing the ['hermes-agent/python.exe', '-m', 'hermes_cli.main', 'serve', '--host', '127.0.0.1', '--port', '0'] argv shape under the Hermes.exe lineage."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe",
-   "last_seen": "2026-09-08T16:05:56"
+   "last_seen": "2026-09-08T17:49:02"
   },
   {
    "id": "harness-03",
    "name": "WorkBuddy / sheetagent",
    "first_seen": "2026-09-08T14:42:49",
-   "match_count": 184,
-   "mount_ms": 35000,
+   "match_count": 395,
+   "mount_ms": 69127,
    "features": {
     "exe": "node.exe",
     "runtime": "node",
@@ -162,12 +240,17 @@
      ],
      "runtime_class": "unknown-runtime",
      "cwd_class": "local-workspace",
+     "cwd": "c:\\Users\\yyyyc\\WorkBuddy\\2026-09-08-10-11-56",
      "child_count": 1,
      "descendant_count": 1,
      "child_argv_shape": [
-      "<value>",
-      "<value>"
+      [
+       "<value>",
+       "<value>"
+      ]
      ],
+     "child_name": "conhost.exe",
+     "child_cmdline": "\\??\\C:\\Windows\\system32\\conhost.exe 0x4",
      "child_parent_lineage_contains": [
       "node.exe"
      ],
@@ -185,7 +268,10 @@
        "is_config_like": false
       }
      ],
+     "configs_found": 0,
      "network_shape": [],
+     "listeners": [],
+     "outbound_connections": [],
      "stream_available": true,
      "stream_empty": true,
      "help_surface": {
@@ -197,17 +283,39 @@
      "version_surface": {
       "line_count": 1
      },
-     "prior_memory_fingerprint": "matches committed fingerprint harness-08 'WorkBuddy / sheetagent' (same argv shape, WorkBuddy.exe lineage, node.exe child shape, .log/.mui open paths, empty network, 437-line JSON-capable help, 1-line version)"
+     "sensitive_files_accessed": [],
+     "evolves_prior_harness": "harness-03"
     },
     "agent_identity_name": "WorkBuddy / sheetagent",
-    "observation": "Passive read-only observation only. PID 38652 is an active agent-like runtime: status running, Node-hosted (executing the ESM entry 'sheetagent/start.mjs' with a live node.exe child at PID 44600, argv shape ['<value>','<value>'], 0 grandchildren), launched by the WorkBuddy.exe host harness (parent lineage ['WorkBuddy.exe','WorkBuddy.exe','WorkBuddy.exe']). Because the target is a worker/sub-agent spawned by a host platform harness (WorkBuddy.exe appears in the parent lineage), the identity is synthesized hierarchically as 'WorkBuddy / sheetagent' from the host executable token 'WorkBuddy' and the script token 'sheetagent/start.mjs'. The semantic output surface is the supervisor-exposed stream (available but currently empty: 0 lines, 0 JSON); monitor it for emergent text/JSON lines. The --help probe returned 437 lines with has_json=true (JSON-capable CLI output) and no stream/tool flags, and --version returned 1 line, both exit 0, indicating a JSON-capable CLI worker. No configuration surface is observable: config_candidates_in_argv is empty, open_path_shapes contains only a non-config .log (depth 6) and a non-config .mui (depth 9), and network_shape is empty, so no config file location, settings flags, or open config paths are exposed; configuration is not reachable without reading secrets and was not read (prior memory infers a '.sheetagent' config dir from the script token, but this is not directly observed and must not be read). Protocol: the target is a Node.js CLI worker with a JSON-capable help surface and no protocol flags (no --acp/--stdio, unlike other fingerprints); the supervisor-exposed stream is the passive observable channel. The target is an active WorkBuddy-hosted sheetagent worker, currently idle on its output stream.",
-    "hook": "Least invasive: no injection, no command execution, no file modification, no signal delivery, no memory attachment, no network interception, no reading of any config content. Use a passive stream tap on the supervisor-exposed stream that parses text/JSON lines as they appear (has_json=true indicates JSON-capable output), plus periodic read-only re-observation of the runtime surface and tree to detect newly appearing open paths, config candidates, children, or network transitions. The read-only --help/--version probes are the only executable interaction and must not be used to trigger side effects. No network_shape is exposed and no socket is observed, so there is no socket to probe; do NOT connect to any host/port. If an active hook is later required, the JSON-capable help surface (has_json=true) and the node.exe child (PID 44600) indicate a possible protocol adaptation point, but the Analyst does not activate any hook; the Supervisor verifies and activates.",
-    "redaction": "Redact all credential-like material (API keys, tokens, cookies, private keys, auth headers, session material) from any stream/help samples and from any config content. Do not read or expose any config values (including any inferred '.sheetagent' config content). Redact the raw argv <value> tokens and raw executable paths. Preserve non-sensitive structural tokens and shapes: the 'sheetagent/start.mjs' script token, the WorkBuddy.exe parent lineage, the node.exe child lineage, line counts (437 help, 1 version), the JSON/stream/tool capability booleans, path classes, and the empty open_path/network/config-candidate shapes.",
-    "confidence": 0.8,
-    "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'sheetagent/start.mjs' script token, the WorkBuddy.exe parent lineage, the node.exe child lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active WorkBuddy-hosted sheetagent Node.js CLI worker. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle worker and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>','sheetagent/start.mjs'] argv shape and WorkBuddy.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'WorkBuddy / sheetagent' derived from the sheetagent/start.mjs script token and the WorkBuddy.exe host lineage."
+    "host_platform": "WorkBuddy.exe desktop harness",
+    "workspace_cwd": "c:\\Users\\yyyyc\\WorkBuddy\\2026-09-08-10-11-56",
+    "model_routing": {
+     "model": "not-observable",
+     "provider": "not-observable",
+     "base_url": "not-observable",
+     "note": "No config surface (inspect_config_surface returned 0 configs), no config candidates in argv, no network endpoints, and no model/provider tokens exposed on the observed surface; routing was not read to avoid secrets exposure."
+    },
+    "registered_tools_and_mcp": [
+     "none observable on surface; help probe reports has_tool=false, has_json=true (JSON-capable output, not a tool registry); no --acp/--stdio or MCP/protocol flags present; no MCP servers discovered"
+    ],
+    "system_prompt_rules": [
+     "no AGENTS.md/CLAUDE.md/system-instruction file observed (inspect_config_surface returned no configs and open_path_shapes contain only non-config .log depth 6 and .mui depth 9); a '.sheetagent' config dir is inferred by prior memory from the script token but was NOT observed or read"
+    ],
+    "network_surface": {
+     "listeners": [],
+     "outbound_connections": [],
+     "note": "inspect_network_peers returned no local listening ports and no remote model endpoint connections; network_shape empty."
+    },
+    "observation": "Passive read-only observation only. PID 38652 is an active agent-like runtime matching the committed prior-memory family harness-03/harness-08 'WorkBuddy / sheetagent': status running (create_time 1788833570.846081), argv shape ['<value>','sheetagent/start.mjs'], launched by the WorkBuddy.exe host harness (parent lineage ['WorkBuddy.exe','WorkBuddy.exe','WorkBuddy.exe']) with cwd c:\\Users\\yyyyc\\WorkBuddy\\2026-09-08-10-11-56 (local-workspace). Because WorkBuddy.exe appears in the parent lineage the target is a worker/sub-agent under a host desktop harness, so identity is synthesized hierarchically as 'WorkBuddy / sheetagent' from the observed host token 'WorkBuddy' and script token 'sheetagent/start.mjs'. The target is the node.exe host executing the ESM entry: its single child (PID 44600, spawned ~0.04s later) is conhost.exe (cmdline '\\??\\C:\\Windows\\system32\\conhost.exe 0x4') whose parent lineage contains node.exe - a console host, not a node worker; this execution-trace evidence refines the earlier prior-memory description that called the child a 'node.exe child'. The --help probe returned 437 lines with has_json=true (JSON-capable CLI output), has_stream=false, has_tool=false, and --version returned 1 line, both exit 0. No configuration surface is observable: config_candidates_in_argv empty, inspect_config_surface returned 0 configs, open_path_shapes contain only non-config .log (depth 6) and .mui (depth 9), and no sensitive files were accessed. No network surface: inspect_network_peers returned no listeners and no outbound connections. The semantic output surface is the supervisor-exposed stream (available but currently empty: 0 lines, 0 JSON); monitor it for emergent text/JSON lines. The target is an active WorkBuddy-hosted sheetagent Node.js CLI worker, currently idle on its output stream.",
+    "hook": "Least invasive: no injection, no command execution, no file modification, no signal delivery, no memory attachment, no network interception, no reading of any config content. Use a passive stream tap on the supervisor-exposed stream that parses text/JSON lines as they appear (has_json=true indicates JSON-capable output), plus periodic read-only re-observation of the runtime surface and tree to detect newly appearing open paths, config candidates, children, or network transitions. The read-only --help/--version probes are the only executable interaction and must not be used to trigger side effects. No network_shape is exposed, no socket is observed, so there is no socket to probe; do NOT connect to any host/port. If an active hook is later required, the JSON-capable help surface (has_json=true) and the conhost.exe child (PID 44600, evidence of the node.exe console host) indicate possible protocol adaptation points, but the Analyst does not activate any hook; the Supervisor verifies and activates.",
+    "redaction": [
+     "Redact all credential-like material (API keys, tokens, cookies, private keys, auth headers, session material) from any stream/help samples and from any config content. Do not read or expose any config values (including any inferred '.sheetagent' config content). Redact the raw argv <value> tokens and raw executable paths (including the observed .workbuddy node.exe path in prior memory). Preserve non-sensitive structural tokens and shapes: the 'sheetagent/start.mjs' script token, the WorkBuddy.exe parent lineage, the conhost.exe child name and its '\\??\\C:\\Windows\\system32\\conhost.exe 0x4' cmdline shape, line counts (437 help, 1 version), the JSON/stream/tool capability booleans, path classes, the .log/.mui open-path shapes, and the empty config/network/stream shapes."
+    ],
+    "confidence": 0.85,
+    "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'sheetagent/start.mjs' script token, the WorkBuddy.exe parent lineage, the node.exe-hosted conhost.exe child lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active WorkBuddy-hosted sheetagent Node.js CLI worker. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle worker and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>','sheetagent/start.mjs'] argv shape and WorkBuddy.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'WorkBuddy / sheetagent' derived from the sheetagent/start.mjs script token and the WorkBuddy.exe host lineage."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
-   "last_seen": "2026-09-08T16:05:56"
+   "last_seen": "2026-09-08T17:49:02"
   }
  ],
  "version": 1

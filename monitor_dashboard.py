@@ -59,7 +59,7 @@ def iso(ts: float | None = None) -> str:
 
 
 def analyst_route() -> dict[str, str]:
-    route = os.environ.get("ASG_ANALYST_ROUTE", "opencode-go").strip().lower()
+    route = os.environ.get("ASG_ANALYST_ROUTE", "commandcode").strip().lower()
     routes = {
         "commandcode": {
             "provider": "openai",
@@ -75,7 +75,7 @@ def analyst_route() -> dict[str, str]:
         },
     }
     if route not in routes:
-        route = "opencode-go"
+        route = "commandcode"
     return {"route": route, **routes[route]}
 
 
@@ -328,8 +328,9 @@ def scan_agents_once():
                 "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
             })
 
-            # 自动接入闭环：若发现陌生 Agent 且尚未在调查中，立即在后台拉起 Goose (DeepSeek) 进行接管！
-            if not is_matched and not is_investigating:
+            # 自动接入闭环：若发现陌生 Agent 或尚未拥有深度治理全景档案的已匹配 Agent，立即在后台拉起 Goose 进行自主逆向！
+            needs_deep_governance = not recipe_obj.get("model_routing")
+            if (not is_matched or needs_deep_governance) and not is_investigating:
                 threading.Thread(
                     target=run_autonomous_investigation,
                     args=(pid, struct),
