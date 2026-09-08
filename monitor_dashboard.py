@@ -150,10 +150,19 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
         if candidate_file.exists():
             payload = json.loads(candidate_file.read_text(encoding="utf-8"))
             recipe = payload.get("recipe", {})
-            if isinstance(recipe, dict) and "match_features" in recipe:
+            identity = recipe.get("agent_identity_name", "")
+            # 严格质量门禁：只有逆向成功观测到有效特征且非"unidentified/unknown"时，才允许写入指纹库
+            if (
+                isinstance(recipe, dict)
+                and "match_features" in recipe
+                and identity not in ["", "unknown", "unknown-runtime", "unidentified-agent"]
+                and recipe.get("confidence", 0) >= 0.3
+            ):
                 # 写入指纹库
                 entry = matcher.remember(struct, recipe, elapsed_ms)
                 print(f"[Analyst] 接管成功并写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
+            else:
+                print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
         else:
             print(f"[Analyst] 接管完成但未产生有效 Recipe (returncode={cp.returncode})", file=sys.stderr)
 
@@ -178,16 +187,15 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
 
 def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
     """获取该 Agent 进程真实关联的语义消息，绝不把其他进程或历史残留瞎挂上去"""
-    artifacts_dir = ROOT / "e2e" / "artifacts"
-    
-    # 查找挂接在当前 PID 的专属会话流
-    for p in artifacts_dir.rglob("semantic_events.jsonl"):
+    # 查找专属绑定到该 PID 的会话流
+    pid_stream = ROOT / "e2e" / "artifacts" / f"stream_{pid}.jsonl"
+    if pid_stream.exists():
         try:
-            lines = [l.strip() for l in p.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
+            lines = [l.strip() for l in pid_stream.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
             if lines:
                 last_obj = json.loads(lines[-1])
                 return {
-                    "source": p.parent.name,
+                    "source": f"pid_{pid}",
                     "event_type": last_obj.get("event_type", "unknown"),
                     "ts": last_obj.get("ts", ""),
                     "detail": last_obj.get("detail") or last_obj.get("blocks") or last_obj.get("prompt") or last_obj.get("call") or "N/A"

@@ -167,19 +167,14 @@ class Sensor:
         if pname in ("bash.exe", "sh.exe", "wsl.exe", "conhost.exe"):
             return -1, ["排除系统Shell/终端包装器自身"]
 
-        # 排除 Hermes 桌面外壳自身与临时交互工具
-        if "hermes.exe" in pname or "hermes-agent\\apps\\desktop" in cmd:
-            return -1, ["排除Hermes桌面宿主外壳"]
-
         if "tmp." in cmd and "resp.json" in cmd:
             return -1, ["排除临时CLI管道"]
 
-        # 排除网关/桥接服务自身、测试脚本与静态分析工具
-        if any(x in cmd for x in ("gateway run", "serve --host", "cpolar.exe", "lark-cli.exe",
-                                  "monitor_dashboard.py", "mini_bridge.py", "semantica.explorer",
+        # 排除当前正在运行的治理/监控工具自身 (防止监控脚本扫描自己造成死锁，保留真实业务进程)
+        if any(x in cmd for x in ("monitor_dashboard.py", "mini_bridge.py", "semantica.explorer",
                                   "run_sample_70.py", "recipes/runtime_analyst.yaml", "autonomous-governance",
                                   "analyst_tools.py")):
-            return -1, ["排除基础设施守护进程/测试/治理工具脚本"]
+            return -1, ["排除治理监控脚本自身"]
 
         # 排除 Analyst 自身的 Goose 进程 (防止治理端自我递归)
         if "goose" in pname and ("target_pid" in cmd or "runtime_analyst" in cmd):
@@ -191,8 +186,8 @@ class Sensor:
 
         has_agent_intent = False
 
-        # 1. Agent 核心包路径、包名或标识 (通用 Agent 包特征)
-        if any(x in cmd for x in ("pi-coding-agent", "piagent", "claude-code", "codex", "agent", "opencode", "goose")):
+        # 1. Agent 核心包路径、包名或标识 (通用 Agent 包特征，包括 hermes 等)
+        if any(x in cmd for x in ("hermes", "pi-coding-agent", "piagent", "claude-code", "codex", "agent", "opencode", "goose")):
             score += 30
             reasons.append("Agent编排运行时标识(+30)")
             has_agent_intent = True
