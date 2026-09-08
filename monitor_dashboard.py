@@ -251,12 +251,8 @@ def scan_agents_once():
                     if fp_name and fp_name != "unknown-runtime":
                         display_name = f"{fp_name} ({name})"
                 else:
-                    # 尚未命中指纹库：根据 cmdline 或包名尝试推断有意义的名字
-                    cmd_str = " ".join(cmdline).lower()
-                    for token in ("sheetagent", "pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
-                        if token in cmd_str:
-                            display_name = f"{token} (未挂接)"
-                            break
+                    # 尚未命中指纹库：未逆向接管前展示为待调查状态
+                    display_name = f"未知 Agent ({name})"
 
                 is_investigating = False
                 with INVESTIGATION_LOCK:

@@ -73,17 +73,9 @@ def match(struct):
 
 def remember(struct, recipe, mount_ms):
     db = load()
-    # 提取有意义的 Agent 名称 (优先从 recipe 中的 agent_identity_name，其次从 struct)
+    # 提取有意义的 Agent 名称 (严格优先信任 Goose/Analyst 推导出的 agent_identity_name)
     agent_name = recipe.get("agent_identity_name") or recipe.get("agent_name")
-    if not agent_name or agent_name == "unknown-runtime" or agent_name == "start-mjs-agent":
-        # 尝试从 exe_full 或 cmdline 推断包名
-        cmd_str = " ".join(struct.get("argv_shape", []))
-        exe_full = struct.get("exe_full", "")
-        for token in ("sheetagent", "pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
-            if token in cmd_str.lower() or token in exe_full.lower():
-                agent_name = token
-                break
-    if not agent_name:
+    if not agent_name or agent_name == "unknown-runtime":
         agent_name = struct.get("runtime_class", "unknown-runtime")
 
     entry = {"id": f"harness-{len(db.get('fingerprints', [])) + 1:02d}",

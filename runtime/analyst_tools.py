@@ -81,20 +81,35 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
         children = len(p.children(recursive=False))
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         children = 0
+    # 保留父进程血缘链 (脱敏，仅保留进程 basename，供 Analyst 推断宿主 Harness/IDE/平台)
+    parent_lineage = []
+    try:
+        curr = p.parent()
+        while curr:
+            pname = curr.name()
+            if pname.lower() not in ["explorer.exe", "svchost.exe", "services.exe", "init", "system"]:
+                parent_lineage.append(pname)
+            curr = curr.parent()
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+
     # Blind Analyst view: identity-bearing process fields are abstracted, but package tokens & script names are retained for identity discovery
     argv_raw = []
     for x in cmd:
         xs = str(x)
         if xs.startswith("-"):
             argv_raw.append(xs)
-        elif any(ext in xs.lower() for ext in [".js", ".py", ".ts", ".sh", "bundle", "cli", "agent"]):
-            # 保留执行脚本/包的语义名，便于 Analyst 推断 Agent 身份 (如 pi-coding-agent/dist/bundle/cli.js)
-            p_token = Path(xs).name
-            if any(k in xs.lower() for k in ["pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"]):
-                for k in ["pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"]:
-                    if k in xs.lower():
-                        p_token = f"<{k}:{p_token}>"
-                        break
+        elif any(ext in xs.lower() for ext in [".js", ".py", ".ts", ".sh", ".mjs", "bundle", "cli", "agent"]):
+            # 保留执行脚本/包的语义名，便于 Analyst 推断 Agent 身份 (如 pi-coding-agent/dist/bundle/cli.js, sheetagent/mcp/start.mjs)
+            p_obj = Path(xs)
+            p_token = p_obj.name
+            # 如果父目录带有具体 agent / plugin 语义包名，提取为 parent_pkg/script
+            parent_dir_name = p_obj.parent.name
+            grandparent_dir_name = p_obj.parent.parent.name if len(p_obj.parents) > 1 else ""
+            for seg in [parent_dir_name, grandparent_dir_name]:
+                if any(k in seg.lower() for k in ["agent", "tool", "plugin", "mcp", "skill"]) and seg.lower() not in ["plugins", "cache", "mcp"]:
+                    p_token = f"{seg}/{p_token}"
+                    break
             argv_raw.append(p_token)
         else:
             argv_raw.append("<value>")
@@ -112,6 +127,7 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
     return {
         "pid": p.pid,
         "ppid_present": p.ppid() > 0,
+        "parent_lineage": parent_lineage[:4],
         "identity": "unknown-runtime",
         "argv_shape": argv_raw[:15],
         "config_candidates_in_argv": config_candidates,

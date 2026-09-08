@@ -4275,9 +4275,9 @@
   },
   {
    "id": "harness-78",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:13:07",
-   "match_count": 17,
+   "match_count": 110,
    "mount_ms": 42689,
    "features": {
     "exe": "node.exe",
@@ -4324,11 +4324,11 @@
     "fallback": "The target process exited before comprehensive observation could be completed. Only one successful observe_runtime_surface call was made. If the process restarts, re-run observe_runtime_surface, observe_tree, and probe_help to gather more evidence. The entrypoint token 'start.mjs' suggests a Node.js-based runtime, but the specific agent identity could not be confirmed. The empty stream and lack of config candidates in argv limit identity inference. Consider monitoring for process restart and re-observation."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
-   "last_seen": "2026-09-08T11:14:13"
+   "last_seen": "2026-09-08T11:59:05"
   },
   {
    "id": "harness-79",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:13:43",
    "match_count": 1,
    "mount_ms": 42647,
@@ -4415,7 +4415,7 @@
   },
   {
    "id": "harness-80",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:14:10",
    "match_count": 1,
    "mount_ms": 23378,
@@ -4450,7 +4450,7 @@
   },
   {
    "id": "harness-81",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:14:40",
    "match_count": 1,
    "mount_ms": 27348,
@@ -4516,7 +4516,7 @@
   },
   {
    "id": "harness-82",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:15:13",
    "match_count": 1,
    "mount_ms": 27971,
@@ -4552,7 +4552,7 @@
   },
   {
    "id": "harness-83",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:20:23",
    "match_count": 1,
    "mount_ms": 122628,
@@ -4587,7 +4587,7 @@
   },
   {
    "id": "harness-84",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:25:53",
    "match_count": 1,
    "mount_ms": 143559,
@@ -4624,7 +4624,7 @@
   },
   {
    "id": "harness-85",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:28:15",
    "match_count": 1,
    "mount_ms": 135989,
@@ -4661,7 +4661,7 @@
   },
   {
    "id": "harness-86",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:30:13",
    "match_count": 1,
    "mount_ms": 115395,
@@ -4696,7 +4696,7 @@
   },
   {
    "id": "harness-87",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:32:37",
    "match_count": 1,
    "mount_ms": 141145,
@@ -4732,7 +4732,7 @@
   },
   {
    "id": "harness-88",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:34:38",
    "match_count": 1,
    "mount_ms": 117129,
@@ -4770,7 +4770,7 @@
   },
   {
    "id": "harness-89",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:37:23",
    "match_count": 1,
    "mount_ms": 162366,
@@ -4808,7 +4808,7 @@
   },
   {
    "id": "harness-90",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:43:05",
    "match_count": 1,
    "mount_ms": 153800,
@@ -4843,7 +4843,7 @@
   },
   {
    "id": "harness-91",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:48:00",
    "match_count": 1,
    "mount_ms": 108020,
@@ -4880,7 +4880,7 @@
   },
   {
    "id": "harness-92",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:52:22",
    "match_count": 1,
    "mount_ms": 73555,
@@ -4917,7 +4917,7 @@
   },
   {
    "id": "harness-93",
-   "name": "sheetagent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T10:57:26",
    "match_count": 1,
    "mount_ms": 117517,
@@ -4991,7 +4991,7 @@
   },
   {
    "id": "harness-94",
-   "name": "start-mjs-agent",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T11:08:43",
    "match_count": 1,
    "mount_ms": 121602,
@@ -5030,7 +5030,7 @@
   },
   {
    "id": "harness-95",
-   "name": "start-mjs",
+   "name": "WorkBuddy / SheetAgent",
    "first_seen": "2026-09-08T11:10:44",
    "match_count": 1,
    "mount_ms": 118816,
@@ -5064,6 +5064,215 @@
     "fallback": "If the stream stays empty: (a) use --help/--version output analysis via the supervisor to map the configuration surface; (b) treat the .log file as the semantic output surface via supervisor-mediated read; (c) observe child 44600 argv/behavior over time to classify the helper role (e.g. language server, MCP server, or shell); (d) if no config file appears in open paths, assume configuration is loaded at startup from a dotfile in cwd or user home and is not kept open, and request supervisor-mediated cwd listing"
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
+  },
+  {
+   "id": "harness-96",
+   "name": "python-c-bootstrap-agent",
+   "first_seen": "2026-09-08T11:30:16",
+   "match_count": 1,
+   "mount_ms": 107000,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [
+     "-c"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": [
+     "argv_shape=[python.exe, -c, <value>] (inline script bootstrap, no module/file entrypoint)",
+     "one child process with argv_shape=[<value>, -c, <value>] (also -c style invocation)",
+     "cwd_class=local-workspace",
+     "open_path_shapes=[] (no config files or paths opened during observation)",
+     "network_shape=[] (no sockets/connections observed)",
+     "supervisor-exposed stream available but line_count=0, json_line_count=0 (no semantic output produced)",
+     "process short-lived: exited between first and second observation (target PID unavailable on re-observe)",
+     "probe_help: --help -> 43 lines, has_stream=true, has_tool=false, has_json=false; --version -> 1 line (consistent with CPython interpreter)"
+    ],
+    "agent_identity_name": "python-c-bootstrap-agent",
+    "observation": "Passive supervisor-side observation only: (1) capture supervisor-exposed stream continuously and record line_count/json_line_count and JSON schema when lines appear; (2) at spawn time record argv_shape, open_path_shapes, network_shape, and child tree; (3) do not inject, attach, or modify the process. No config location was discoverable: config_candidates_in_argv=[], open_path_shapes=[] at observation time, so treat any future open path as a config candidate and any future JSON stream lines as the semantic protocol.",
+    "hook": "none",
+    "redaction": "Redact all argv values (keep only argv_shape tokens), all open path contents (keep only path shapes/classes), and all stream payloads matching secret patterns (tokens, keys, cookies, credentials); retain only line counts, JSON key schema, and shape metadata. Never surface raw -c script text or child executable names.",
+    "confidence": "low",
+    "fallback": "If a new instance of this pattern appears, re-run spawn-time shape capture and stream inspection; if the stream emits JSON lines, adapt to a JSON-lines protocol reader; if open paths appear, treat them as configuration candidates and re-evaluate identity from those tokens. If the process remains short-lived with no output, classify as a transient python -c launcher and keep observation passive."
+   },
+   "observed_exe_full": "D:\\proj\\agent-guard-eval\\venvs\\n2\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-97",
+   "name": "unknown-agent-runtime",
+   "first_seen": "2026-09-08T11:30:18",
+   "match_count": 1,
+   "mount_ms": 74196,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [
+     "-c"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": "Process tree: root PID 29572 launched as ['python.exe','-c','<redacted>'] with cwd_class=local-workspace; it spawned exactly one child (PID 35764) ~29 ms later with argv shape ['<redacted-executable>','-c','<redacted>'] and no further children. Both processes had status=running at first observation (create_time 1788838139.0192835). runtime_class reported as 'unknown-runtime'. No config_candidates_in_argv, no open_path_shapes, and no network_shape were observed. A supervisor-exposed output stream is mounted for the target but has remained empty (line_count=0, json_line_count=0, no samples) across all inspection calls. Within seconds of first observation the target became unavailable to observe_runtime_surface/observe_tree/get_target_context/probe_help (error -32000: target PID unavailable: 29572), i.e. the process exited while the stream stayed mounted. The python.exe '-c' bootstrap spawning a child that itself takes '-c <inline-code>' indicates an inline-code launcher pattern rather than a module/script entrypoint.",
+    "agent_identity_name": "unknown-agent-runtime",
+    "observation": "No identity token was observable: argv values are redacted to <value>, the child executable name is withheld (redacted) while the generic parent 'python.exe' is not, open_path_shapes is empty, and no package/script/entrypoint token was discovered. Therefore no clean human-readable agent identity can be inferred from evidence; classify as an inline-code-bootstrapped agent-like subprocess runtime of unknown product identity.",
+    "hook": "No configuration location, settings file, open path, or protocol endpoint was observed (open_path_shapes=[], config_candidates_in_argv=[], network_shape=[]). Least invasive strategy: passive observation only. Attach to the supervisor-exposed stream and parse JSON-lines as they appear (json_line_count will rise from 0 once structured output is emitted); do not inject code, do not probe files, and do not touch the process while it is short-lived. On next spawn, capture argv/config candidates at first sight because this instance exited before a full surface could be enumerated.",
+    "redaction": "Redact credential-like tokens (tokens, cookies, API keys, private-key material) and any argv or path values that the supervisor already masks; the harness itself renders identity-relevant argv tokens as <value>. Apply the same default redaction to any future stream content before persistence. Do not attempt to de-redact the withheld child executable name.",
+    "confidence": "low",
+    "fallback": "If the target cannot be re-observed (PID 29572 remains unavailable and the stream stays empty), fall back to (1) treating runtime_class as 'unknown-runtime' with an agent-like python-bootstrap + '-c' child signature, (2) re-arming observation on the next launch of this pattern to capture argv and config surface before exit, (3) keeping the supervisor-exposed stream as the sole semantic channel, and (4) reporting agent_identity_name as 'unknown-agent-runtime' until package/script/entrypoint tokens are actually observed."
+   },
+   "observed_exe_full": "D:\\proj\\agent-guard-eval\\venvs\\n2\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-98",
+   "name": "unknown-unverifiable",
+   "first_seen": "2026-09-08T11:30:18",
+   "match_count": 1,
+   "mount_ms": 39375,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [
+     "-c"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": [
+     "target_pid_47100_unavailable_to_all_pid_bound_probes",
+     "error_-32000_target_PID_unavailable_on_get_target_context_observe_runtime_surface_observe_tree_probe_help",
+     "supervisor_exposed_stream_present_but_empty_0_lines_0_json_lines_0_samples",
+     "no_argv_entrypoint_or_open_path_tokens_observable",
+     "prior_recipe_memory_exists_but_content_not_readable_within_analyst_tool_boundary"
+    ],
+    "agent_identity_name": "unknown-unverifiable",
+    "observation": "Passive read-only observation only. Continuously sample the supervisor-exposed output stream (path_class supervisor-exposed-stream) for emitted lines; periodically retry get_target_context/observe_tree to detect when PID 47100 becomes bound and observable. Do not execute, signal, or write to the target. No process tree, runtime class, config surface, open paths, or protocol could be established because every process-bound probe returned error -32000 'target PID unavailable: 47100' on all attempts (5+ calls).",
+    "hook": "none_activated_analyst_cannot_activate_hooks. Proposal_for_supervisor: attach a passive stream-tap/tee on the supervisor-exposed stream only, with no back-pressure writes into the target and no signal injection; activate a process observer only after target PID becomes resolvable.",
+    "redaction": "Redact any credential-like tokens (API keys, passwords, cookies, private keys, JWTs, connection strings), host-local user paths, and personal identifiers from any stream samples before persistence or reporting. Since the stream is currently empty and no config/paths were exposed, no secret material was accessed.",
+    "confidence": 0.12,
+    "fallback": "If the supervisor can re-resolve or re-bind PID 47100 (or the process restarts under a new PID), rerun observe_tree to map the process tree, probe_help for CLI surface, inspect_stream for semantic output, and inspect open paths/argv tokens to classify runtime class and derive a token-based agent identity name. If the stream begins emitting, apply the observation and redaction strategy above. Until then, treat target as not-an-active-observable-agent."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-99",
+   "name": "trajectory-tune-processor",
+   "first_seen": "2026-09-08T11:31:49",
+   "match_count": 1,
+   "mount_ms": 97133,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [
+     "-c"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": [
+     "argv[0] is python.exe",
+     "argv contains -c with inline code referencing tune.json via read_text()",
+     "code calls traj_parts('D4', items[0]) and prints 'Item 0 id:' plus 'Env N:' prefixes",
+     "single child process spawned ~0.09s later running identical -c code",
+     "open_path_shapes empty; network_shape empty",
+     "short-lived: process exited between observation rounds",
+     "supervisor-exposed stream available but captured 0 lines",
+     "probe_help: --help returns 43 lines with has_stream true, has_tool false; --version returns 1 line (python.exe signature)"
+    ],
+    "agent_identity_name": "trajectory-tune-processor",
+    "observation": "Passive only: monitor the supervisor-exposed stdout stream and parse plain-text lines (item id, env prefixes). No injection, no signal, no filesystem or network interaction. The process is short-lived and batch-oriented, so observation must be attached at spawn time for future invocations matching the same argv pattern.",
+    "hook": "None attachable: process already exited, no open paths, no config files, no network sockets were observed. Only hook surface is stdout capture via the supervisor-exposed stream for future runs of the same python -c pattern (tune.json + traj_parts).",
+    "redaction": "Redact secret-like substrings in captured output (env var values, tokens, keys, paths that look like credentials) before surfacing; the script prints e[:100] env prefixes which may embed sensitive values from tune.json. Never request or expose credentials.",
+    "confidence": "medium",
+    "fallback": "If the process is not re-observed, treat it as a non-agent batch trajectory-analysis script: skip hooking entirely, keep the stream watcher registered for the argv signature (python.exe -c *tune.json*traj_parts*), and re-run observation on next matching spawn."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-100",
+   "name": "python-inline-analysis",
+   "first_seen": "2026-09-08T11:40:00",
+   "match_count": 1,
+   "mount_ms": 56604,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [
+     "-c"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": [
+     "argv is python.exe -c with a large inline Python snippet (no script file, no agent entrypoint token)",
+     "child process (pid 16912) carries an identical -c payload with argv[0] replaced by <value>, the Windows multiprocessing spawn signature",
+     "inline code semantics: grid/rule search over FPR/FNR metrics with baseline thresholds (FPR<29.3%, FNR<42.7%), variables base_thr/delta_rules/p_supp/p_boost, Chinese print labels (命中优胜策略/送审) - batch policy/analytics tuning, not an interactive loop",
+     "probe_help: --help -> 43 plain-text lines (no json/tool/stream markers); --version -> 1 line; pure CPython CLI surface, no agent subcommands",
+     "open_path_shapes: [] (no config/data files or open paths observed); network_shape: [] (no sockets/connections)",
+     "cwd_class: local-workspace; status was running then process exited within the investigation window (one-shot job)",
+     "supervisor-exposed stdout stream available but 0 captured lines at probe time"
+    ],
+    "agent_identity_name": "python-inline-analysis",
+    "observation": "Passive, least-invasive: read the supervisor-exposed stdout stream only. Do not inject code, send signals, or attach to the interpreter. Because the process was short-lived and produced no captured output, observation should be periodic stream polling plus process-exit detection; if it restarts, capture stdout until exit and parse only summary metric lines (e.g. lines containing 命中优胜策略/送审/FPR/FNR percentages). No filesystem, network, or environment probing is warranted since the runtime is a plain CPython batch executor with no agent surface.",
+    "hook": "No agent hooks exist: no tool protocol, no plugin/config hook, no IPC endpoint was discovered (open_path_shapes and network_shape both empty; help surface exposes only interpreter help/version). The only valid hook is a generic stdout stream reader attached to the supervisor-exposed stream; it must be read-only and non-invasive.",
+    "redaction": "Redact the full -c payload text (it is embedded user code that may contain business logic and data-derived constants), the local workspace path (cwd), and any environment-derived values. Never log raw argv beyond the shape tokens already captured (python.exe, -c). Keep only aggregate facts: two python processes, identical payload, child spawn copy, zero open paths/network, empty stream, exited ~1s after discovery.",
+    "confidence": "high: this is NOT an agent-like runtime and no agent hook/observation layer is warranted (evidence: pure python.exe help surface, identical multiprocessing-spawn child, inline numeric grid-search code, no open paths, no network, short-lived exit). medium: specific purpose inference (policy/rule-threshold tuning) is based only on inline code identifiers and Chinese metric labels, not an authoritative package/manifest.",
+    "fallback": "If the target (or a successor PID) reappears with different argv containing an agent entrypoint, tool surface, JSON stream, config file, or network listener, re-run the full investigation and reclassify. Until then, treat any matching python.exe -c inline payload as python-inline-analysis batch compute; if identity cannot be re-established, fall back to agent_identity_name 'unknown-runtime' and keep the passive stdout-reader hook only."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+  },
+  {
+   "id": "harness-101",
+   "name": "python-inline-compute",
+   "first_seen": "2026-09-08T11:41:15",
+   "match_count": 1,
+   "mount_ms": 63420,
+   "features": {
+    "exe": "python.exe",
+    "runtime": "python",
+    "flags": [
+     "-c"
+    ],
+    "config_dirs": []
+   },
+   "children_classes": [
+    "python.exe"
+   ],
+   "hook_recipe": {
+    "match_features": {
+     "runtime_class": "cpython-inline-batch",
+     "process_shape": "single parent python.exe (argv[0]=python.exe) with one descendant spawned ~25ms later running the identical inline '-c' payload (consistent with Python Windows multiprocessing spawn), then tree went away",
+     "argv_class": "python.exe -c <large inline python source>; no script file path, no module/package entrypoint token, no --config/settings flags; only inline code tokens",
+     "code_semantics": "finite parameter grid-search over threshold metrics (m_fpr, m_fnr vs baselines 29.3/42.7; variables base_clean, delta_rule, pai_clean_supp, pai_poison_boost) with Chinese print() result formatting; single-shot compute, no read-eval-print loop or watchdog",
+     "io_surface": "no open file paths (open_path_shapes empty), no network shape / sockets, cwd_class local-workspace",
+     "output_surface": "stdout only through supervisor-exposed stream; line_count 0 at observation time; no structured/JSON lines",
+     "lifetime": "short-lived batch; status running at first observation then PID 17920 unavailable to all tools before investigation completed",
+     "agent_signals_absent": "no persistent stdin protocol, no prompt/request framing, no config file, no hook/plugin directory, no listening service, no agent product tokens in argv or open paths"
+    },
+    "agent_identity_name": "python-inline-compute",
+    "observation": "Non-agent, finite CPython batch process running an inline threshold/grid-search script (python.exe -c ...). Least invasive observation is passive: (1) snapshot process tree and argv shape while running, (2) read the supervisor-exposed stdout stream only after/at completion, (3) do not inject code, do not attach a debugger, do not send input. Re-run observe_tree/inspect_stream at process start if it re-appears; do not probe the executable again since python.exe --help/--version carries no payload-specific signal.",
+    "hook": "No code or executable hook is justified. Use a read-only stream sink on the supervisor-exposed stdout path plus an exit-notice from the process tree (target already exited). If any observation hook is required by the harness, limit it to capturing stdout writes of the exposed stream and recording process lifetime; no stdin injection, no environment mutation, no filesystem writes.",
+    "redaction": "Redact environment variables, user-profile paths, and any embedded local paths; truncate/redact the inline '-c' source payload in all artifacts (it may embed experiment/dataset details); drop all values of variables named *_supp/*_boost/*_rule and numeric results from logs if considered sensitive. No credentials/tokens/keys appeared in observed argv or stream; redact them if they ever do.",
+    "confidence": "medium",
+    "fallback": "If the target reappears with agent-like signals (persistent stdin/stdout request loop, config files, open sockets, directory watching, structured JSON output), reclassify away from batch compute and re-run observation with stream sampling before any probe. If a matched python-inline-compute process is instead long-lived and responsive to stdin, treat it as a REPL-style runtime and switch to interactive observation of the exposed stream only. If the PID remains unavailable, rely solely on the retained supervisor-exposed stream artifacts and prior process-tree snapshots; do not attempt PID reuse or process forgery."
+   },
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
   }
  ],
  "version": 1
