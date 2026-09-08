@@ -219,85 +219,110 @@ def scan_agents_once():
     
     found_agents = []
     
-    # 遍历进程
+    # 遍历进程并收集初筛候选
+    candidates = []
     for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
         try:
             pinfo = proc.info
             pid = pinfo.get("pid")
             name = pinfo.get("name") or ""
             cmdline = pinfo.get("cmdline") or []
-            
+
             if not cmdline or pid == os.getpid() or name.lower() in ["system", "registry", "smss.exe"]:
                 continue
-                
+
             w = sensor.wrap_pid(pid)
             score, reasons = sensor.agent_score(w)
-            
-            # 达到 Agent 判定阈值 (默认 50)
             if score >= 50:
-                struct = {}
-                try:
-                    struct = analyzer.analyze(pid)
-                except Exception as e:
-                    print(f"[Analyze Error PID={pid}] {e}", file=sys.stderr)
-                    struct = {
-                        "pid": pid,
-                        "exe": name,
-                        "runtime": "native",
-                        "argv_shape": [(x if str(x).startswith("-") else "<value>") for x in cmdline],
-                        "config_dirs": []
-                    }
-                
-                matched_fp, match_ms = matcher.match(struct)
-                print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
-                
-                # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
-                display_name = name
-                is_matched = bool(matched_fp)
-                if matched_fp:
-                    fp_name = matched_fp.get("name")
-                    if fp_name and fp_name != "unknown-runtime":
-                        display_name = f"{fp_name} ({name})"
-                else:
-                    # 尚未命中指纹库：未逆向接管前展示为待调查状态
-                    display_name = f"未知 Agent ({name})"
+                candidates.append((proc, pinfo, score, reasons))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
 
-                is_investigating = False
-                with INVESTIGATION_LOCK:
-                    is_investigating = (pid in INVESTIGATING_PIDS)
+    # 进程树去重 (Root Deduplication):
+    # 若候选集合中存在 A 包含子进程 B (A 是 B 的父级且两者均在候选集合中)，
+    # 优先由根节点/主编排进程 A 代表 Agent 实体进行纳管与逆向，避免一个 Agent 派生的子进程反复在看板盖楼
+    candidate_pids = {pinfo["pid"] for _, pinfo, _, _ in candidates}
+    sub_worker_pids = set()
+    for proc, pinfo, _, _ in candidates:
+        try:
+            for child in proc.children(recursive=True):
+                if child.pid in candidate_pids:
+                    sub_worker_pids.add(child.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
 
-                adapter_info = {
-                    "matched": is_matched,
-                    "investigating": is_investigating,
-                    "match_ms": match_ms,
-                    "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
-                    "behavioral_class": (matched_fp.get("hook_recipe", {}).get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
-                    "observation": (matched_fp.get("hook_recipe", {}).get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
-                    "hook": (matched_fp.get("hook_recipe", {}).get("hook")) if matched_fp else "未挂接"
-                }
-                
-                last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
-                
-                found_agents.append({
+    for proc, pinfo, score, reasons in candidates:
+        pid = pinfo["pid"]
+        # 如果当前候选只是其他已纳管 Agent 的派生子进程，将其归为子 Worker 忽略，聚焦根编排进程
+        if pid in sub_worker_pids:
+            continue
+
+        try:
+            name = pinfo.get("name") or ""
+            cmdline = pinfo.get("cmdline") or []
+            struct = {}
+            try:
+                struct = analyzer.analyze(pid)
+            except Exception as e:
+                print(f"[Analyze Error PID={pid}] {e}", file=sys.stderr)
+                struct = {
                     "pid": pid,
-                    "name": display_name,
-                    "raw_exe": name,
-                    "score": score,
-                    "reasons": reasons,
-                    "cmdline": redact(" ".join(cmdline))[:250] + ("..." if len(" ".join(cmdline)) > 250 else ""),
-                    "adapter": adapter_info,
-                    "last_message": last_msg,
-                    "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
-                })
+                    "exe": name,
+                    "runtime": "native",
+                    "argv_shape": [(x if str(x).startswith("-") else "<value>") for x in cmdline],
+                    "config_dirs": []
+                }
+            
+            matched_fp, match_ms = matcher.match(struct)
+            print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
+            
+            # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
+            display_name = name
+            is_matched = bool(matched_fp)
+            if matched_fp:
+                fp_name = matched_fp.get("name")
+                if fp_name and fp_name != "unknown-runtime":
+                    display_name = f"{fp_name} ({name})"
+            else:
+                # 尚未命中指纹库：未逆向接管前展示为待调查状态
+                display_name = f"未知 Agent ({name})"
 
-                # 自动接入闭环：若发现陌生 Agent 且尚未在调查中，立即在后台拉起 Goose (DeepSeek) 进行接管！
-                if not is_matched and not is_investigating:
-                    threading.Thread(
-                        target=run_autonomous_investigation,
-                        args=(pid, struct),
-                        name=f"analyst-worker-{pid}",
-                        daemon=True
-                    ).start()
+            is_investigating = False
+            with INVESTIGATION_LOCK:
+                is_investigating = (pid in INVESTIGATING_PIDS)
+
+            adapter_info = {
+                "matched": is_matched,
+                "investigating": is_investigating,
+                "match_ms": match_ms,
+                "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
+                "behavioral_class": (matched_fp.get("hook_recipe", {}).get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
+                "observation": (matched_fp.get("hook_recipe", {}).get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
+                "hook": (matched_fp.get("hook_recipe", {}).get("hook")) if matched_fp else "未挂接"
+            }
+            
+            last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
+            
+            found_agents.append({
+                "pid": pid,
+                "name": display_name,
+                "raw_exe": name,
+                "score": score,
+                "reasons": reasons,
+                "cmdline": redact(" ".join(cmdline))[:250] + ("..." if len(" ".join(cmdline)) > 250 else ""),
+                "adapter": adapter_info,
+                "last_message": last_msg,
+                "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
+            })
+
+            # 自动接入闭环：若发现陌生 Agent 且尚未在调查中，立即在后台拉起 Goose (DeepSeek) 进行接管！
+            if not is_matched and not is_investigating:
+                threading.Thread(
+                    target=run_autonomous_investigation,
+                    args=(pid, struct),
+                    name=f"analyst-worker-{pid}",
+                    daemon=True
+                ).start()
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue

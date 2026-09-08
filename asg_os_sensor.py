@@ -162,10 +162,14 @@ class Sensor:
         if any(x in cmd for x in ("--type=utility", "--type=renderer", "--type=gpu-process", "--utility-sub-type", "--embedded-browser-webview")):
             return -1, ["排除Chromium/Electron内部辅助进程"]
 
-        # 排除系统级终端包装器自身 (bash/cmd/powershell 只是执行容器，由被拉起的子进程体现 agent)
+        # 排除系统级终端包装器与命令行容器自身 (bash/cmd/powershell 只是执行容器，由被拉起的子进程体现 agent)
         pname = (proc.info.get("name") or "").lower()
-        if pname in ("bash.exe", "sh.exe", "wsl.exe", "conhost.exe"):
+        if pname in ("bash.exe", "sh.exe", "wsl.exe", "conhost.exe", "cmd.exe", "powershell.exe", "pwsh.exe"):
             return -1, ["排除系统Shell/终端包装器自身"]
+
+        # 排除 npm/npx/cmdlet 等纯包管理器与加载器 (它们只是用来启动真实进程的管道)
+        if any(x in cmd for x in ("npx.cmd", "npm-loader.js", "npx-cli.js", "copilot.cmd")):
+            return -1, ["排除包管理器/加载器管道"]
 
         if "tmp." in cmd and "resp.json" in cmd:
             return -1, ["排除临时CLI管道"]
@@ -181,15 +185,23 @@ class Sensor:
             return -1, ["排除Analyst治理引擎自身"]
 
         # 排除单纯的 MCP 工具服务器 (MCP server 是供 agent 调用的外部工具/管道，不是 Agent 本体)
-        if "mcp-server" in cmd:
+        if "mcp-server" in cmd or "@modelcontextprotocol" in cmd:
             return -1, ["排除MCP工具服务端(非主动Agent编排器)"]
 
+        # 严禁“参数+网络+子进程盲凑50分”误判：必须前置具备核心意图门禁 (Intent)
+        # 严格检查：是真正的 Agent 模块/脚本/入口，而不是由于系统目录刚好在 AppData/Local/hermes 路径内被误匹配
         has_agent_intent = False
 
-        # 1. Agent 核心包路径、包名或标识 (通用 Agent 包特征，包括 hermes 等)
-        if any(x in cmd for x in ("hermes", "pi-coding-agent", "piagent", "claude-code", "codex", "agent", "opencode", "goose")):
+        # 1. 核心 Agent 入口标识：必须命中具体 Agent 的核心主程序、脚本或调度入口
+        # 注意：排除宽泛的纯路径字符串（如 C:\Users\...\AppData\Local\hermes 仅是安装基目录，不能作为 agent_intent）
+        agent_entry_patterns = (
+            "pi-coding-agent", "piagent", "claude-code", "claude.exe",
+            "codex.exe", "codex.js", "sheetagent", "openclaw", "opencode",
+            "hermes_cli.main", "hermes_cli"
+        )
+        if any(p in cmd for p in agent_entry_patterns):
             score += 30
-            reasons.append("Agent编排运行时标识(+30)")
+            reasons.append("Agent编排核心入口标识(+30)")
             has_agent_intent = True
 
         # 2. 结构化任务与模型/编排参数
@@ -212,33 +224,36 @@ class Sensor:
             reasons.append("结构化流协议(+20)")
             has_agent_intent = True
 
-        # 5. 辅助状态信号 (只要有一定 Agent 迹象，辅助信号就能助推确认)
-        if has_agent_intent or len(cmdline) >= 2:
-            if len(cmdline) >= 2:
+        # 核心门禁：如果没有任何主动 Agent Intent，即便子进程/网络参数再多，也绝不能判定为 Agent！
+        if not has_agent_intent:
+            return 0, ["无主动Agent编排意图"]
+
+        # 5. 辅助状态信号 (在具备主动 Intent 门禁的前提下，辅助信号助推置信度)
+        if len(cmdline) >= 2:
+            score += 10
+            reasons.append("参数化启动(+10)")
+        if any(ext in cmd for ext in (".js", ".py", ".ts", "dist/bundle", "bin/")):
+            score += 10
+            reasons.append("脚本/运行时分发包(+10)")
+        try:
+            children = proc.children(recursive=True)
+            if children:
                 score += 10
-                reasons.append("参数化启动(+10)")
-            if any(ext in cmd for ext in (".js", ".py", ".ts", "dist/bundle", "bin/")):
+                reasons.append(f"子进程编排={len(children)}(+10)")
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        try:
+            conns = proc.net_connections(kind="inet")
+            if conns:
                 score += 10
-                reasons.append("脚本/运行时分发包(+10)")
-            try:
-                children = proc.children(recursive=True)
-                if children:
-                    score += 10
-                    reasons.append(f"子进程编排={len(children)}(+10)")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-            try:
-                conns = proc.net_connections(kind="inet")
-                if conns:
-                    score += 10
-                    reasons.append(f"外部网络连接={len(conns)}(+10)")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+                reasons.append(f"外部网络连接={len(conns)}(+10)")
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
 
         for h in self.llm_hosts:
             if h in cmd:
                 score += 15
-                reasons.append(f"声明外部模型端点(+15)")
+                reasons.append("声明外部模型端点(+15)")
                 break
 
         return min(score, 100), reasons
