@@ -432,16 +432,21 @@ HTML_PAGE = """<!DOCTYPE html>
   .refresh-btn { background: var(--border); border: none; color: #fff; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
   .refresh-btn:hover { background: #334769; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 20px; }
-  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
-  .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
-  .agent-name { font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
-  .pid-tag { font-size: 11px; background: #1e293b; color: var(--accent); padding: 2px 6px; border-radius: 4px; border: 1px solid #334155; }
-  .score-badge { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 6px; }
-  .score-high { background: rgba(56, 189, 248, 0.2); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.4); }
-  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
-  .cmdline { font-size: 11px; color: #cbd5e1; background: #0b0f19; padding: 8px; border-radius: 6px; border: 1px solid #1e293b; word-break: break-all; font-family: monospace; }
-  .adapter-box { background: rgba(30, 41, 59, 0.5); border: 1px solid #23324d; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
-  .adapter-row { display: flex; justify-content: space-between; align-items: center; }
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .agent-name { font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pid-tag { font-size: 11px; background: #1e293b; color: var(--accent); padding: 2px 7px; border-radius: 4px; border: 1px solid #334155; font-family: monospace; }
+  .score-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
+  .score-high { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
+  .score-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .score-tag { font-size: 10px; background: rgba(51, 65, 85, 0.5); color: #cbd5e1; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(71, 85, 105, 0.4); }
+  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 5px; letter-spacing: 0.5px; }
+  .cmdline { font-size: 11px; color: #cbd5e1; background: #080c14; padding: 8px 10px; border-radius: 6px; border: 1px solid #1c273c; word-break: break-all; font-family: monospace; line-height: 1.4; }
+  .adapter-box { background: rgba(15, 23, 42, 0.6); border: 1px solid #23324d; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+  .adapter-group-title { font-size: 11px; font-weight: 700; color: #94a3b8; display: flex; align-items: center; gap: 6px; margin-top: 4px; padding-bottom: 3px; border-bottom: 1px solid rgba(51, 65, 85, 0.4); }
+  .adapter-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: start; line-height: 1.4; }
+  .adapter-label { color: var(--text-muted); font-size: 11px; }
+  .adapter-val { color: #f1f5f9; font-size: 11px; word-break: break-word; }
   .adapter-status { color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
   .adapter-unmatched { color: var(--amber); }
   .adapter-working { color: var(--indigo); animation: blink 1.5s infinite; }
@@ -449,6 +454,10 @@ HTML_PAGE = """<!DOCTYPE html>
   .msg-box { background: #080c14; border: 1px solid #1c273c; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; }
   .msg-header { display: flex; justify-content: space-between; color: var(--accent); margin-bottom: 6px; font-weight: 600; border-bottom: 1px dashed #1c273c; padding-bottom: 4px; }
   .msg-content { color: #e2e8f0; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; }
+  .stream-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); padding: 4px 8px; background: rgba(15, 23, 42, 0.4); border-radius: 4px; border: 1px dashed #334155; }
+  .btn-reinvestigate { background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; font-size: 10px; border-radius: 4px; padding: 3px 8px; cursor: pointer; transition: all 0.2s; }
+  .btn-reinvestigate:hover { background: rgba(99, 102, 241, 0.3); }
+  .btn-reinvestigate:disabled { opacity: 0.5; cursor: not-allowed; }
   .footer { margin-top: 30px; text-align: center; font-size: 12px; color: var(--text-muted); display: flex; justify-content: center; gap: 15px; }
 </style>
 </head>
@@ -481,6 +490,20 @@ HTML_PAGE = """<!DOCTYPE html>
 </div>
 
 <script>
+function formatUptime(sec) {
+  if (!sec || isNaN(sec) || sec < 0) return '0秒';
+  if (sec < 60) return sec + '秒';
+  if (sec < 3600) return Math.floor(sec / 60) + '分 ' + (sec % 60) + '秒';
+  if (sec < 86400) {
+    const h = (sec / 3600).toFixed(1);
+    return h + '小时';
+  }
+  const d = (sec / 86400).toFixed(1);
+  return d + '天';
+}
+
+const reinvestigatingPids = new Set();
+
 async function updateUI() {
   try {
     const res = await fetch('/api/state');
@@ -498,87 +521,35 @@ async function updateUI() {
     let html = '';
     data.agents.forEach(a => {
       const isMatched = a.adapter && a.adapter.matched;
-      const isInvestigating = a.adapter && a.adapter.investigating;
+      const isInvestigating = (a.adapter && a.adapter.investigating) || reinvestigatingPids.has(a.pid);
+      if (!isInvestigating && reinvestigatingPids.has(a.pid)) {
+        reinvestigatingPids.delete(a.pid);
+      }
       
       let statusHtml = '';
-      if (isMatched) {
-        statusHtml = `<span class="adapter-status">✓ 已适配挂接 (${a.adapter.harness_id} · ${a.adapter.match_ms}ms)</span>`;
-      } else if (isInvestigating) {
+      if (isInvestigating) {
         statusHtml = `<span class="adapter-status adapter-working">⚡ 正在自主逆向接管中 (Goose Agent Work)...</span>`;
+      } else if (isMatched) {
+        statusHtml = `<span class="adapter-status">✓ 已适配挂接 (${a.adapter.harness_id} · ${a.adapter.match_ms}ms)</span>`;
       } else {
         statusHtml = `<span class="adapter-status adapter-unmatched">⚡ 陌生 Runtime (等待调度逆向)</span>`;
       }
         
-      let msgDetail = a.last_message ? a.last_message.detail : '暂无消息';
-      if (typeof msgDetail === 'object') {
-        msgDetail = JSON.stringify(msgDetail, null, 2);
-      }
-
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = (a.instances && a.instances.length > 1) ? `PIDs: ${a.instances.join(', ')}` : `PID: ${a.pid}`;
 
-      html += `
-        <div class="card">
-          <div class="card-top">
-            <div>
-              <div class="agent-name">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount}</div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时间: ${a.uptime_sec}s</div>
-            </div>
-            <div class="score-badge score-high">画像分: ${a.score}</div>
-          </div>
-          
-          <div>
-            <div class="section-label">启动命令行与参数特征</div>
-            <div class="cmdline">${a.cmdline}</div>
-          </div>
+      const reasonTags = (a.reasons && a.reasons.length) 
+        ? `<div class="score-tags">${a.reasons.map(r => `<span class="score-tag">${r}</span>`).join('')}</div>`
+        : '';
 
+      const hasSemanticMsg = a.last_message && a.last_message.event_type && a.last_message.event_type !== '未监听';
+      let semanticHtml = '';
+      if (hasSemanticMsg) {
+        let msgDetail = a.last_message.detail || '暂无内容';
+        if (typeof msgDetail === 'object') msgDetail = JSON.stringify(msgDetail, null, 2);
+        semanticHtml = `
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <div class="section-label" style="margin-bottom: 0;">Agent 深度治理全景档案 (Goose 自主逆向推导)</div>
-              <button onclick="triggerReinvestigate(${a.pid})" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; font-size: 10px; border-radius: 4px; padding: 2px 6px; cursor: pointer;">⚡ Goose 深度重测</button>
-            </div>
-            <div class="adapter-box">
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">适配状态:</span>
-                ${statusHtml}
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">宿主与工作区:</span>
-                <span style="color: #38bdf8; font-family: monospace;">${a.adapter.host_platform} · ${a.adapter.workspace_cwd || '未知工作区'}</span>
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">模型与网关端点:</span>
-                <span style="color: #34d399; font-family: monospace;">${a.adapter.model_routing && a.adapter.model_routing.model ? (a.adapter.model_routing.model + ' (' + (a.adapter.model_routing.provider || 'default') + ')') : '自动解析中...'}</span>
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">可用 Tools / MCP:</span>
-                <span style="color: #f1f5f9; font-size: 11px;">${Array.isArray(a.adapter.registered_tools_and_mcp) && a.adapter.registered_tools_and_mcp.length ? a.adapter.registered_tools_and_mcp.join(', ') : '标准 Agent 工具集'}</span>
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">行规/Prompt 约束:</span>
-                <span style="color: #cbd5e1; font-size: 11px;">${Array.isArray(a.adapter.system_prompt_rules) && a.adapter.system_prompt_rules.length ? a.adapter.system_prompt_rules.join(', ') : '未挂载本地规则'}</span>
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">配置解析提取:</span>
-                <span style="color: #cbd5e1; font-size: 11px;">${a.adapter.parsed_config && Object.keys(a.adapter.parsed_config).length ? Object.entries(a.adapter.parsed_config).map(([k,v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' | ') : '由 Goose 自动读取解析中...'}</span>
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">衍生子进程轨迹:</span>
-                <span style="color: #f59e0b; font-size: 11px; font-family: monospace;">${Array.isArray(a.adapter.child_executions) && a.adapter.child_executions.length ? a.adapter.child_executions.join(', ') : '无活跃子执行 / 瞬态无残留'}</span>
-              </div>
-              <div class="adapter-row">
-                <span style="color: var(--text-muted);">网络与监听端点:</span>
-                <span style="color: #38bdf8; font-size: 11px; font-family: monospace;">${a.adapter.network_surface ? ((a.adapter.network_surface.listening_ports && a.adapter.network_surface.listening_ports.length ? '监听: ' + a.adapter.network_surface.listening_ports.join(', ') : '无本地监听') + ' · ' + (a.adapter.network_surface.remote_peers && a.adapter.network_surface.remote_peers.length ? '外联: ' + a.adapter.network_surface.remote_peers.join(', ') : '无活跃外联')) : '检测中...'}</span>
-              </div>
-              <div style="border-top: 1px dashed #334155; padding-top: 6px; margin-top: 2px;">
-                <span style="color: var(--text-muted);">治理分析总结:</span>
-                <div style="color: #cbd5e1; margin-top: 3px; font-size: 11px; line-height: 1.4;">${a.adapter.observation}</div>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div class="section-label">最新拦截/捕获的语义消息 (Semantic Ingestion)</div>
+            <div class="section-label">实时拦截语义消息</div>
             <div class="msg-box">
               <div class="msg-header">
                 <span>事件: ${a.last_message.event_type}</span>
@@ -587,6 +558,86 @@ async function updateUI() {
               <div class="msg-content">${msgDetail}</div>
             </div>
           </div>
+        `;
+      } else {
+        semanticHtml = `
+          <div>
+            <div class="stream-badge">
+              <span>🛡️ 语义拦截 Sink:</span>
+              <span style="color: #64748b;">被动探测中 · 待流量流入自动激活</span>
+            </div>
+          </div>
+        `;
+      }
+
+      const btnText = isInvestigating ? '⚡ 正在重推导...' : '⚡ Goose 深度重测';
+      const btnDisabled = isInvestigating ? 'disabled' : '';
+
+      html += `
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="agent-name">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount}</div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
+            </div>
+            <div style="text-align: right;">
+              <div class="score-badge score-high">画像分: ${a.score}</div>
+              ${reasonTags}
+            </div>
+          </div>
+          
+          <div>
+            <div class="section-label">启动命令行与参数特征</div>
+            <div class="cmdline">${a.cmdline}</div>
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+              <div class="section-label" style="margin-bottom: 0;">Agent 深度治理全景档案 (Goose 自主逆向推导)</div>
+              <button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="btn-reinvestigate" ${btnDisabled}>${btnText}</button>
+            </div>
+            <div class="adapter-box">
+              <div class="adapter-group-title">🏢 身份与运行环境</div>
+              <div class="adapter-row">
+                <span class="adapter-label">适配状态:</span>
+                <span class="adapter-val">${statusHtml}</span>
+              </div>
+              <div class="adapter-row">
+                <span class="adapter-label">宿主与工作区:</span>
+                <span class="adapter-val" style="color: #38bdf8; font-family: monospace;">${a.adapter.host_platform} · ${a.adapter.workspace_cwd || '未知工作区'}</span>
+              </div>
+
+              <div class="adapter-group-title">🧠 模型与治理策略</div>
+              <div class="adapter-row">
+                <span class="adapter-label">模型与网关端点:</span>
+                <span class="adapter-val" style="color: #34d399; font-family: monospace;">${a.adapter.model_routing && a.adapter.model_routing.model ? (a.adapter.model_routing.model + ' (' + (a.adapter.model_routing.provider || 'default') + ')') : '自动解析中...'}</span>
+              </div>
+              <div class="adapter-row">
+                <span class="adapter-label">可用 Tools / MCP:</span>
+                <span class="adapter-val" style="color: #f1f5f9;">${Array.isArray(a.adapter.registered_tools_and_mcp) && a.adapter.registered_tools_and_mcp.length ? a.adapter.registered_tools_and_mcp.join(', ') : '标准 Agent 工具集'}</span>
+              </div>
+              <div class="adapter-row">
+                <span class="adapter-label">行规/Prompt 约束:</span>
+                <span class="adapter-val" style="color: #cbd5e1;">${Array.isArray(a.adapter.system_prompt_rules) && a.adapter.system_prompt_rules.length ? a.adapter.system_prompt_rules.join(', ') : '未挂载本地规则'}</span>
+              </div>
+              <div class="adapter-row">
+                <span class="adapter-label">配置解析提取:</span>
+                <span class="adapter-val" style="color: #cbd5e1;">${a.adapter.parsed_config && Object.keys(a.adapter.parsed_config).length ? Object.entries(a.adapter.parsed_config).map(([k,v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' | ') : '由 Goose 自动读取解析中...'}</span>
+              </div>
+
+              <div class="adapter-group-title">🌐 执行与通信画像</div>
+              <div class="adapter-row">
+                <span class="adapter-label">衍生子进程轨迹:</span>
+                <span class="adapter-val" style="color: #f59e0b; font-family: monospace;">${Array.isArray(a.adapter.child_executions) && a.adapter.child_executions.length ? a.adapter.child_executions.join(', ') : '无活跃子执行 / 瞬态无残留'}</span>
+              </div>
+              <div class="adapter-row">
+                <span class="adapter-label">网络与监听端点:</span>
+                <span class="adapter-val" style="color: #38bdf8; font-family: monospace;">${a.adapter.network_surface ? ((a.adapter.network_surface.listening_ports && a.adapter.network_surface.listening_ports.length ? '监听: ' + a.adapter.network_surface.listening_ports.join(', ') : '无本地监听') + ' · ' + (a.adapter.network_surface.remote_peers && a.adapter.network_surface.remote_peers.length ? '外联: ' + a.adapter.network_surface.remote_peers.join(', ') : '无活跃外联')) : '检测中...'}</span>
+              </div>
+            </div>
+          </div>
+
+          ${semanticHtml}
         </div>
       `;
     });
@@ -602,7 +653,15 @@ async function triggerScan() {
 }
 
 async function triggerReinvestigate(pid) {
-  await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
+  const btn = document.getElementById('btn-reinv-' + pid);
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⚡ 正在重推导...';
+  }
+  reinvestigatingPids.add(pid);
+  try {
+    await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
+  } catch(e) {}
   await updateUI();
 }
 
