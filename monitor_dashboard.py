@@ -16,7 +16,7 @@ import shutil
 import threading
 import subprocess
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 import psutil
 
@@ -550,7 +550,7 @@ def main():
     t.start()
     print("[Monitor] 30s 扫描与自动接管引擎已启动")
     
-    server = HTTPServer(("127.0.0.1", port), MonitorHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), MonitorHandler)
     print(f"[Monitor] Web 界面已就绪: http://127.0.0.1:{port}")
     server.serve_forever()
 

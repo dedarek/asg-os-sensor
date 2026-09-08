@@ -8,18 +8,24 @@ import json
 import time
 from pathlib import Path
 
+import threading
+
 DB = Path(__file__).resolve().parent / "fingerprints.json"
+FILE_LOCK = threading.Lock()
 
 
 def load():
-    try:
-        return json.loads(DB.read_text(encoding="utf-8"))
-    except Exception:
-        return {"fingerprints": [], "version": 1}
+    with FILE_LOCK:
+        try:
+            return json.loads(DB.read_text(encoding="utf-8"))
+        except Exception:
+            return {"fingerprints": [], "version": 1}
 
 
 def save(db):
-    DB.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
+    with FILE_LOCK:
+        # Windows 上直接写，配合锁保护
+        DB.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def features_of(struct):
@@ -64,16 +70,32 @@ def match(struct):
 
 def remember(struct, recipe, mount_ms):
     db = load()
-    # 提取有意义的 Agent 名称 (严格优先信任 Goose/Analyst 推导出的 agent_identity_name)
     agent_name = recipe.get("agent_identity_name") or recipe.get("agent_name")
     if not agent_name or agent_name == "unknown-runtime":
         agent_name = struct.get("runtime_class", "unknown-runtime")
+
+    f = features_of(struct)
+
+    # 检查是否已存在同类样本特征，若存在则更新迭代该样本，而非无脑重复 append
+    for existing in db.get("fingerprints", []):
+        ef = existing.get("features", {})
+        if ef.get("exe") == f["exe"] and ef.get("runtime") == f["runtime"]:
+            # 如果配置目录或关键运行特征一致，合并演进
+            if ef.get("config_dirs") == f["config_dirs"]:
+                existing["match_count"] = int(existing.get("match_count", 1)) + 1
+                existing["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                existing["mount_ms"] = mount_ms
+                if agent_name and agent_name not in ["unknown", "unknown-runtime", "unidentified-agent"]:
+                    existing["name"] = agent_name
+                existing["hook_recipe"] = recipe
+                save(db)
+                return existing
 
     entry = {"id": f"harness-{len(db.get('fingerprints', [])) + 1:02d}",
              "name": agent_name,
              "first_seen": time.strftime("%Y-%m-%dT%H:%M:%S"),
              "match_count": 1, "mount_ms": mount_ms,
-             "features": features_of(struct),
+             "features": f,
              "children_classes": struct.get("children_classes", []),
              "hook_recipe": recipe,
              "observed_exe_full": struct.get("exe_full", "")}
