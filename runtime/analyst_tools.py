@@ -134,6 +134,7 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
         "identity": "unknown-runtime",
         "argv_shape": argv_raw[:15],
         "config_candidates_in_argv": config_candidates,
+        "cwd": cwd,
         "cwd_class": "local-workspace" if cwd else "unavailable",
         "status": p.status(),
         "children": children,
@@ -219,6 +220,92 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     p = target_process()
     if name == "get_target_context":
         return {"target": process_row(p), "tree": tree_rows(p), "stream": stream_tail(), "prior_memory": load_prior()}
+    if name == "inspect_config_surface":
+        # 安全脱敏读取配置文件内容，提取模型、URL、Tools、MCP、规则设定，绝对不暴露密钥
+        target_path_str = str(args.get("path", "")).strip()
+        found_configs = []
+        if target_path_str:
+            p_cand = Path(target_path_str)
+            if p_cand.exists() and p_cand.is_file():
+                found_configs.append(p_cand)
+        else:
+            # 自动探测进程打开的配置文件或当前工作区/用户目录典型配置文件
+            try:
+                for f in p.open_files():
+                    fp = Path(str(f.path))
+                    if fp.suffix.lower() in {".json", ".yaml", ".yml", ".toml", ".env", ".ini", ".md"}:
+                        if any(k in fp.name.lower() for k in ["config", "setting", "claude", "agent", "mcp", ".env", "rule", "prompt"]):
+                            found_configs.append(fp)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+            try:
+                cwd = p.cwd()
+                if cwd:
+                    cwd_p = Path(cwd)
+                    for rule_name in ["AGENTS.md", "CLAUDE.md", ".cursorrules", "config.yaml", "config.json"]:
+                        if (cwd_p / rule_name).exists():
+                            found_configs.append(cwd_p / rule_name)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        results = []
+        for cfg_file in found_configs[:5]:
+            try:
+                text = cfg_file.read_text(encoding="utf-8", errors="replace")[:10000]
+                # 严格安全脱敏：剔除所有密钥、密码、Token
+                redacted_text = redact(text)
+                results.append({
+                    "path": str(cfg_file),
+                    "filename": cfg_file.name,
+                    "content_sample": safe_text(redacted_text, 2000)
+                })
+            except Exception as e:
+                results.append({"path": str(cfg_file), "error": str(e)})
+        return {"configs": results}
+
+    if name == "inspect_network_peers":
+        # 探测当前进程及子进程的真实外联与本地监听
+        net_info = {"listeners": [], "outbound_connections": []}
+        try:
+            for c in p.net_connections(kind="inet"):
+                if c.status == "LISTEN":
+                    net_info["listeners"].append(f"{c.laddr.ip}:{c.laddr.port}")
+                elif c.raddr:
+                    net_info["outbound_connections"].append(f"{c.raddr.ip}:{c.raddr.port} (status={c.status})")
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        return net_info
+
+    if name == "inspect_execution_trace":
+        # 探测真实衍生执行链路与当前打开的敏感文件
+        sensitive_opened = []
+        try:
+            for f in p.open_files():
+                p_str = str(f.path).lower()
+                if any(k in p_str for k in ["id_rsa", ".ssh", ".aws", "credentials", "token", ".env", "secret"]):
+                    sensitive_opened.append(str(f.path))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+        child_traces = []
+        try:
+            for c in p.children(recursive=True):
+                try:
+                    child_traces.append({
+                        "pid": c.pid,
+                        "name": c.name(),
+                        "cmdline": redact(" ".join(c.cmdline()))[:150]
+                    })
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+        return {
+            "sensitive_files_accessed": sensitive_opened,
+            "child_execution_tree": child_traces[:20]
+        }
+
     if name == "observe_tree":
         return {"tree": tree_rows(p)}
     if name == "observe_runtime_surface":
@@ -296,6 +383,9 @@ TOOLS = [
     {"name": "get_target_context", "description": "Read the supervisor-bound target dossier, process tree, stream shape, and prior memory.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_tree", "description": "Observe only the target process and descendants within the supervisor scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_runtime_surface", "description": "Inspect generic runtime, files, network shape, children, and stream capabilities; no secrets are returned.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "inspect_config_surface", "description": "Inspect opened or project configuration files (e.g. config.json, config.yaml, .env, AGENTS.md, CLAUDE.md) safely with secrets redacted to discover models, endpoints, tools, and rules.", "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "Optional specific config file path"}}}},
+    {"name": "inspect_network_peers", "description": "Inspect active local listening ports and remote model endpoint connections.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "inspect_execution_trace", "description": "Inspect sensitive files accessed and active child command lines spawned by the agent.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "probe_help", "description": "Run only --help and --version against the observed executable, without a shell or arbitrary arguments.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_stream", "description": "Inspect a supervisor-exposed output stream and return structure samples after redaction.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},

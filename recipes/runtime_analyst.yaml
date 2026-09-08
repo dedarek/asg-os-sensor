@@ -22,18 +22,31 @@ prompt: |
 
   Objective:
   1. Establish whether this is an active agent-like runtime from behavior and process structure.
-  2. Find its process tree, generic runtime class, observable configuration surface (e.g. config files, settings flags, or open paths), and semantic output surface.
-  3. Determine the agent's observable configuration location, runtime hooks, and protocol without reading secrets.
+  2. Inspect the runtime surface using tools:
+     - Use `get_target_context` to inspect PID, CWD, parent lineage, and prior memory.
+     - Use `inspect_config_surface` to safely read configuration files (e.g. config.json, config.yaml, .env, AGENTS.md, CLAUDE.md) to discover actual models, endpoints, MCP servers, and system instructions.
+     - Use `inspect_network_peers` to find active local listening ports and remote model endpoint connections.
+     - Use `inspect_execution_trace` to inspect accessed sensitive paths and spawned child tasks.
+  3. Determine the agent's observable configuration location, runtime hooks, model routing, tools, and protocol without reading secrets.
   4. Decide the least invasive generic observation and adapter strategy.
      - Check prior memory (get_prior_recipe): Compare the observed runtime against previously remembered agent recipes.
        * If this process matches or belongs to a known family in prior memory, refine and evolve that recipe (e.g. improve hook/observation/identity accuracy) and cite the matched harness ID in match_features (e.g. "evolves_prior_harness": "harness-XX").
        * If genuinely novel, formulate a fresh generic recipe.
   5. Call propose_recipe with a complete JSON object containing:
-     match_features, agent_identity_name, observation, hook, redaction, confidence, fallback.
-     - Note on agent_identity_name: Infer a clean human-readable agent identity name solely from the discovered evidence (process parent_lineage, package directory, script tokens, or open paths), without raw executable names like 'node.exe'.
-       * If the process is a standalone agent, use its identified name (e.g. 'pi-coding-agent', 'claude-code', 'codex').
-       * If the process is a worker or sub-agent spawned by a host platform / IDE harness (e.g. parent_lineage contains desktop IDE/harness executables), synthesize a clean hierarchical identity: '<HostPlatform> / <WorkerName>' (e.g. '<DetectedHost> / <DetectedWorker>').
-  6. Finish with a concise evidence-backed report, detailing what configuration locations, protocol characteristics, and hook approaches were discovered.
+     - match_features (object)
+     - agent_identity_name (string: e.g. 'pi-coding-agent', 'hermes-agent', or '<HostPlatform> / <WorkerName>')
+     - host_platform (string: detected host IDE or desktop client, or 'Standalone CLI')
+     - workspace_cwd (string: agent working directory)
+     - model_routing (object: e.g. {"model": "...", "provider": "...", "base_url": "..."})
+     - registered_tools_and_mcp (list of strings or object: tools and MCP servers registered)
+     - system_prompt_rules (list of strings: e.g. ["AGENTS.md", "CLAUDE.md", "custom persona summary"])
+     - network_surface (object: listeners and remote endpoints)
+     - observation (string: human-readable concise architecture and governance summary)
+     - hook (object: hook points, transport, interception plan)
+     - redaction (list of strings: keys redacted)
+     - confidence (number: 0.0 - 1.0)
+     - fallback (string)
+  6. Finish with a concise evidence-backed report, detailing what models, tools, configuration locations, network endpoints, and hook approaches were discovered.
 settings:
   temperature: 0
   max_turns: 12

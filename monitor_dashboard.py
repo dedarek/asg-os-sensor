@@ -88,102 +88,102 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
 
     with INVESTIGATION_SEMAPHORE:
         run_dir = ROOT / "e2e" / "artifacts" / "autonomous-governance" / f"pid_{pid}_{int(time.time())}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    recipes_dir = run_dir / "recipes"
-    recipes_dir.mkdir(parents=True, exist_ok=True)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        recipes_dir = run_dir / "recipes"
+        recipes_dir.mkdir(parents=True, exist_ok=True)
 
-    stream_file = run_dir / "target_stream.jsonl"
-    stream_file.touch()
+        stream_file = run_dir / "target_stream.jsonl"
+        stream_file.touch()
 
-    with STATE_LOCK:
-        SCAN_STATE["active_investigations"][pid] = {
-            "status": "investigating",
-            "started_at": time.strftime("%H:%M:%S"),
-            "log_dir": str(run_dir)
-        }
-
-    try:
-        route = analyst_route()
-        key = os.environ.get(route["key_env"], "")
-        if not key:
-            for env_path in [Path.home() / "AppData/Local/hermes/.env", Path.home() / ".env"]:
-                if env_path.exists():
-                    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                        if line.startswith(f"{route['key_env']}="):
-                            key = line.split("=", 1)[1].strip()
-                            break
-        
-        if not key:
-            print(f"[Analyst] 缺少凭据 {route['key_env']}，跳过接管 PID {pid}", file=sys.stderr)
-            return
-
-        extension = f"asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={run_dir} ASG_RECIPE_DIR={recipes_dir} ASG_TARGET_STREAM_FILE={stream_file} python runtime/analyst_tools.py"
-        cmd = [
-            str(GOOSE), "run", "--no-profile", "--no-session",
-            "--recipe", str(RECIPE),
-            "--params", f"target_pid={pid}",
-            "--provider", route["provider"],
-            "--model", route["model"],
-            "--max-turns", "6",
-            "--max-tool-repetitions", "2",
-            "--output-format", "stream-json",
-            "--with-extension", extension
-        ]
-
-        env = os.environ.copy()
-        env["GOOSE_PROVIDER"] = route["provider"]
-        env["GOOSE_MODEL"] = route["model"]
-        env["GOOSE_MODE"] = "auto"
-        env["OPENAI_BASE_URL"] = route["base_url"]
-        env["OPENAI_API_KEY"] = key
-        if route["route"] == "opencode-go":
-            env["OPENAI_CUSTOM_HEADERS"] = f"x-opencode-session=asg-live-{pid},x-opencode-client=asg-live-analyst"
-
-        out_path = run_dir / "analyst_stdout.jsonl"
-        err_path = run_dir / "analyst_stderr.log"
-
-        print(f"[Analyst] Goose 开始自主逆向接管 PID={pid}...")
-        t0 = time.time()
-        cp = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=180)
-        elapsed_ms = int((time.time() - t0) * 1000)
-
-        # 检查是否成功产出 candidate.json
-        candidate_file = recipes_dir / "candidate.json"
-        if candidate_file.exists():
-            payload = json.loads(candidate_file.read_text(encoding="utf-8"))
-            recipe = payload.get("recipe", {})
-            identity = recipe.get("agent_identity_name", "")
-            # 严格质量门禁：只有逆向成功观测到有效特征且非"unidentified/unknown"时，才允许写入指纹库
-            if (
-                isinstance(recipe, dict)
-                and "match_features" in recipe
-                and identity not in ["", "unknown", "unknown-runtime", "unidentified-agent"]
-                and recipe.get("confidence", 0) >= 0.3
-            ):
-                # 写入指纹库
-                entry = matcher.remember(struct, recipe, elapsed_ms)
-                print(f"[Analyst] 接管成功并写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
-            else:
-                print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
-        else:
-            print(f"[Analyst] 接管完成但未产生有效 Recipe (returncode={cp.returncode})", file=sys.stderr)
-
-    except Exception as exc:
-        print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
-    finally:
-        with INVESTIGATION_LOCK:
-            INVESTIGATING_PIDS.discard(pid)
         with STATE_LOCK:
-            SCAN_STATE["active_investigations"].pop(pid, None)
-        # 立即更新指纹库统计与扫描结果
+            SCAN_STATE["active_investigations"][pid] = {
+                "status": "investigating",
+                "started_at": time.strftime("%H:%M:%S"),
+                "log_dir": str(run_dir)
+            }
+
         try:
-            fp_path = ROOT / "runtime" / "fingerprints.json"
-            if fp_path.exists():
-                fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
-                with STATE_LOCK:
-                    SCAN_STATE["fingerprints_count"] = len(fp_data.get("fingerprints", []))
-        except Exception:
-            pass
+            route = analyst_route()
+            key = os.environ.get(route["key_env"], "")
+            if not key:
+                for env_path in [Path.home() / "AppData/Local/hermes/.env", Path.home() / ".env"]:
+                    if env_path.exists():
+                        for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                            if line.startswith(f"{route['key_env']}="):
+                                key = line.split("=", 1)[1].strip()
+                                break
+            
+            if not key:
+                print(f"[Analyst] 缺少凭据 {route['key_env']}，跳过接管 PID {pid}", file=sys.stderr)
+                return
+
+            extension = f"asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={run_dir} ASG_RECIPE_DIR={recipes_dir} ASG_TARGET_STREAM_FILE={stream_file} python runtime/analyst_tools.py"
+            cmd = [
+                str(GOOSE), "run", "--no-profile", "--no-session",
+                "--recipe", str(RECIPE),
+                "--params", f"target_pid={pid}",
+                "--provider", route["provider"],
+                "--model", route["model"],
+                "--max-turns", "12",
+                "--max-tool-repetitions", "2",
+                "--output-format", "stream-json",
+                "--with-extension", extension
+            ]
+
+            env = os.environ.copy()
+            env["GOOSE_PROVIDER"] = route["provider"]
+            env["GOOSE_MODEL"] = route["model"]
+            env["GOOSE_MODE"] = "auto"
+            env["OPENAI_BASE_URL"] = route["base_url"]
+            env["OPENAI_API_KEY"] = key
+            if route["route"] == "opencode-go":
+                env["OPENAI_CUSTOM_HEADERS"] = f"x-opencode-session=asg-live-{pid},x-opencode-client=asg-live-analyst"
+
+            out_path = run_dir / "analyst_stdout.jsonl"
+            err_path = run_dir / "analyst_stderr.log"
+
+            print(f"[Analyst] Goose 开始自主逆向接管 PID={pid}...")
+            t0 = time.time()
+            cp = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=180)
+            elapsed_ms = int((time.time() - t0) * 1000)
+
+            # 检查是否成功产出 candidate.json
+            candidate_file = recipes_dir / "candidate.json"
+            if candidate_file.exists():
+                payload = json.loads(candidate_file.read_text(encoding="utf-8"))
+                recipe = payload.get("recipe", {})
+                identity = recipe.get("agent_identity_name", "")
+                # 严格质量门禁：只有逆向成功观测到有效特征且非"unidentified/unknown"时，才允许写入指纹库
+                if (
+                    isinstance(recipe, dict)
+                    and "match_features" in recipe
+                    and identity not in ["", "unknown", "unknown-runtime", "unidentified-agent"]
+                    and recipe.get("confidence", 0) >= 0.3
+                ):
+                    # 写入指纹库
+                    entry = matcher.remember(struct, recipe, elapsed_ms)
+                    print(f"[Analyst] 接管成功并写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
+                else:
+                    print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
+            else:
+                print(f"[Analyst] 接管完成但未产生有效 Recipe (returncode={cp.returncode})", file=sys.stderr)
+
+        except Exception as exc:
+            print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
+        finally:
+            with INVESTIGATION_LOCK:
+                INVESTIGATING_PIDS.discard(pid)
+            with STATE_LOCK:
+                SCAN_STATE["active_investigations"].pop(pid, None)
+            # 立即更新指纹库统计与扫描结果
+            try:
+                fp_path = ROOT / "runtime" / "fingerprints.json"
+                if fp_path.exists():
+                    fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
+                    with STATE_LOCK:
+                        SCAN_STATE["fingerprints_count"] = len(fp_data.get("fingerprints", []))
+            except Exception:
+                pass
         scan_agents_once()
 
 
@@ -293,14 +293,25 @@ def scan_agents_once():
             with INVESTIGATION_LOCK:
                 is_investigating = (pid in INVESTIGATING_PIDS)
 
+            recipe_obj = matched_fp.get("hook_recipe", {}) if matched_fp else {}
             adapter_info = {
                 "matched": is_matched,
                 "investigating": is_investigating,
                 "match_ms": match_ms,
                 "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
-                "behavioral_class": (matched_fp.get("hook_recipe", {}).get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
-                "observation": (matched_fp.get("hook_recipe", {}).get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
-                "hook": (matched_fp.get("hook_recipe", {}).get("hook")) if matched_fp else "未挂接"
+                "behavioral_class": (recipe_obj.get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
+                "observation": (recipe_obj.get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
+                "hook": (recipe_obj.get("hook")) if matched_fp else "未挂接",
+                # Goose 深度逆向推导的治理全景档案
+                "host_platform": recipe_obj.get("host_platform") or "独立CLI / 未标注",
+                "workspace_cwd": recipe_obj.get("workspace_cwd") or struct.get("cwd", ""),
+                "parsed_config": recipe_obj.get("parsed_config") or {},
+                "model_routing": recipe_obj.get("model_routing") or {},
+                "registered_tools_and_mcp": recipe_obj.get("registered_tools_and_mcp") or [],
+                "system_prompt_rules": recipe_obj.get("system_prompt_rules") or [],
+                "network_surface": recipe_obj.get("network_surface") or {},
+                "child_executions": recipe_obj.get("child_executions") or [],
+                "memory_context": recipe_obj.get("memory_context") or {},
             }
             
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
@@ -521,19 +532,46 @@ async function updateUI() {
           </div>
 
           <div>
-            <div class="section-label">Adapter 挂接与指纹状态</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div class="section-label" style="margin-bottom: 0;">Agent 深度治理全景档案 (Goose 自主逆向推导)</div>
+              <button onclick="triggerReinvestigate(${a.pid})" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; font-size: 10px; border-radius: 4px; padding: 2px 6px; cursor: pointer;">⚡ Goose 深度重测</button>
+            </div>
             <div class="adapter-box">
               <div class="adapter-row">
-                <span style="color: var(--text-muted);">状态:</span>
+                <span style="color: var(--text-muted);">适配状态:</span>
                 ${statusHtml}
               </div>
               <div class="adapter-row">
-                <span style="color: var(--text-muted);">运行时类:</span>
-                <span style="color: #fff; font-family: monospace;">${a.adapter.behavioral_class}</span>
+                <span style="color: var(--text-muted);">宿主与工作区:</span>
+                <span style="color: #38bdf8; font-family: monospace;">${a.adapter.host_platform} · ${a.adapter.workspace_cwd || '未知工作区'}</span>
               </div>
-              <div>
-                <span style="color: var(--text-muted);">观测配方 (Recipe):</span>
-                <div style="color: #cbd5e1; margin-top: 4px; font-size: 11px; line-height: 1.4;">${a.adapter.observation}</div>
+              <div class="adapter-row">
+                <span style="color: var(--text-muted);">模型与网关端点:</span>
+                <span style="color: #34d399; font-family: monospace;">${a.adapter.model_routing && a.adapter.model_routing.model ? (a.adapter.model_routing.model + ' (' + (a.adapter.model_routing.provider || 'default') + ')') : '自动解析中...'}</span>
+              </div>
+              <div class="adapter-row">
+                <span style="color: var(--text-muted);">可用 Tools / MCP:</span>
+                <span style="color: #f1f5f9; font-size: 11px;">${Array.isArray(a.adapter.registered_tools_and_mcp) && a.adapter.registered_tools_and_mcp.length ? a.adapter.registered_tools_and_mcp.join(', ') : '标准 Agent 工具集'}</span>
+              </div>
+              <div class="adapter-row">
+                <span style="color: var(--text-muted);">行规/Prompt 约束:</span>
+                <span style="color: #cbd5e1; font-size: 11px;">${Array.isArray(a.adapter.system_prompt_rules) && a.adapter.system_prompt_rules.length ? a.adapter.system_prompt_rules.join(', ') : '未挂载本地规则'}</span>
+              </div>
+              <div class="adapter-row">
+                <span style="color: var(--text-muted);">配置解析提取:</span>
+                <span style="color: #cbd5e1; font-size: 11px;">${a.adapter.parsed_config && Object.keys(a.adapter.parsed_config).length ? Object.entries(a.adapter.parsed_config).map(([k,v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' | ') : '由 Goose 自动读取解析中...'}</span>
+              </div>
+              <div class="adapter-row">
+                <span style="color: var(--text-muted);">衍生子进程轨迹:</span>
+                <span style="color: #f59e0b; font-size: 11px; font-family: monospace;">${Array.isArray(a.adapter.child_executions) && a.adapter.child_executions.length ? a.adapter.child_executions.join(', ') : '无活跃子执行 / 瞬态无残留'}</span>
+              </div>
+              <div class="adapter-row">
+                <span style="color: var(--text-muted);">网络与监听端点:</span>
+                <span style="color: #38bdf8; font-size: 11px; font-family: monospace;">${a.adapter.network_surface ? ((a.adapter.network_surface.listening_ports && a.adapter.network_surface.listening_ports.length ? '监听: ' + a.adapter.network_surface.listening_ports.join(', ') : '无本地监听') + ' · ' + (a.adapter.network_surface.remote_peers && a.adapter.network_surface.remote_peers.length ? '外联: ' + a.adapter.network_surface.remote_peers.join(', ') : '无活跃外联')) : '检测中...'}</span>
+              </div>
+              <div style="border-top: 1px dashed #334155; padding-top: 6px; margin-top: 2px;">
+                <span style="color: var(--text-muted);">治理分析总结:</span>
+                <div style="color: #cbd5e1; margin-top: 3px; font-size: 11px; line-height: 1.4;">${a.adapter.observation}</div>
               </div>
             </div>
           </div>
@@ -559,6 +597,11 @@ async function updateUI() {
 
 async function triggerScan() {
   await fetch('/api/scan', { method: 'POST' });
+  await updateUI();
+}
+
+async function triggerReinvestigate(pid) {
+  await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
   await updateUI();
 }
 
@@ -595,6 +638,28 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status": "scanning"}')
+        elif self.path.startswith("/api/reinvestigate"):
+            # 允许手动触发重新让 Goose 深度逆向某个 PID
+            import urllib.parse
+            query = urllib.parse.urlparse(self.path).query
+            params = urllib.parse.parse_qs(query)
+            pid = int(params.get("pid", [0])[0])
+            if pid:
+                struct = {}
+                try:
+                    struct = analyzer.analyze(pid)
+                except Exception:
+                    pass
+                threading.Thread(
+                    target=run_autonomous_investigation,
+                    args=(pid, struct),
+                    name=f"analyst-worker-manual-{pid}",
+                    daemon=True
+                ).start()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "reinvestigating"}')
         else:
             self.send_response(404)
             self.end_headers()
