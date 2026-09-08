@@ -247,7 +247,7 @@
    "id": "harness-04",
    "name": "pi-coding-agent",
    "first_seen": "2026-09-07T23:59:51",
-   "match_count": 13,
+   "match_count": 17,
    "mount_ms": 41509,
    "features": {
     "exe": "node.exe",
@@ -306,7 +306,7 @@
     "fallback": "If the target remains idle with an empty stream: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If the process exits and is re-observed: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details. If the process begins producing output: re-observe the stream to capture the full cycle and detect any tool_call-bearing records."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe",
-   "last_seen": "2026-09-08T11:13:32"
+   "last_seen": "2026-09-08T12:06:01"
   },
   {
    "id": "harness-05",
@@ -4275,10 +4275,10 @@
   },
   {
    "id": "harness-78",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:13:07",
-   "match_count": 110,
-   "mount_ms": 42689,
+   "name": "WorkBuddy / start.mjs",
+   "first_seen": "2026-09-08T12:05:07",
+   "match_count": 8,
+   "mount_ms": 165105,
    "features": {
     "exe": "node.exe",
     "runtime": "node",
@@ -4292,71 +4292,33 @@
    ],
    "hook_recipe": {
     "match_features": {
-     "argv_shape": [
+     "parent_lineage": [
+      "WorkBuddy.exe",
+      "WorkBuddy.exe",
+      "WorkBuddy.exe"
+     ],
+     "target_argv_shape": [
       "<value>",
       "start.mjs"
      ],
-     "entrypoint_token": "[REDACTED]",
-     "runtime_class": "unknown-runtime",
-     "has_children": true,
-     "descendant_count": 1,
-     "open_path_shapes": [
-      {
-       "extension": ".mui",
-       "is_config_like": false
-      },
-      {
-       "extension": ".log",
-       "is_config_like": false
-      }
-     ],
+     "target_pid": 38652,
+     "child_process": {
+      "pid": 44600,
+      "lineage": [
+       "node.exe",
+       "WorkBuddy.exe",
+       "WorkBuddy.exe",
+       "WorkBuddy.exe"
+      ],
+      "argv_shape": [
+       "<value>",
+       "<value>"
+      ]
+     },
+     "runtime_class_evidence": "nodejs-esm (start.mjs script + node.exe child)",
+     "cwd_class": "local-workspace",
      "network_shape": [],
-     "cwd_class": "local-workspace",
-     "stream_available": true,
-     "stream_line_count": 0,
-     "stream_json_line_count": 0
-    },
-    "agent_identity_name": "node-start-agent",
-    "observation": "Target PID 15596 was observed once via observe_runtime_surface before becoming unavailable. The process was running with argv shape [<value>, start.mjs], indicating a Node.js ES module entrypoint. It had 1 child process and 1 descendant. Open paths included a .mui file (Windows resource, depth 9) and a .log file (depth 6), neither config-like. No config candidates were found in argv. The supervisor-exposed stream was available but empty (0 lines, 0 JSON lines). No network connections were observed. The process subsequently exited or detached from supervisor scope, making further observation impossible. The .log open path suggests the agent writes logs, but no config file was observed. The stream being empty suggests either the agent had not yet produced output or output is written to the .log file rather than stdout. Recommended observation strategy: monitor the supervisor-exposed stream for future output, and if the process restarts, re-observe open paths to look for config files (e.g., .json, .yaml, .toml, .env) that may appear after startup.",
-    "hook": "No active hook can be proposed as the target process is no longer observable. If the process restarts, the recommended hook approach is to monitor the supervisor-exposed stream for semantic output and to re-scan open paths for configuration files. The .log file at depth 6 may contain agent activity that could be observed non-invasively. No protocol characteristics were discoverable from the empty stream or argv.",
-    "redaction": "No secrets were observed or exposed. The .mui file is a Windows system resource and contains no agent secrets. The .log file was not read. All observations were limited to metadata (argv shape, open path extensions, stream availability) with no content inspection.",
-    "confidence": 0.25,
-    "fallback": "The target process exited before comprehensive observation could be completed. Only one successful observe_runtime_surface call was made. If the process restarts, re-run observe_runtime_surface, observe_tree, and probe_help to gather more evidence. The entrypoint token 'start.mjs' suggests a Node.js-based runtime, but the specific agent identity could not be confirmed. The empty stream and lack of config candidates in argv limit identity inference. Consider monitoring for process restart and re-observation."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
-   "last_seen": "2026-09-08T11:59:05"
-  },
-  {
-   "id": "harness-79",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:13:43",
-   "match_count": 1,
-   "mount_ms": 42647,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": {
-     "runtime_class": "nodejs",
-     "entry_point": "start.mjs",
-     "has_child_process": true,
-     "child_argv_shape": [
-      "<value>",
-      "<value>"
-     ],
-     "cli_help_lines": 437,
-     "cli_help_has_json": true,
-     "cwd_class": "local-workspace",
-     "network_connections": 0,
-     "open_paths": [
+     "open_path_shapes": [
       {
        "extension": ".log",
        "depth": 6,
@@ -4365,712 +4327,40 @@
       {
        "extension": ".mui",
        "depth": 9,
-       "is_config_like": false
-      }
-     ],
-     "stream_available": true,
-     "stream_line_count": 0,
-     "status": "running"
-    },
-    "agent_identity_name": "node-start-agent",
-    "observation": {
-     "primary_channel": "supervisor-exposed-stream",
-     "stream_status": "available-empty",
-     "secondary_channel": "child-process-stdout",
-     "child_pid": 44600,
-     "cli_help_surface": "437 lines with JSON configuration content",
-     "config_surface": "No explicit config files in open paths; --help output likely documents configuration options",
-     "log_surface": ".log file at depth 6 in workspace"
-    },
-    "hook": {
-     "hook_points": [
-      {
-       "type": "child-process",
-       "pid": 44600,
-       "description": "Spawned child process with 2-arg argv; potential worker or helper process"
-      },
-      {
-       "type": "stream",
-       "description": "Supervisor-exposed output stream, currently empty but available"
-      }
-     ],
-     "hook_strategy": "Observe the supervisor-exposed stream for output; monitor child process for additional activity; use --help output to understand configuration surface"
-    },
-    "redaction": {
-     "redact_credentials": true,
-     "redact_tokens": "[REDACTED]",
-     "redact_api_keys": "[REDACTED]",
-     "redact_private_keys": "[REDACTED]",
-     "redact_cookies": "[REDACTED]",
-     "redact_argv_values": true,
-     "redact_open_path_values": true
-    },
-    "confidence": 0.55,
-    "fallback": {
-     "strategy": "Generic Node.js agent observation via supervisor-exposed stream",
-     "description": "If specific agent identity cannot be confirmed, observe as a generic Node.js-based agent runtime using the supervisor-exposed stream and child process monitoring"
-    }
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-80",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:14:10",
-   "match_count": 1,
-   "mount_ms": 23378,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "nodejs-esm-entrypoint:start.mjs",
-     "child-worker-process:1-descendant",
-     "json-capable-cli:--help-437-lines-has-json",
-     "log-file-open-path:.log-depth-6",
-     "supervisor-exposed-stream:available-empty",
-     "local-workspace-cwd"
-    ],
-    "agent_identity_name": "start-mjs",
-    "observation": "Passive observation of the supervisor-exposed output stream (currently available, 0 lines). The runtime exposes a JSON-capable CLI surface (--help emits 437 lines with JSON structure) and a single child worker process. The .log open path at depth 6 indicates file-based logging in the local workspace. No config flags appear in argv, so configuration is file-based in the workspace rather than flag-driven. Observe the stream passively and, if needed, parse the JSON-capable --help output for structured surface without executing arbitrary commands.",
-    "hook": "No active hook proposed. Use the supervisor-exposed stream as the passive observation channel. The JSON-capable CLI output (--help) can serve as a structured introspection surface. Do not inject hooks or execute arbitrary commands; rely on the exposed stream and the runtime's own --help/--version output.",
-    "redaction": "Redact all argv values, all open-path values, all config-file contents, and any credential/token/key-like content. The .mui and .log path values are redacted. No secrets are read or exposed.",
-    "confidence": "medium",
-    "fallback": "If the supervisor-exposed stream remains empty, fall back to parsing the JSON-capable --help output (437 lines) and the single-line --version output as the semantic surface. If the child worker (PID 44600) exposes additional stream or config surface, observe it passively. If no stream data is available at all, report the runtime as an active Node.js-style agent with file-based config in the local workspace and no observable protocol beyond the JSON-capable CLI."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-81",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:14:40",
-   "match_count": 1,
-   "mount_ms": 27348,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": {
-     "runtime_class": "unknown-runtime",
-     "entrypoint": "start.mjs",
-     "argv_shape": [
-      "<value>",
-      "start.mjs"
-     ],
-     "process_tree": {
-      "parent_pid": 38652,
-      "child_pid": 44600,
-      "child_count": 1
-     },
-     "open_path_shapes": [
-      {
-       "extension": ".log",
-       "is_config_like": false
-      },
-      {
-       "extension": ".mui",
        "is_config_like": false
       }
      ],
      "config_candidates_in_argv": [],
-     "network_shape": [],
-     "stream_available": true,
-     "stream_line_count": 0,
-     "help_probe": {
-      "returncode": 0,
-      "line_count": 437,
-      "has_json": true,
-      "has_stream": false,
-      "has_tool": false
-     },
-     "version_probe": {
-      "returncode": 0,
-      "line_count": 1
-     },
-     "cwd_class": "local-workspace"
-    },
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Primary observation channel is the supervisor-exposed output stream (available, currently 0 lines, indicating an idle or pre-output runtime). The runtime is a Node.js ES-module process (entrypoint start.mjs) with a live child process (PID 44600). The --help surface (437 lines, JSON-capable) and --version (1 line) both return cleanly (returncode 0), confirming a safe, non-invasive CLI probe surface. No config-like open paths or argv config candidates were found, so configuration is not exposed on the observable surface; observation should rely on the stream and CLI probes rather than file/config inspection.",
-    "hook": "Least invasive hook: attach to the supervisor-exposed output stream as the semantic output surface and passively observe emitted lines. No file/config hook is warranted because no config-like open path exists (only a .log and a Windows .mui system resource, both non-config). Use the safe --help/--version probes only for surface characterization, never for arbitrary argument execution. Do not attempt to read or modify any configuration file since none is exposed on the observable surface.",
-    "redaction": "Apply standard redaction to all stream and probe output: strip any credential-like, token-like, cookie, API-key, or private-key patterns before recording. Do not request or expose secrets. Redact path values in open_path_shapes and argv values (already value-redacted by the runtime surface).",
-    "confidence": 0.62,
-    "fallback": "If the stream remains empty and no semantic output is observed, fall back to re-probing --help (JSON-capable, 437 lines) to characterize the CLI surface and any structured output flags, and re-inspect the stream after a delay to capture late-emitted output. If the child process (PID 44600) becomes the active worker, re-observe the tree to confirm whether the child exposes its own stream or config surface before adjusting the observation strategy."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-82",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:15:13",
-   "match_count": 1,
-   "mount_ms": 27971,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "entrypoint argv token 'start.mjs' (ES module JavaScript)",
-     "single child worker process spawned (PID 44600)",
-     "open .log path indicating ongoing logging activity",
-     "CLI responds to --help (437 lines, JSON-capable) and --version (1 line) with returncode 0",
-     "supervisor-exposed output stream available",
-     "no network connections observed",
-     "cwd_class local-workspace"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passively monitor the supervisor-exposed output stream (currently 0 lines) for emitted output; the CLI's --help output is JSON-capable and --version returns a single line, providing a structured semantic surface. No injection required. The .log open path indicates the agent writes logs, but file reading is out of scope; rely on the exposed stream and CLI probes.",
-    "hook": "Least invasive: observe the supervisor-exposed stream passively and use standard CLI probes (--help/--version) which already return returncode 0. No process injection, no network interception, no config file reads. The child worker (PID 44600) is spawned by the parent and should be observed only through the parent's exposed stream.",
-    "redaction": "Redact all credential-like material (tokens, cookies, API keys, private keys) from any stream output or CLI help content. The .mui open path is a Windows UI resource and contains no secrets; the .log path may contain operational data and should be redacted for sensitive fields before any exposure.",
-    "confidence": 0.62,
-    "fallback": "If the supervisor-exposed stream remains empty and CLI probes are insufficient, fall back to observing the child worker process (PID 44600) structure and any additional open paths for config-like files (none found in argv; config likely loaded from workspace files). Re-probe --help for JSON schema details to map the semantic output surface. If the runtime class cannot be confirmed as JS/Node-family, treat it as unknown-runtime and rely solely on the exposed stream."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-83",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:20:23",
-   "match_count": 1,
-   "mount_ms": 122628,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv_shape contains entrypoint token 'start.mjs' (ES-module JavaScript) indicating a Node-class runtime",
-     "single descendant child process (pid 44600) with argv_shape ['<value>', '<value>'] - spawned helper, no grandchildren",
-     "probe_help: --help exits 0 with 437-line JSON-bearing output; --version exits 0 with 1 line - structured JSON-capable CLI",
-     "open_path_shapes: only a .log file (depth 6, non-config) and a .mui Windows resource (depth 9, runtime binary resource, non-config)",
-     "config_candidates_in_argv: none; network_shape: empty; cwd_class: local-workspace",
-     "supervisor-exposed stream available but currently empty (0 lines, 0 JSON lines)"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive only. (1) Subscribe to the supervisor-exposed stream and watch for JSON/NDJSON lines; the JSON-bearing --help output suggests structured stdout emission. (2) Monitor the open .log path (depth 6) as the likely active output sink if the stream stays silent; observe its growth/shape without reading secret-bearing content. (3) Re-run observe_runtime_surface/observe_tree periodically to detect new open paths (e.g., a config file appearing) or network sockets before any adapter choice. (4) Do not probe beyond --help/--version and do not trigger network activity.",
-    "hook": "Least invasive: a passive read-only stream hook on the supervisor-exposed stream that parses JSON/NDJSON lines as they appear (no writes, no injection, no environment mutation). If the stream remains empty, fall back to a passive append-only tail observation of the .log path. No code-injection, no plugin activation, no config mutation.",
-    "redaction": "Redact argv[0] executable path and any path-like tokens; redact any credential-like, token-like, or key-like substrings in stream/log samples before exposure; never surface .mui or system resource contents; expose only structural shapes (line counts, JSON keys, path depths/extensions).",
-    "confidence": 0.55,
-    "fallback": "If the stream stays empty and the .log shows no structured output, re-probe --help for named options to map the configuration surface, and re-check network_shape for a local socket from child pid 44600 before choosing an adapter. If identity cannot be confirmed beyond the 'start.mjs' token, keep the generic identity 'start-mjs-agent' and activate no hook that writes or executes."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-84",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:25:53",
-   "match_count": 1,
-   "mount_ms": 143559,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv contains Node.js ES-module entrypoint token 'start.mjs' (executable value redacted)",
-     "target process has exactly one running child (pid 44600, depth 1, redacted argv) consistent with a worker/helper subprocess",
-     "CLI surface responds to --help (returncode 0, 437 lines, JSON-capable output) and --version (returncode 0, 1 line)",
-     "open path shapes include a .log file at depth 6 (agent log, not config-like) and a Windows .mui resource at depth 9 (runtime resource)",
-     "supervisor-exposed output stream is available but currently empty (0 lines, 0 JSON lines)",
-     "no network connections observed (network_shape empty)",
-     "cwd class is local-workspace (D:\\proj\\asg-os-sensor)",
-     "no config candidates present in argv"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Least invasive passive strategy: (1) monitor the supervisor-exposed output stream for line/JSON-line emission and parse structured events as they appear; (2) observe the process tree for child spawn/exit and argv changes; (3) do NOT read config files (none discovered in argv or open paths) and do NOT probe network (no connections observed); (4) re-run probe_help periodically to detect surface changes. If the stream remains silent, optionally have the supervisor tail the depth-6 .log file as a secondary passive surface.",
-    "hook": "Attach to the supervisor-exposed stream as the primary hook: consume lines, detect JSON lines for structured events, and apply redaction before sampling. Secondary hook: tree-watch for new descendants of pid 38652 (e.g., spawned language servers or sub-agents) and record their argv shapes. No config-file hook is proposed because no config candidates were found in argv or open paths; no network hook because network_shape is empty.",
-    "redaction": "Redact all credential-like tokens in stream samples (API keys, tokens, cookies, secrets, authorization headers); redact the executable path value and child argv values (already surfaced as <value>); redact any path segments resembling user names or private identifiers; never emit raw open-path strings beyond extension/depth shape.",
-    "confidence": "medium",
-    "fallback": "If the stream stays empty and no new children or argv changes appear, retain generic unknown-runtime observation: tree-only monitoring plus periodic probe_help, with no config-file discovery and no network interaction. Re-evaluate identity only if new entrypoint/package tokens appear in open paths or argv."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-85",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:28:15",
-   "match_count": 1,
-   "mount_ms": 135989,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv_shape [<value>, start.mjs] indicates a Node.js ESM script entrypoint (start.mjs) launched by a redacted executable",
-     "process tree: PID 38652 (depth 0, running, 1 child) -> PID 44600 (depth 1, running, 0 children), stable across two observations",
-     "cwd_class local-workspace: process operates inside a local workspace directory",
-     "open_path_shapes: one .log file at depth 6 (runtime logging, not config-like) and one .mui file at depth 9 (Windows system resource, not config-like)",
-     "config_candidates_in_argv empty: no configuration flags passed on the command line",
-     "network_shape empty: no observed network connections or listening sockets",
-     "supervisor-exposed stream available but silent (0 lines, 0 JSON lines, no samples on two inspections)",
-     "probe_help: --help returns 0 with 437 stdout lines containing JSON (has_json true, no stream/tool markers); --version returns 0 with a single stdout line; stderr empty for both"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Least invasive: passive observation only. Primary channel is the supervisor-exposed output stream (already available, no injection required) sampled periodically; it is currently empty so the observer must tolerate silence and watch for the first emitted lines/JSON. Secondary channel: the open .log path at depth 6 (runtime log) as a read-only log surface if the supervisor can expose it. No process injection, no environment mutation, no network probing (network_shape is empty). Safe CLI probing (--help/--version) already demonstrated returncode 0 and is the only permitted interactive surface.",
-    "hook": "Stream-based passive hook on the supervisor-exposed stream (path_class supervisor-exposed-stream): attach a read-only sampler that captures emitted lines and JSON objects as they appear. Optional secondary hook: read-only tail of the .log file open path (depth 6) for offline/async signal. No code injection, no runtime hook activation, no network hook. Child PID 44600 may be the actual worker; observe it only through the same supervisor stream/tree tools.",
-    "redaction": "Redact all credential-like content (tokens, API keys, cookies, private keys, auth headers) from any stream/log sample; redact user-profile path segments (e.g. C:\\Users\\<name>\\...) and the redacted executable value; redact any environment or config values that look like secrets before persisting samples. Never request or store secrets.",
-    "confidence": "medium",
-    "fallback": "If the stream remains silent, fall back to read-only observation of the .log open path (depth 6) for runtime activity, and to periodic safe --help/--version probing (proven returncode 0) to detect surface changes. If PID 38652 exits, re-target its child PID 44600 (same supervisor scope) and re-run tree/stream inspection. If the dossier becomes accessible, re-check open paths for config-like files to refine the configuration location."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-86",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:30:13",
-   "match_count": 1,
-   "mount_ms": 115395,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv entrypoint token 'start.mjs' (ES-module/Node.js-style script entrypoint)",
-     "process tree: target PID 38652 running with one live child PID 44600 (both ppid_present, cwd_class local-workspace)",
-     "CLI surface responds to --help (exit 0, 437 lines, contains JSON) and --version (exit 0, 1 line)",
-     "supervisor-exposed output stream available (currently 0 lines, 0 JSON lines)",
-     "no network connections observed (network_shape empty) -> local-only runtime",
-     "open paths limited to .mui (depth 9, system resource shape) and .log (depth 6); no config-like open paths, no config candidates in argv"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive read-only observation: sample the supervisor-exposed stream via inspect_stream for line/JSON growth and semantic output; periodically re-run observe_runtime_surface to detect newly opened config-like paths (e.g. settings/config files) and observe_tree to track child/descendant spawns. No injection, no command execution beyond the already-performed --help/--version probe.",
-    "hook": "Least invasive hook: attach read-only to the supervisor-exposed stream (path_class supervisor-exposed-stream) and monitor child PID 44600 for descendants. No config-file hook is proposed because no config-like open path or argv config candidate was observed; if a config file appears in open paths on later observation, a settings-file hook can be proposed then.",
-    "redaction": "Redact executable path values, user home/workspace absolute paths, and any credential-like tokens (API keys, tokens, cookies, private keys, authorization headers) from stream samples and open paths; retain only structural shapes (extensions, depths, line counts, JSON structure).",
-    "confidence": "medium",
-    "fallback": "If the stream remains empty and no config surface appears, rely solely on the non-invasive --help/--version probe results and treat the target as an idle local Node.js-style CLI agent; re-observe later for stream output or config-file appearance before proposing any active hook."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-87",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:32:37",
-   "match_count": 1,
-   "mount_ms": 141145,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv contains ES-module entrypoint token 'start.mjs' (script-driven, Node-family runtime, not a bare binary)",
-     "parent PID 38652 spawned child PID 44600 ~39 ms after start with two-arg argv (startup worker/helper subprocess pattern)",
-     "cwd_class is local-workspace (agent operating inside a workspace)",
-     "open paths include a .log file (depth 6, non-config) indicating runtime logging; no config-like open paths and no config candidates in argv",
-     "no network connections observed (network_shape empty)",
-     "supervisor-exposed output stream available but currently 0 lines",
-     "--help returns 437 lines containing JSON (structured-output capable); --version returns 1 line"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive, least-invasive: (1) sample the supervisor-exposed output stream for JSON lines as the runtime emits them; (2) periodically re-observe the process tree (observe_tree) to track the parent/child lifecycle; (3) re-probe --help/--version only for shape changes. No config file reads (none exposed), no network probing (none observed), no code execution beyond the sanctioned --help/--version probe.",
-    "hook": "Attach to the supervisor-exposed stream only: capture emitted lines, parse JSON-shaped lines structurally, and record token classes (keys, value types) without reading values. Do not inject code, modify files, or touch the .log path. If the child (44600) exposes its own stream capability later, observe it the same passive way.",
-    "redaction": "Redact all argv values, executable paths, and any stream content values; keep only structural shapes (line counts, JSON key structure, value type classes, path extension/depth). Never request or expose credentials, tokens, cookies, API keys, or private key material; treat any such token in stream data as redacted-on-sight.",
-    "confidence": "moderate",
-    "fallback": "If the stream stays empty and no JSON output appears, fall back to process-tree-only observation plus periodic --help/--version shape re-probes; do not escalate to invasive methods (no file reads, no network activity, no arbitrary argument execution). If the child process exits and the parent remains, re-evaluate tree shape before any further action."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-88",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:34:38",
-   "match_count": 1,
-   "mount_ms": 117129,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "target pid 38652 is running with ppid present and exactly one child (pid 44600); descendant_count=1",
-     "argv_shape is [\"<value>\", \"start.mjs\"]: a redacted executable followed by an ESM script entrypoint token 'start.mjs'",
-     "cwd_class is local-workspace, indicating a workspace-bound long-running process",
-     "config_candidates_in_argv is empty: no configuration flags passed on the command line",
-     "open_path_shapes contain only a .mui system resource (depth 9, not config-like) and a .log file (depth 6, not config-like); no config-like open paths observed",
-     "network_shape is empty: no network connections observed",
-     "supervisor-exposed stream is available but currently silent (0 lines, 0 JSON lines)",
-     "probe_help: --help returns 437 lines containing JSON (returncode 0, no stream/tool markers); --version returns 1 line (returncode 0)",
-     "process state is stable across repeated observations (same tree, same open paths, same empty stream)"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive observation only: monitor the supervisor-exposed stream for emitted lines/JSON; correlate with process-tree state (38652 -> 44600) and open-path shapes. No injection, no network probing, no file reads. The --help/--version probes already executed cleanly (returncode 0) and are the only validated active probes.",
-    "hook": "None required at this stage: the supervisor-exposed stream is the observation channel and no config file path or argv flag was discovered to attach a hook to. If a hook becomes necessary later, the only viable candidate is a file-based config hook in the local workspace, but only after a concrete config path is discovered; no such path exists in current evidence.",
-    "redaction": "Redact any credential-like tokens (API keys, tokens, cookies, private keys, authorization headers, secrets) from stream samples and help output before recording; never read or request config file contents; never expose the redacted executable path value.",
-    "confidence": 0.55,
-    "fallback": "If the stream remains empty, rely on the validated --help/--version probe output (returncode 0, JSON-bearing help) plus process-tree and open-path observation as the semantic surface. If the process exits, record the final tree state and stream tail. Do not escalate to filesystem, network, or arbitrary execution."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-89",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:37:23",
-   "match_count": 1,
-   "mount_ms": 162366,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv entrypoint token 'start.mjs' (ESM JavaScript launcher)",
-     "depth-1 child worker process with argv ['<value>','<value>']",
-     "open .log file at depth 6 (logging behavior)",
-     "open .mui file at depth 9 (native Windows resource, consistent with JS/native runtime)",
-     "CLI responds to --help (exit 0, 437 lines, contains JSON) and --version (exit 0, 1 line)",
-     "supervisor-exposed stream available but currently empty (0 lines, 0 JSON lines)",
-     "no network connections observed (network_shape empty)",
-     "cwd class local-workspace",
-     "no config-like open paths and no config candidates in argv"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive only: periodic observe_tree + observe_runtime_surface to watch for new open paths (config files), stream growth, or network shape changes; repeated inspect_stream to capture semantic output as it appears; non-invasive --help/--version probes already performed (exit 0). No file reads, no network probing, no arbitrary argument execution.",
-    "hook": "Attach a passive listener to the supervisor-exposed stream to capture JSON lines when emitted (CLI help shows JSON capability). Do not hook any config file (none is open) and do not install network hooks (no network shape). If a config-like path appears in open_path_shapes later, re-evaluate before any config hook.",
-    "redaction": "Redact all argv executable values (<value>), any credential-like tokens (keys, tokens, cookies, secrets) in stream samples, and any path components that could identify the user or workspace owner; retain only the entrypoint token 'start.mjs' and structural shapes for identity.",
-    "confidence": "low",
-    "fallback": "If the stream remains empty and no config surface or new open paths appear, re-run --help/--version probes and tree observation on a schedule; if identity still cannot be established, classify as unknown-runtime and keep only the generic passive stream adapter, deferring identity assignment."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-90",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:43:05",
-   "match_count": 1,
-   "mount_ms": 153800,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv_shape [<value>, start.mjs]: ESM launcher entrypoint token, interpreter redacted",
-     "single descendant worker: pid 44600 with argv [<value>, <value>], no grandchildren",
-     "open .log path at depth 6 (is_config_like=false); .mui at depth 9 is a Windows system resource",
-     "supervisor-exposed stream available but empty (0 lines, 0 JSON lines)",
-     "probe_help: --help returns 437 lines JSON-shaped (has_json=true, no stream/tool keywords); --version returns 1 line; both exit 0",
-     "no network shape observed; cwd_class=local-workspace; runtime_class=unknown-runtime"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive read of the supervisor-exposed stream (currently empty); periodic observe_tree + observe_runtime_surface to watch for config-like open paths (e.g. .json/.yaml/.toml/.env) and child lifecycle changes; no injection, no config mutation",
-    "hook": "Read-only stream hook on the supervisor-exposed output stream; optional read-only tail of the observed .log open path if the supervisor permits; no config-file hook until a config-like path is actually observed",
-    "redaction": "Redact credential-like material (tokens, API keys, cookies, secrets, private keys) and raw executable path values from any stream/log samples; retain script/entrypoint tokens such as start.mjs for identity matching",
-    "confidence": 0.45,
-    "fallback": "If the stream stays empty and no config-like open paths appear, fall back to non-invasive --help/--version probes (already proven safe, exit 0) plus observe_tree lifecycle tracking; do not activate config hooks or attempt any write/execution"
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-91",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:48:00",
-   "match_count": 1,
-   "mount_ms": 108020,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv_shape contains ESM entrypoint token 'start.mjs' as sole non-redacted argument",
-     "probe_help --help returned 437 stdout lines with has_json=true, has_stream=true, has_tool=true",
-     "probe_help --version returned exactly 1 stdout line",
-     "process tree: parent PID 38652 (depth 0) with one child PID 44600 (depth 1) spawned ~40ms after parent creation, child argv fully redacted",
-     "cwd_class=local-workspace",
-     "open_path_shapes: one .log file at depth 6 (runtime log), one .mui file at depth 9 (host executable Windows resource, not config)",
-     "network_shape empty (no external connections)",
-     "supervisor-exposed stream available but 0 lines / 0 JSON lines at two inspection points"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive stream observation of the supervisor-exposed stream (path_class=supervisor-exposed-stream): poll inspect_stream for JSON lines and samples; the --help surface (has_json/has_stream/has_tool) indicates the runtime emits structured JSON over the stream. Secondary passive signal: the open .log file at depth 6 in the local workspace, which the supervisor may tail without code execution. No network probing warranted (network_shape empty). No config file is currently open and argv has no config candidates, so configuration surface is file-based in the workspace/user profile and only discoverable lazily; do not guess paths.",
-    "hook": "Subscribe to the supervisor-exposed stream and parse JSON lines as they appear; optionally attach a read-only tail to the observed .log open path via the supervisor. No code injection, no argv mutation, no filesystem writes, no network hooks.",
-    "redaction": "Redact all credential-like tokens (API keys, tokens, cookies, private keys, authorization headers) from stream samples and log tails; rely on supervisor-side redaction of stream samples; never request or store secrets; redact user-specific path segments in any observed paths.",
-    "confidence": "medium",
-    "fallback": "If the stream remains empty and no log output appears, re-run probe_help/--version to re-confirm the CLI surface, re-check observe_tree for child-process changes (e.g., on-demand worker spawns), and re-scan open_path_shapes for newly opened config-like files; if still quiet, classify as a passive/idle agent-like runtime and keep observation read-only until the supervisor observes activity."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-92",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:52:22",
-   "match_count": 1,
-   "mount_ms": 73555,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv entrypoint token 'start.mjs' (ES-module script entrypoint)",
-     "long-running process with 1 live child (pid 44600, argv of two redacted values)",
-     "open path shapes: one .log at depth 6 (non-config) and one .mui at depth 9 (Windows MUI resource, non-config)",
-     "no config candidates in argv",
-     "no network shape observed",
-     "supervisor-exposed output stream available but currently empty (0 lines, 0 JSON lines)",
-     "--help returns 437 lines with JSON-capable content (has_json true, has_stream false, has_tool false), --version returns 1 line",
-     "cwd class local-workspace; runtime_class reported as unknown-runtime"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "Passive, read-only observation only: periodic inspect_stream on the supervisor-exposed stream to capture semantic output; observe_tree / observe_runtime_surface for process-structure and open-path shape changes; probe_help (--help/--version only) for the CLI configuration surface. No process injection, no environment mutation, no config-file content reads.",
-    "hook": "Attach read-only to the existing supervisor-exposed stream (path_class supervisor-exposed-stream) and parse JSON lines as they appear; the JSON-capable --help output indicates the process can emit JSON, so treat the stream as a JSON-line protocol surface. No code injection, no ptrace/API hooking, no argv/env modification.",
-    "redaction": "Redact all credential-like tokens (tokens, cookies, API keys, private keys, passwords) from any stream samples before analysis; record only structural shapes (line counts, JSON keys, path shapes, extensions) and never raw config file contents or secret material.",
-    "confidence": "medium",
-    "fallback": "If the stream remains empty, continue with non-invasive CLI surface probing (probe_help --help/--version) and process-tree/open-path shape observation; do not escalate to invasive hooks or config-file reads. Re-run inspect_stream on a schedule and only propose an adapter change if new stream evidence appears."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-93",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T10:57:26",
-   "match_count": 1,
-   "mount_ms": 117517,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": {
-     "runtime_class": "nodejs-family-esm",
-     "entrypoint_token": "[REDACTED]",
-     "argv_shape": [
-      "<redacted-executable>",
-      "start.mjs"
-     ],
-     "process_tree": {
-      "parent_pid": 38652,
-      "parent_status": "running",
-      "child_pid": 44600,
-      "child_status": "running",
-      "child_spawn_delta_ms": 40,
-      "child_argv_shape": [
-       "<value>",
-       "<value>"
-      ],
-      "child_children": 0
-     },
-     "cwd_class": "local-workspace",
-     "open_path_shapes": [
-      {
-       "extension": ".log",
-       "depth": 6,
-       "is_config_like": false
-      },
-      {
-       "extension": ".mui",
-       "depth": 9,
-       "is_config_like": false
-      }
-     ],
-     "network_shape": [],
-     "cli_surface": {
-      "help_exit": 0,
-      "help_lines": 437,
-      "help_has_json": true,
-      "version_exit": 0,
-      "version_lines": 1
-     },
      "stream": {
       "available": true,
-      "path_class": "supervisor-exposed-stream",
       "line_count": 0,
       "json_line_count": 0
-     }
+     },
+     "help_probe": {
+      "line_count": 437,
+      "has_json": true
+     },
+     "version_probe": {
+      "line_count": 1
+     },
+     "status": "running"
     },
-    "agent_identity_name": "start-mjs",
-    "observation": "Passive read-only monitoring of the supervisor-exposed output stream via inspect_stream; periodic re-observation of process tree and open paths to detect activity; no process injection, no filesystem reads, no network interception.",
-    "hook": "Supervisor-exposed stdout stream (read-only, currently empty) as the semantic output hook; CLI --help/--version flags verified non-invasive (exit 0) as the configuration-surface probe; JSON content in --help output indicates a JSON config schema exposed by the CLI.",
-    "redaction": "Redact all secret-like tokens (credentials, API keys, tokens, cookies, private keys) from any stream samples; rely on supervisor redaction of argv values and open path names; never request or expose secrets.",
-    "confidence": 0.65,
-    "fallback": "If the stream remains empty, use the JSON schema visible in --help output to identify the expected config file location/format without reading secrets; if identity cannot be confirmed from entrypoint tokens, retain generic 'unknown-runtime' classification and continue passive stream observation only."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-94",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T11:08:43",
-   "match_count": 1,
-   "mount_ms": 121602,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv contains ESM entrypoint token 'start.mjs' (Node.js module launcher pattern)",
-     "executable --help emits 437-line JSON document (machine-readable CLI schema)",
-     "executable --version emits single-line version string",
-     "supervisor-exposed output stream available (agent protocol channel)",
-     "single child process pid 44600 with two redacted argv values (spawned helper/worker)",
-     "cwd class local-workspace (agent operating inside a project directory)",
-     "open path: one .log file at depth 6 (session/activity logging)",
-     "open path: one .mui at depth 9 (Windows system resource, consistent with Node/system DLL load)",
-     "no network connections observed",
-     "process running ~21.8h (long-lived session, not a short-lived launcher)"
-    ],
-    "agent_identity_name": "start-mjs-agent",
-    "observation": "passive read-only polling of the supervisor-exposed stream for JSON lines; periodic observe_runtime_surface/observe_tree to detect newly opened config files and new child processes; non-invasive --help/--version probing already performed (JSON schema shape captured, 437 lines)",
-    "hook": "attach read-only observer to the supervisor-exposed output stream; do not inject argv or environment; if a config-like file appears in open paths, capture only its path shape and non-secret structure",
-    "redaction": "redact credential-like tokens (API keys, bearer tokens, cookies, sk-* patterns) from any stream samples before storage; stream currently empty so no samples require redaction yet",
+    "agent_identity_name": "WorkBuddy / start.mjs",
+    "observation": "Passively read the supervisor-exposed stream (currently 0 lines) and parse JSON lines as they appear, since --help output indicates JSON-capable CLI output. Re-run observe_tree periodically to detect new children or state changes. Do not access filesystem, network, or argv values; rely only on redacted shapes (argv_shape, open_path_shapes, lineage).",
+    "hook": "No code injection or command execution. Sole hook surface is the supervisor-exposed output stream (stdout of the target). Optionally re-run probe_help (--help/--version only) to refresh the CLI surface. No hooks activated by the Analyst; activation is Supervisor-verified only.",
+    "redaction": "Redact all argv values (already surfaced as <value>), child process arguments, file path details (.log/.mui paths), and any credential-like tokens (keys, tokens, cookies, secrets) from stream lines before recording. Never expose the .mui/.log path strings or child argv values in reports.",
     "confidence": "medium",
-    "fallback": "if the stream remains empty and no config paths open, treat as generic Node ESM CLI: rely on process-tree lifecycle observation and periodic --help/--version introspection only"
+    "fallback": "If the stream remains empty, base the characterization on process-tree and help-surface evidence alone: a WorkBuddy-hosted Node.js (ESM) agent worker with a nested node.exe subprocess, no network egress, and no exposed config path. Re-probe help/version for CLI surface changes; if a config-like open path or argv config candidate appears later, re-run observation to capture it without reading secrets."
    },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
+   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
+   "last_seen": "2026-09-08T12:06:14"
   },
   {
-   "id": "harness-95",
-   "name": "WorkBuddy / SheetAgent",
-   "first_seen": "2026-09-08T11:10:44",
+   "id": "harness-79",
+   "name": "unknown",
+   "first_seen": "2026-09-08T12:06:01",
    "match_count": 1,
-   "mount_ms": 118816,
-   "features": {
-    "exe": "node.exe",
-    "runtime": "node",
-    "flags": [],
-    "config_dirs": [
-     ".sheetagent"
-    ]
-   },
-   "children_classes": [
-    "conhost.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv[1] is the Node.js ES-module entrypoint token 'start.mjs' (.mjs extension is the Node ESM script convention)",
-     "parent process 38652 has exactly one live child (44600) with opaque two-value argv, forming a driver+helper process structure",
-     "--help probe exits 0 with 437 lines and has_json=true, indicating a rich, JSON-capable CLI documentation surface",
-     "--version probe exits 0 with a single line, indicating a versioned CLI",
-     "open path shapes include one .log file (depth 6, not config-like) consistent with agent runtime logging, and one .mui file (depth 9) consistent with a Windows native runtime executable loading MUI language resources",
-     "supervisor-exposed output stream is available but currently empty (0 lines, 0 JSON lines), i.e. an idle semantic output surface",
-     "network_shape is empty: no active network connections observed",
-     "cwd_class is local-workspace and config_candidates_in_argv is empty: no config flags passed on the command line"
-    ],
-    "agent_identity_name": "start-mjs",
-    "observation": "Passive only: (1) monitor the supervisor-exposed stream for JSON lines, since --help has_json=true suggests JSON output capability; (2) periodic non-invasive --help/--version probes to map the capability/configuration surface; (3) periodic observe_tree/observe_runtime_surface passes to track parent+child stability and open-path evolution; (4) no injection, no network probing, no secret access",
-    "hook": "Primary hook is the supervisor-exposed stream (passive read, already available, zero side effects). Secondary supervisor-mediated hook: the .log file at depth 6 as a semantic output surface if the stream remains empty. No code injection, no environment mutation, no argv modification",
-    "redaction": "Redact credential-like tokens (API keys, tokens, cookies, Authorization headers, session IDs), user-profile path segments (e.g. C:\\Users\\<name>), and any secret material from stream samples; rely on the supervisor redaction layer for all stream and path data",
-    "confidence": 0.65,
-    "fallback": "If the stream stays empty: (a) use --help/--version output analysis via the supervisor to map the configuration surface; (b) treat the .log file as the semantic output surface via supervisor-mediated read; (c) observe child 44600 argv/behavior over time to classify the helper role (e.g. language server, MCP server, or shell); (d) if no config file appears in open paths, assume configuration is loaded at startup from a dotfile in cwd or user home and is not kept open, and request supervisor-mediated cwd listing"
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe"
-  },
-  {
-   "id": "harness-96",
-   "name": "python-c-bootstrap-agent",
-   "first_seen": "2026-09-08T11:30:16",
-   "match_count": 1,
-   "mount_ms": 107000,
+   "mount_ms": 37684,
    "features": {
     "exe": "python.exe",
     "runtime": "python",
@@ -5079,200 +4369,22 @@
     ],
     "config_dirs": []
    },
-   "children_classes": [
-    "python.exe"
-   ],
+   "children_classes": [],
    "hook_recipe": {
     "match_features": [
-     "argv_shape=[python.exe, -c, <value>] (inline script bootstrap, no module/file entrypoint)",
-     "one child process with argv_shape=[<value>, -c, <value>] (also -c style invocation)",
-     "cwd_class=local-workspace",
-     "open_path_shapes=[] (no config files or paths opened during observation)",
-     "network_shape=[] (no sockets/connections observed)",
-     "supervisor-exposed stream available but line_count=0, json_line_count=0 (no semantic output produced)",
-     "process short-lived: exited between first and second observation (target PID unavailable on re-observe)",
-     "probe_help: --help -> 43 lines, has_stream=true, has_tool=false, has_json=false; --version -> 1 line (consistent with CPython interpreter)"
+     "target PID 68832 repeatedly reported unavailable by all process-bound probes (observe_runtime_surface, observe_tree, get_target_context, probe_help) with consistent -32000 error across 3 attempts",
+     "no process tree, parent lineage, descendants, open paths, package directory, config files, or executable surface observable for the target",
+     "supervisor-exposed-stream is available for the target but empty: line_count 0, json_line_count 0, samples []",
+     "no semantic output content present to classify"
     ],
-    "agent_identity_name": "python-c-bootstrap-agent",
-    "observation": "Passive supervisor-side observation only: (1) capture supervisor-exposed stream continuously and record line_count/json_line_count and JSON schema when lines appear; (2) at spawn time record argv_shape, open_path_shapes, network_shape, and child tree; (3) do not inject, attach, or modify the process. No config location was discoverable: config_candidates_in_argv=[], open_path_shapes=[] at observation time, so treat any future open path as a config candidate and any future JSON stream lines as the semantic protocol.",
+    "agent_identity_name": "unknown",
+    "observation": "Passive observation only: monitor the already-exposed supervisor-exposed-stream for the target by periodic re-poll of inspect_stream; do not attach to any process or execute any probe while PID is unbound. Re-run observe_tree and probe_help only after the stream begins emitting lines, indicating the target has become attached and observable.",
     "hook": "none",
-    "redaction": "Redact all argv values (keep only argv_shape tokens), all open path contents (keep only path shapes/classes), and all stream payloads matching secret patterns (tokens, keys, cookies, credentials); retain only line counts, JSON key schema, and shape metadata. Never surface raw -c script text or child executable names.",
+    "redaction": "full-redaction-default: redact all values that could be credentials, tokens, cookies, API keys, private key material, or PII; since no payloads are currently readable, apply the strictest default redaction to any future stream content before analysis; never render raw stream lines verbatim.",
     "confidence": "low",
-    "fallback": "If a new instance of this pattern appears, re-run spawn-time shape capture and stream inspection; if the stream emits JSON lines, adapt to a JSON-lines protocol reader; if open paths appear, treat them as configuration candidates and re-evaluate identity from those tokens. If the process remains short-lived with no output, classify as a transient python -c launcher and keep observation passive."
+    "fallback": "If the PID remains unavailable after supervisor re-check, treat target as exited or out-of-scope: report 'target unavailable / unresolved' and recommend the supervisor verify whether PID 68832 was recycled, respawn the target within supervisor scope, or re-issue the investigation with a valid bound PID. If the stream later emits lines without a bound process, classify by stream shape alone (json vs text) and keep observation passive until a process is confirmed."
    },
-   "observed_exe_full": "D:\\proj\\agent-guard-eval\\venvs\\n2\\Scripts\\python.exe"
-  },
-  {
-   "id": "harness-97",
-   "name": "unknown-agent-runtime",
-   "first_seen": "2026-09-08T11:30:18",
-   "match_count": 1,
-   "mount_ms": 74196,
-   "features": {
-    "exe": "python.exe",
-    "runtime": "python",
-    "flags": [
-     "-c"
-    ],
-    "config_dirs": []
-   },
-   "children_classes": [
-    "python.exe"
-   ],
-   "hook_recipe": {
-    "match_features": "Process tree: root PID 29572 launched as ['python.exe','-c','<redacted>'] with cwd_class=local-workspace; it spawned exactly one child (PID 35764) ~29 ms later with argv shape ['<redacted-executable>','-c','<redacted>'] and no further children. Both processes had status=running at first observation (create_time 1788838139.0192835). runtime_class reported as 'unknown-runtime'. No config_candidates_in_argv, no open_path_shapes, and no network_shape were observed. A supervisor-exposed output stream is mounted for the target but has remained empty (line_count=0, json_line_count=0, no samples) across all inspection calls. Within seconds of first observation the target became unavailable to observe_runtime_surface/observe_tree/get_target_context/probe_help (error -32000: target PID unavailable: 29572), i.e. the process exited while the stream stayed mounted. The python.exe '-c' bootstrap spawning a child that itself takes '-c <inline-code>' indicates an inline-code launcher pattern rather than a module/script entrypoint.",
-    "agent_identity_name": "unknown-agent-runtime",
-    "observation": "No identity token was observable: argv values are redacted to <value>, the child executable name is withheld (redacted) while the generic parent 'python.exe' is not, open_path_shapes is empty, and no package/script/entrypoint token was discovered. Therefore no clean human-readable agent identity can be inferred from evidence; classify as an inline-code-bootstrapped agent-like subprocess runtime of unknown product identity.",
-    "hook": "No configuration location, settings file, open path, or protocol endpoint was observed (open_path_shapes=[], config_candidates_in_argv=[], network_shape=[]). Least invasive strategy: passive observation only. Attach to the supervisor-exposed stream and parse JSON-lines as they appear (json_line_count will rise from 0 once structured output is emitted); do not inject code, do not probe files, and do not touch the process while it is short-lived. On next spawn, capture argv/config candidates at first sight because this instance exited before a full surface could be enumerated.",
-    "redaction": "Redact credential-like tokens (tokens, cookies, API keys, private-key material) and any argv or path values that the supervisor already masks; the harness itself renders identity-relevant argv tokens as <value>. Apply the same default redaction to any future stream content before persistence. Do not attempt to de-redact the withheld child executable name.",
-    "confidence": "low",
-    "fallback": "If the target cannot be re-observed (PID 29572 remains unavailable and the stream stays empty), fall back to (1) treating runtime_class as 'unknown-runtime' with an agent-like python-bootstrap + '-c' child signature, (2) re-arming observation on the next launch of this pattern to capture argv and config surface before exit, (3) keeping the supervisor-exposed stream as the sole semantic channel, and (4) reporting agent_identity_name as 'unknown-agent-runtime' until package/script/entrypoint tokens are actually observed."
-   },
-   "observed_exe_full": "D:\\proj\\agent-guard-eval\\venvs\\n2\\Scripts\\python.exe"
-  },
-  {
-   "id": "harness-98",
-   "name": "unknown-unverifiable",
-   "first_seen": "2026-09-08T11:30:18",
-   "match_count": 1,
-   "mount_ms": 39375,
-   "features": {
-    "exe": "python.exe",
-    "runtime": "python",
-    "flags": [
-     "-c"
-    ],
-    "config_dirs": []
-   },
-   "children_classes": [
-    "python.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "target_pid_47100_unavailable_to_all_pid_bound_probes",
-     "error_-32000_target_PID_unavailable_on_get_target_context_observe_runtime_surface_observe_tree_probe_help",
-     "supervisor_exposed_stream_present_but_empty_0_lines_0_json_lines_0_samples",
-     "no_argv_entrypoint_or_open_path_tokens_observable",
-     "prior_recipe_memory_exists_but_content_not_readable_within_analyst_tool_boundary"
-    ],
-    "agent_identity_name": "unknown-unverifiable",
-    "observation": "Passive read-only observation only. Continuously sample the supervisor-exposed output stream (path_class supervisor-exposed-stream) for emitted lines; periodically retry get_target_context/observe_tree to detect when PID 47100 becomes bound and observable. Do not execute, signal, or write to the target. No process tree, runtime class, config surface, open paths, or protocol could be established because every process-bound probe returned error -32000 'target PID unavailable: 47100' on all attempts (5+ calls).",
-    "hook": "none_activated_analyst_cannot_activate_hooks. Proposal_for_supervisor: attach a passive stream-tap/tee on the supervisor-exposed stream only, with no back-pressure writes into the target and no signal injection; activate a process observer only after target PID becomes resolvable.",
-    "redaction": "Redact any credential-like tokens (API keys, passwords, cookies, private keys, JWTs, connection strings), host-local user paths, and personal identifiers from any stream samples before persistence or reporting. Since the stream is currently empty and no config/paths were exposed, no secret material was accessed.",
-    "confidence": 0.12,
-    "fallback": "If the supervisor can re-resolve or re-bind PID 47100 (or the process restarts under a new PID), rerun observe_tree to map the process tree, probe_help for CLI surface, inspect_stream for semantic output, and inspect open paths/argv tokens to classify runtime class and derive a token-based agent identity name. If the stream begins emitting, apply the observation and redaction strategy above. Until then, treat target as not-an-active-observable-agent."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
-  },
-  {
-   "id": "harness-99",
-   "name": "trajectory-tune-processor",
-   "first_seen": "2026-09-08T11:31:49",
-   "match_count": 1,
-   "mount_ms": 97133,
-   "features": {
-    "exe": "python.exe",
-    "runtime": "python",
-    "flags": [
-     "-c"
-    ],
-    "config_dirs": []
-   },
-   "children_classes": [
-    "python.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv[0] is python.exe",
-     "argv contains -c with inline code referencing tune.json via read_text()",
-     "code calls traj_parts('D4', items[0]) and prints 'Item 0 id:' plus 'Env N:' prefixes",
-     "single child process spawned ~0.09s later running identical -c code",
-     "open_path_shapes empty; network_shape empty",
-     "short-lived: process exited between observation rounds",
-     "supervisor-exposed stream available but captured 0 lines",
-     "probe_help: --help returns 43 lines with has_stream true, has_tool false; --version returns 1 line (python.exe signature)"
-    ],
-    "agent_identity_name": "trajectory-tune-processor",
-    "observation": "Passive only: monitor the supervisor-exposed stdout stream and parse plain-text lines (item id, env prefixes). No injection, no signal, no filesystem or network interaction. The process is short-lived and batch-oriented, so observation must be attached at spawn time for future invocations matching the same argv pattern.",
-    "hook": "None attachable: process already exited, no open paths, no config files, no network sockets were observed. Only hook surface is stdout capture via the supervisor-exposed stream for future runs of the same python -c pattern (tune.json + traj_parts).",
-    "redaction": "Redact secret-like substrings in captured output (env var values, tokens, keys, paths that look like credentials) before surfacing; the script prints e[:100] env prefixes which may embed sensitive values from tune.json. Never request or expose credentials.",
-    "confidence": "medium",
-    "fallback": "If the process is not re-observed, treat it as a non-agent batch trajectory-analysis script: skip hooking entirely, keep the stream watcher registered for the argv signature (python.exe -c *tune.json*traj_parts*), and re-run observation on next matching spawn."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
-  },
-  {
-   "id": "harness-100",
-   "name": "python-inline-analysis",
-   "first_seen": "2026-09-08T11:40:00",
-   "match_count": 1,
-   "mount_ms": 56604,
-   "features": {
-    "exe": "python.exe",
-    "runtime": "python",
-    "flags": [
-     "-c"
-    ],
-    "config_dirs": []
-   },
-   "children_classes": [
-    "python.exe"
-   ],
-   "hook_recipe": {
-    "match_features": [
-     "argv is python.exe -c with a large inline Python snippet (no script file, no agent entrypoint token)",
-     "child process (pid 16912) carries an identical -c payload with argv[0] replaced by <value>, the Windows multiprocessing spawn signature",
-     "inline code semantics: grid/rule search over FPR/FNR metrics with baseline thresholds (FPR<29.3%, FNR<42.7%), variables base_thr/delta_rules/p_supp/p_boost, Chinese print labels (命中优胜策略/送审) - batch policy/analytics tuning, not an interactive loop",
-     "probe_help: --help -> 43 plain-text lines (no json/tool/stream markers); --version -> 1 line; pure CPython CLI surface, no agent subcommands",
-     "open_path_shapes: [] (no config/data files or open paths observed); network_shape: [] (no sockets/connections)",
-     "cwd_class: local-workspace; status was running then process exited within the investigation window (one-shot job)",
-     "supervisor-exposed stdout stream available but 0 captured lines at probe time"
-    ],
-    "agent_identity_name": "python-inline-analysis",
-    "observation": "Passive, least-invasive: read the supervisor-exposed stdout stream only. Do not inject code, send signals, or attach to the interpreter. Because the process was short-lived and produced no captured output, observation should be periodic stream polling plus process-exit detection; if it restarts, capture stdout until exit and parse only summary metric lines (e.g. lines containing 命中优胜策略/送审/FPR/FNR percentages). No filesystem, network, or environment probing is warranted since the runtime is a plain CPython batch executor with no agent surface.",
-    "hook": "No agent hooks exist: no tool protocol, no plugin/config hook, no IPC endpoint was discovered (open_path_shapes and network_shape both empty; help surface exposes only interpreter help/version). The only valid hook is a generic stdout stream reader attached to the supervisor-exposed stream; it must be read-only and non-invasive.",
-    "redaction": "Redact the full -c payload text (it is embedded user code that may contain business logic and data-derived constants), the local workspace path (cwd), and any environment-derived values. Never log raw argv beyond the shape tokens already captured (python.exe, -c). Keep only aggregate facts: two python processes, identical payload, child spawn copy, zero open paths/network, empty stream, exited ~1s after discovery.",
-    "confidence": "high: this is NOT an agent-like runtime and no agent hook/observation layer is warranted (evidence: pure python.exe help surface, identical multiprocessing-spawn child, inline numeric grid-search code, no open paths, no network, short-lived exit). medium: specific purpose inference (policy/rule-threshold tuning) is based only on inline code identifiers and Chinese metric labels, not an authoritative package/manifest.",
-    "fallback": "If the target (or a successor PID) reappears with different argv containing an agent entrypoint, tool surface, JSON stream, config file, or network listener, re-run the full investigation and reclassify. Until then, treat any matching python.exe -c inline payload as python-inline-analysis batch compute; if identity cannot be re-established, fall back to agent_identity_name 'unknown-runtime' and keep the passive stdout-reader hook only."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
-  },
-  {
-   "id": "harness-101",
-   "name": "python-inline-compute",
-   "first_seen": "2026-09-08T11:41:15",
-   "match_count": 1,
-   "mount_ms": 63420,
-   "features": {
-    "exe": "python.exe",
-    "runtime": "python",
-    "flags": [
-     "-c"
-    ],
-    "config_dirs": []
-   },
-   "children_classes": [
-    "python.exe"
-   ],
-   "hook_recipe": {
-    "match_features": {
-     "runtime_class": "cpython-inline-batch",
-     "process_shape": "single parent python.exe (argv[0]=python.exe) with one descendant spawned ~25ms later running the identical inline '-c' payload (consistent with Python Windows multiprocessing spawn), then tree went away",
-     "argv_class": "python.exe -c <large inline python source>; no script file path, no module/package entrypoint token, no --config/settings flags; only inline code tokens",
-     "code_semantics": "finite parameter grid-search over threshold metrics (m_fpr, m_fnr vs baselines 29.3/42.7; variables base_clean, delta_rule, pai_clean_supp, pai_poison_boost) with Chinese print() result formatting; single-shot compute, no read-eval-print loop or watchdog",
-     "io_surface": "no open file paths (open_path_shapes empty), no network shape / sockets, cwd_class local-workspace",
-     "output_surface": "stdout only through supervisor-exposed stream; line_count 0 at observation time; no structured/JSON lines",
-     "lifetime": "short-lived batch; status running at first observation then PID 17920 unavailable to all tools before investigation completed",
-     "agent_signals_absent": "no persistent stdin protocol, no prompt/request framing, no config file, no hook/plugin directory, no listening service, no agent product tokens in argv or open paths"
-    },
-    "agent_identity_name": "python-inline-compute",
-    "observation": "Non-agent, finite CPython batch process running an inline threshold/grid-search script (python.exe -c ...). Least invasive observation is passive: (1) snapshot process tree and argv shape while running, (2) read the supervisor-exposed stdout stream only after/at completion, (3) do not inject code, do not attach a debugger, do not send input. Re-run observe_tree/inspect_stream at process start if it re-appears; do not probe the executable again since python.exe --help/--version carries no payload-specific signal.",
-    "hook": "No code or executable hook is justified. Use a read-only stream sink on the supervisor-exposed stdout path plus an exit-notice from the process tree (target already exited). If any observation hook is required by the harness, limit it to capturing stdout writes of the exposed stream and recording process lifetime; no stdin injection, no environment mutation, no filesystem writes.",
-    "redaction": "Redact environment variables, user-profile paths, and any embedded local paths; truncate/redact the inline '-c' source payload in all artifacts (it may embed experiment/dataset details); drop all values of variables named *_supp/*_boost/*_rule and numeric results from logs if considered sensitive. No credentials/tokens/keys appeared in observed argv or stream; redact them if they ever do.",
-    "confidence": "medium",
-    "fallback": "If the target reappears with agent-like signals (persistent stdin/stdout request loop, config files, open sockets, directory watching, structured JSON output), reclassify away from batch compute and re-run observation with stream sampling before any probe. If a matched python-inline-compute process is instead long-lived and responsive to stdin, treat it as a REPL-style runtime and switch to interactive observation of the exposed stream only. If the PID remains unavailable, rely solely on the retained supervisor-exposed stream artifacts and prior process-tree snapshots; do not attempt PID reuse or process forgery."
-   },
-   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe"
+   "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Roaming\\uv\\python\\cpython-3.11.15-windows-x86_64-none\\python.exe"
   }
  ],
  "version": 1

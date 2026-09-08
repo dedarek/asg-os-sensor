@@ -100,16 +100,19 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
         if xs.startswith("-"):
             argv_raw.append(xs)
         elif any(ext in xs.lower() for ext in [".js", ".py", ".ts", ".sh", ".mjs", "bundle", "cli", "agent"]):
-            # 保留执行脚本/包的语义名，便于 Analyst 推断 Agent 身份 (如 pi-coding-agent/dist/bundle/cli.js, sheetagent/mcp/start.mjs)
+            # 保留执行脚本/包的语义名，便于 Analyst 推断 Agent 身份
             p_obj = Path(xs)
             p_token = p_obj.name
-            # 如果父目录带有具体 agent / plugin 语义包名，提取为 parent_pkg/script
-            parent_dir_name = p_obj.parent.name
-            grandparent_dir_name = p_obj.parent.parent.name if len(p_obj.parents) > 1 else ""
-            for seg in [parent_dir_name, grandparent_dir_name]:
-                if any(k in seg.lower() for k in ["agent", "tool", "plugin", "mcp", "skill"]) and seg.lower() not in ["plugins", "cache", "mcp"]:
-                    p_token = f"{seg}/{p_token}"
+            # 如果路径中含有具体组件/插件目录名（非通用目录如 node_modules/plugins/cache/mcp），提取其语义包名
+            parts = p_obj.parts
+            pkg_name = ""
+            for idx, part in enumerate(parts):
+                part_l = part.lower()
+                if any(k in part_l for k in ["agent", "tool", "plugin", "skill"]) and part_l not in ["plugins", "cache", "mcp"]:
+                    pkg_name = part
                     break
+            if pkg_name and pkg_name != p_token:
+                p_token = f"{pkg_name}/{p_token}"
             argv_raw.append(p_token)
         else:
             argv_raw.append("<value>")

@@ -29,7 +29,7 @@ prompt: |
      match_features, agent_identity_name, observation, hook, redaction, confidence, fallback.
      - Note on agent_identity_name: Infer a clean human-readable agent identity name solely from the discovered evidence (process parent_lineage, package directory, script tokens, or open paths), without raw executable names like 'node.exe'.
        * If the process is a standalone agent, use its identified name (e.g. 'pi-coding-agent', 'claude-code', 'codex').
-       * If the process is a worker or sub-agent spawned by a host platform / IDE harness (e.g. parent_lineage contains 'WorkBuddy.exe', 'Cursor.exe', 'Code.exe'), synthesize a clean hierarchical identity: '<HostPlatform> / <WorkerName>' (e.g. 'WorkBuddy / SheetAgent', 'WorkBuddy / MCP-Service', 'Cursor / Terminal-Agent').
+       * If the process is a worker or sub-agent spawned by a host platform / IDE harness (e.g. parent_lineage contains desktop IDE/harness executables), synthesize a clean hierarchical identity: '<HostPlatform> / <WorkerName>' (e.g. '<DetectedHost> / <DetectedWorker>').
   6. Finish with a concise evidence-backed report, detailing what configuration locations, protocol characteristics, and hook approaches were discovered.
 settings:
   temperature: 0

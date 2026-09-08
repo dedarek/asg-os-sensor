@@ -41,15 +41,6 @@ def match(struct):
 
     for e in db.get("fingerprints", []):
         ef = e.get("features", {})
-        
-        # 1. 如果有明确的已知 Agent 命名标识匹配
-        fp_name = (e.get("name") or "").lower()
-        if fp_name and fp_name != "unknown-runtime":
-            if fp_name in argv_str or fp_name in exe_str or fp_name == f["exe"].lower():
-                # 仅在非频繁扫描或跨周期时递增计数，避免单次轮询重复写盘
-                return e, int((time.time() - t0) * 1000)
-
-        # 2. 通用结构匹配规则
         if ef.get("exe") != f["exe"] or ef.get("runtime") != f["runtime"]:
             continue
         fover = len(set(ef.get("flags", [])) & set(f["flags"]))
