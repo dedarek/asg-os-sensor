@@ -76,20 +76,30 @@ def remember(struct, recipe, mount_ms):
 
     f = features_of(struct)
 
-    # 检查是否已存在同类样本特征，若存在则更新迭代该样本，而非无脑重复 append
+    # 1. 优先遵循 Goose 显式指定的演进目标 (如果 Goose 发现这是对已有 harness 的演进更新)
+    evolves_target = ""
+    mf = recipe.get("match_features", {})
+    if isinstance(mf, dict):
+        evolves_target = mf.get("evolves_prior_harness", "")
+
     for existing in db.get("fingerprints", []):
+        is_targeted = evolves_target and existing.get("id") == evolves_target
         ef = existing.get("features", {})
-        if ef.get("exe") == f["exe"] and ef.get("runtime") == f["runtime"]:
-            # 如果配置目录或关键运行特征一致，合并演进
-            if ef.get("config_dirs") == f["config_dirs"]:
-                existing["match_count"] = int(existing.get("match_count", 1)) + 1
-                existing["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-                existing["mount_ms"] = mount_ms
-                if agent_name and agent_name not in ["unknown", "unknown-runtime", "unidentified-agent"]:
-                    existing["name"] = agent_name
-                existing["hook_recipe"] = recipe
-                save(db)
-                return existing
+        is_same_harness = (
+            ef.get("exe") == f["exe"]
+            and ef.get("runtime") == f["runtime"]
+            and ef.get("config_dirs") == f["config_dirs"]
+        )
+
+        if is_targeted or is_same_harness:
+            existing["match_count"] = int(existing.get("match_count", 1)) + 1
+            existing["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            existing["mount_ms"] = mount_ms
+            if agent_name and agent_name not in ["unknown", "unknown-runtime", "unidentified-agent"]:
+                existing["name"] = agent_name
+            existing["hook_recipe"] = recipe
+            save(db)
+            return existing
 
     entry = {"id": f"harness-{len(db.get('fingerprints', [])) + 1:02d}",
              "name": agent_name,
