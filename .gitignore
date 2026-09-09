@@ -19,3 +19,5 @@ e2e/hooked_stdout.txt
 snap_drawer.js
 *.tmp
 e2e/artifacts/autonomous-governance/
+# stage1 isolated run artifacts (never commit raw runs)
+artifacts/stage1/
