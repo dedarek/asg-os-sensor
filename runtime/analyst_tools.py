@@ -28,6 +28,13 @@ EVIDENCE_DIR = AUDIT_DIR / "evidence"
 RECIPE_DIR = Path(os.environ.get("ASG_RECIPE_DIR", AUDIT_DIR / "recipes"))
 TARGET_STREAM = Path(os.environ.get("ASG_TARGET_STREAM_FILE", "")) if os.environ.get("ASG_TARGET_STREAM_FILE") else None
 TARGET_PID = int(os.environ.get("ASG_TARGET_PID", "0") or 0)
+TARGET_CREATE_TIME = None
+try:
+    _ct = os.environ.get("ASG_TARGET_CREATE_TIME", "").strip()
+    if _ct:
+        TARGET_CREATE_TIME = float(_ct)
+except (TypeError, ValueError):
+    TARGET_CREATE_TIME = None
 MAX_OUTPUT = 6000
 
 SECRET_RE = re.compile(r"(?i)(authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|password|secret|private[_-]?key|bearer)\s*[:=]\s*[^\s,;]+")
@@ -48,22 +55,31 @@ def redact(value: Any) -> Any:
     return value
 
 
-def record(method: str, request_id: Any, tool: str | None, args: Any, result: Any, error: str | None = None) -> None:
+def record(method: str, request_id: Any, tool: str | None, args: Any, result: Any, error: str | None = None) -> str:
     AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     safe_result = redact(result)
-    evidence_id = f"ev-{int(time.time() * 1000)}-{hashlib.sha1(json.dumps(safe_result, sort_keys=True, default=str).encode()).hexdigest()[:10]}"
-    evidence = {"evidence_id": evidence_id, "ts": now(), "method": method, "request_id": request_id, "tool": tool, "args": redact(args), "result": safe_result, "error": error}
+    evidence_id = f"ev-{time.time_ns()}-{hashlib.sha1(json.dumps(safe_result, sort_keys=True, default=str).encode()).hexdigest()[:10]}"
+    # 证据必须绑定调查启动时冻结的目标实例 (pid + create_time)，
+    # 供配方校验比对，杜绝跨实例/PID 复用混用历史证据。
+    evidence = {"evidence_id": evidence_id, "ts": now(), "method": method, "request_id": request_id,
+                "tool": tool, "args": redact(args), "result": safe_result, "error": error,
+                "target": {"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME}}
     (EVIDENCE_DIR / f"{evidence_id}.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
     with (AUDIT_DIR / "analyst_tool_calls.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": now(), "request_id": request_id, "tool": tool, "args": redact(args), "evidence_id": evidence_id, "error": error}, ensure_ascii=False) + "\n")
 
+    return evidence_id
 
 def target_process() -> psutil.Process:
     if TARGET_PID <= 0:
         raise RuntimeError("target PID is not bound")
     try:
-        return psutil.Process(TARGET_PID)
+        p = psutil.Process(TARGET_PID)
+        expected = os.environ.get('ASG_TARGET_CREATE_TIME')
+        if expected and p.create_time() != float(expected):
+            raise RuntimeError('target PID reused')
+        return p
     except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
         raise RuntimeError(f"target PID unavailable: {TARGET_PID}") from exc
 
@@ -128,7 +144,7 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
             config_candidates.append({
                 "source": "cmdline_arg",
                 "flag_context": cmd[i-1] if i > 0 and cmd[i-1].startswith("-") else "<positional>",
-                "filename_class": Path(arg_s).name if ("." in arg_s or "/" in arg_s or "\\" in arg_s) else "<flag_val>",
+                "filename_class": Path(arg_s).name if ("." in arg_s or "/" in arg_s or chr(92) in arg_s) else "<flag_val>",
                 "is_file_like": any(arg_s.lower().endswith(e) for e in [".json", ".yaml", ".yml", ".toml", ".ini", ".env"])
             })
     return {
@@ -209,6 +225,7 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "get_prior_recipe":
         return load_prior()
     if name == "propose_recipe":
+        target_process()
         recipe = redact(args.get("recipe", {}))
         if not isinstance(recipe, dict):
             raise ValueError("recipe must be an object")
@@ -216,159 +233,37 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         missing = sorted(required - set(recipe))
         if missing:
             raise ValueError("recipe missing fields: " + ", ".join(missing))
+        from runtime.recipe_validation import validate
+        validate(recipe, EVIDENCE_DIR,
+                 target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME})
         RECIPE_DIR.mkdir(parents=True, exist_ok=True)
         path = RECIPE_DIR / "candidate.json"
         payload = {"status": "candidate", "created_at": now(), "recipe": recipe}
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"candidate_path": str(path), "recipe": recipe, "next": "Supervisor must verify and commit; Analyst cannot activate hooks."}
     p = target_process()
+    if name == 'inspect_config_surface':
+        if args.get('path'):
+            raise ValueError('Arbitrary config paths are not permitted; inspect bound process only')
+        from runtime.collection import collect
+        return collect(p)
+    if name == 'inspect_network_peers':
+        from runtime.collection import collect
+        return collect(p)['assets']['network_surface']
+    if name in ('observe_tree', 'inspect_execution_trace'):
+        return {'processes': [{'pid': c.pid, 'name': c.name()} for c in p.children(recursive=True)[:40]],
+                'execution_events': {'status': 'not_collected'}}
+    if name == 'probe_help':
+        return {'status': 'unsupported', 'reason': 'Executing the target binary may launch another application; disabled'}
     if name == "get_target_context":
-        return {"target": process_row(p), "tree": tree_rows(p), "stream": stream_tail(), "prior_memory": load_prior()}
-    if name == "inspect_config_surface":
-        # 安全脱敏读取配置文件内容，提取模型、URL、Tools、MCP、规则设定，绝对不暴露密钥
-        target_path_str = str(args.get("path", "")).strip()
-        found_configs = []
-        if target_path_str:
-            p_cand = Path(target_path_str)
-            if p_cand.exists() and p_cand.is_file():
-                found_configs.append(p_cand)
-        else:
-            # 自动探测进程打开的配置文件或当前工作区/用户目录典型配置文件
-            try:
-                for f in p.open_files():
-                    fp = Path(str(f.path))
-                    if fp.suffix.lower() in {".json", ".yaml", ".yml", ".toml", ".env", ".ini", ".md"}:
-                        if any(k in fp.name.lower() for k in ["config", "setting", "claude", "agent", "mcp", ".env", "rule", "prompt"]):
-                            found_configs.append(fp)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-            try:
-                cwd = p.cwd()
-                if cwd:
-                    cwd_p = Path(cwd)
-                    for rule_name in ["AGENTS.md", "CLAUDE.md", ".cursorrules", "config.yaml", "config.json"]:
-                        if (cwd_p / rule_name).exists():
-                            found_configs.append(cwd_p / rule_name)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        results = []
-        for cfg_file in found_configs[:5]:
-            try:
-                text = cfg_file.read_text(encoding="utf-8", errors="replace")[:10000]
-                # 严格安全脱敏：剔除所有密钥、密码、Token
-                redacted_text = redact(text)
-                results.append({
-                    "path": str(cfg_file),
-                    "filename": cfg_file.name,
-                    "content_sample": safe_text(redacted_text, 2000)
-                })
-            except Exception as e:
-                results.append({"path": str(cfg_file), "error": str(e)})
-        return {"configs": results}
-
-    if name == "inspect_network_peers":
-        # 探测当前进程及子进程的真实外联与本地监听
-        net_info = {"listeners": [], "outbound_connections": []}
-        try:
-            for c in p.net_connections(kind="inet"):
-                if c.status == "LISTEN":
-                    net_info["listeners"].append(f"{c.laddr.ip}:{c.laddr.port}")
-                elif c.raddr:
-                    net_info["outbound_connections"].append(f"{c.raddr.ip}:{c.raddr.port} (status={c.status})")
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        return net_info
-
-    if name == "inspect_execution_trace":
-        # 探测真实衍生执行链路与当前打开的敏感文件
-        sensitive_opened = []
-        try:
-            for f in p.open_files():
-                p_str = str(f.path).lower()
-                if any(k in p_str for k in ["id_rsa", ".ssh", ".aws", "credentials", "token", ".env", "secret"]):
-                    sensitive_opened.append(str(f.path))
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-
-        child_traces = []
-        try:
-            for c in p.children(recursive=True):
-                try:
-                    child_traces.append({
-                        "pid": c.pid,
-                        "name": c.name(),
-                        "cmdline": redact(" ".join(c.cmdline()))[:150]
-                    })
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-
-        return {
-            "sensitive_files_accessed": sensitive_opened,
-            "child_execution_tree": child_traces[:20]
-        }
-
-    if name == "observe_tree":
-        return {"tree": tree_rows(p)}
+        from runtime.collection import collect
+        return {"target": {'pid': p.pid, 'create_time': p.create_time()},
+                "local_evidence": collect(p), "prior_memory": load_prior()}
     if name == "observe_runtime_surface":
-        row = process_row(p)
-        children = tree_rows(p)[1:]
-        runtime = "unknown-runtime"
-        open_paths = []
-        try:
-            for f in p.open_files():
-                path = Path(str(f.path))
-                open_paths.append({"extension": path.suffix.lower() or "<none>", "depth": len(path.parts), "is_config_like": path.suffix.lower() in {".json", ".yaml", ".yml", ".toml", ".ini", ".env"}})
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        conns = []
-        try:
-            for c in p.net_connections(kind="inet"):
-                conns.append({"status": c.status, "family": str(c.family), "type": str(c.type), "has_remote": bool(c.raddr)})
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        return {"runtime_class": runtime, "target": row, "descendant_count": len(children), "child_count": len(children), "open_path_shapes": open_paths[:80], "network_shape": conns[:80], "stream": stream_tail()}
-    if name == "probe_help":
-        exe = str(p.exe())
-        cwd = None
-        try:
-            cwd = p.cwd()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        attempts = []
-        for flag in ("--help", "--version"):
-            try:
-                cp = subprocess.run([exe, flag], cwd=cwd, capture_output=True, text=True, timeout=5, shell=False)
-                out = cp.stdout or ""
-                err = cp.stderr or ""
-                attempts.append({
-                    "flag_class": flag,
-                    "returncode": cp.returncode,
-                    "stdout_shape": {"line_count": len(out.splitlines()), "has_json": "{" in out, "has_stream": "stream" in out.lower(), "has_tool": "tool" in out.lower()},
-                    "stderr_shape": {"line_count": len(err.splitlines())},
-                })
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                attempts.append({"flag_class": flag, "error_class": type(exc).__name__})
-        return {"identity": "unknown-runtime", "attempts": attempts}
-    if name == "inspect_stream":
-        return stream_tail()
-    if name == "get_prior_recipe":
-        return load_prior()
-    if name == "propose_recipe":
-        recipe = redact(args.get("recipe", {}))
-        if not isinstance(recipe, dict):
-            raise ValueError("recipe must be an object")
-        required = {"match_features", "observation", "hook", "fallback"}
-        missing = sorted(required - set(recipe))
-        if missing:
-            raise ValueError("recipe missing fields: " + ", ".join(missing))
-        RECIPE_DIR.mkdir(parents=True, exist_ok=True)
-        path = RECIPE_DIR / "candidate.json"
-        payload = {"status": "candidate", "created_at": now(), "recipe": recipe}
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"candidate_path": str(path), "recipe": recipe, "next": "Supervisor must verify and commit; Analyst cannot activate hooks."}
+        from runtime.collection import collect
+        return {'local_evidence': collect(p), 'runtime': 'unknown',
+                'children': [{'pid': c.pid, 'name': c.name()} for c in p.children()[:40]],
+                'stream': stream_tail()}
     raise ValueError(f"tool not allowlisted: {name}")
 
 
@@ -399,7 +294,7 @@ TOOLS = [
     {"name": "get_target_context", "description": "Read the supervisor-bound target dossier, process tree, stream shape, and prior memory.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_tree", "description": "Observe only the target process and descendants within the supervisor scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_runtime_surface", "description": "Inspect generic runtime, files, network shape, children, and stream capabilities; no secrets are returned.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "inspect_config_surface", "description": "Inspect opened or project configuration files (e.g. config.json, config.yaml, .env, AGENTS.md, CLAUDE.md) safely with secrets redacted to discover models, endpoints, tools, and rules.", "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "Optional specific config file path"}}}},
+    {"name": "inspect_config_surface", "description": "Read selected configuration names from bound target files. No raw contents, secrets, .env or arbitrary paths.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_network_peers", "description": "Inspect active local listening ports and remote model endpoint connections.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_execution_trace", "description": "Inspect sensitive files accessed and active child command lines spawned by the agent.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "probe_help", "description": "Run only --help and --version against the observed executable, without a shell or arbitrary arguments.", "inputSchema": {"type": "object", "properties": {}}},
@@ -435,7 +330,8 @@ def main() -> None:
                 name = params.get("name")
                 args = params.get("arguments") or {}
                 result = call_tool(name, args)
-                record(method, request_id, name, args, result)
+                evidence_id = record(method, request_id, name, args, result)
+                result = dict(result, evidence_id=evidence_id)
                 text = json.dumps(redact(result), ensure_ascii=False)
                 send({"jsonrpc": "2.0", "id": request_id, "result": {"content": [{"type": "text", "text": text}], "isError": False}})
             elif request_id is not None:

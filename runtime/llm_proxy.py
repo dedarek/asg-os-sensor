@@ -35,7 +35,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length)
-        target = str(_STATE["base_url"]).rstrip("/") + self.path
+        base = str(_STATE["base_url"]).rstrip("/")
+        # Goose prefixes /v1; configured vendor base already contains /v1.
+        suffix = self.path[3:] if base.endswith('/v1') and self.path.startswith('/v1/') else self.path
+        if suffix not in ('/chat/completions', '/responses'):
+            self.send_error(404); return
+        target = base + suffix
         headers = {
             "Authorization": "Bearer " + str(_STATE["key"]),
             "Content-Type": self.headers.get("Content-Type", "application/json"),

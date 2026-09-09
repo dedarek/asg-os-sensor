@@ -82,7 +82,7 @@ class TruthTests(unittest.TestCase):
              patch.object(dashboard, 'metadata_identity', return_value={}), \
              patch.object(dashboard, 'ownership', return_value={1234567: [1234567, 1234568]}), \
              patch.object(dashboard.analyzer, 'analyze', return_value={}), \
-             patch.object(dashboard.matcher, 'match', return_value=(recipe, 0.1)):
+             patch.object(dashboard.matcher, 'classify', return_value={'status': 'exact', 'entry': recipe, 'match_ms': 0.1, 'reason': 'test'}):
             dashboard.scan_agents_once()
         agent = dashboard.SCAN_STATE['agents'][0]
         self.assertEqual(agent['process_pids'], [1234567, 1234568])
@@ -96,6 +96,48 @@ class TruthTests(unittest.TestCase):
         for text in ('自动解析中', '自动读取解析中', '已适配挂接', '待流量流入自动激活', '全链路收敛安全', '无活跃子执行'):
             self.assertNotIn(text, dashboard.HTML_PAGE)
 
+
+    def test_pid_reuse_does_not_leak_lifecycle(self):
+        # A 实例调查成功并写入结果；PID 复用后的 B 实例（不同 create_time）不得看到 A 的 result/running/冷却。
+        with dashboard.INVESTIGATION_LOCK:
+            dashboard.INVESTIGATION_RESULTS.clear()
+            dashboard.INVESTIGATING_INSTANCES.clear()
+            dashboard.INVESTIGATION_RETRY_AT.clear()
+        inst_a = "123:111.0"
+        dashboard._record_investigation_result(inst_a, 123, 111.0, "succeeded", "saved A")
+        with dashboard.INVESTIGATION_LOCK:
+            dashboard.INVESTIGATION_RETRY_AT[inst_a] = dashboard.now() + 999999
+        inst_b = "123:222.0"
+        self.assertNotIn(inst_b, dashboard.INVESTIGATION_RESULTS)
+        self.assertNotIn(inst_b, dashboard.INVESTIGATION_RETRY_AT)
+        with dashboard.INVESTIGATION_LOCK:
+            dashboard.INVESTIGATING_INSTANCES[inst_a] = 111.0
+        self.assertNotIn(inst_b, dashboard.INVESTIGATING_INSTANCES)
+        state_b = presentation(True, running=(inst_b in dashboard.INVESTIGATING_INSTANCES),
+                               result=dashboard.INVESTIGATION_RESULTS.get(inst_b))['investigation']
+        self.assertEqual(state_b['status'], 'not_scheduled')
+        with dashboard.INVESTIGATION_LOCK:
+            dashboard.INVESTIGATION_RESULTS.clear()
+            dashboard.INVESTIGATING_INSTANCES.clear()
+            dashboard.INVESTIGATION_RETRY_AT.clear()
+
+    def test_record_result_uses_frozen_create_time_not_live_pid(self):
+        # 结果使用调用方冻结的 create_time；PID 在调查期间退出/复用不会误归属。
+        with dashboard.INVESTIGATION_LOCK:
+            dashboard.INVESTIGATION_RESULTS.clear()
+        dashboard._record_investigation_result("777:100.0", 777, 100.0, "succeeded", "frozen")
+        saved = dashboard.INVESTIGATION_RESULTS.get("777:100.0")
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved['create_time'], 100.0)
+        self.assertEqual(saved["instance_id"], "777:100.0")
+        with tempfile.TemporaryDirectory() as tmp:
+            rd = Path(tmp)
+            dashboard._record_investigation_result("777:100.0", 777, 100.0, "succeeded", "frozen", rd)
+            data = json.loads((rd / 'result.json').read_text())
+            self.assertEqual(data["instance_id"], "777:100.0")
+            self.assertEqual(data['create_time'], 100.0)
+        with dashboard.INVESTIGATION_LOCK:
+            dashboard.INVESTIGATION_RESULTS.clear()
 
 if __name__ == '__main__':
     unittest.main()

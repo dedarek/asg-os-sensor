@@ -62,7 +62,7 @@ def metadata_identity(info):
                         deps = data.get('dependencies') or {}
                         sdk = any(k in deps for k in ('openai', '@anthropic-ai/sdk', '@ai-sdk/openai', 'litellm', '@langchain/core'))
                         return {'id': 'package:' + str(parent), 'name': data.get('productName') or data['name'],
-                                'source': 'package-metadata', 'evidence': str(package), 'model_sdk': sdk}
+                                'source': 'package-metadata', 'evidence': str(package), 'version': data.get('version', 'unknown'), 'model_sdk': sdk}
             except (OSError, ValueError, TypeError):
                 pass
         # Outermost bundle identifies the host, not each Electron helper bundle.
@@ -76,7 +76,7 @@ def metadata_identity(info):
                 name = data.get('CFBundleDisplayName') or data.get('CFBundleName')
                 if name:
                     return {'id': 'bundle:' + str(bundle), 'name': name,
-                            'source': 'bundle-metadata', 'evidence': str(manifest)}
+                            'source': 'bundle-metadata', 'evidence': str(manifest), 'version': data.get('CFBundleShortVersionString', 'unknown')}
             except (OSError, ValueError, plistlib.InvalidFileException):
                 pass
     return {}

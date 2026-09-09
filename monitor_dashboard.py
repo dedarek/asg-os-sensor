@@ -13,6 +13,8 @@ import sys
 import json
 import time
 import shutil
+import shlex
+from copy import deepcopy
 import threading
 import subprocess
 from pathlib import Path
@@ -27,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher
 from runtime.status import presentation, DISABLED_REASON
+from runtime.recipe_validation import validate as validate_recipe
 from runtime.identity import identify, ownership, metadata_identity
 from runtime.stream_parser import redact
 from runtime.llm_config import analyst_key as load_analyst_key
@@ -75,11 +78,11 @@ SCAN_STATE = {
 }
 
 # 记录当前已挂起正在调查的 PID，避免重复拉起多个 Goose
-INVESTIGATING_PIDS = set()
+INVESTIGATING_INSTANCES: dict[str, float] = {}  # instance_id -> create_time
 INVESTIGATION_LOCK = threading.Lock()
 INVESTIGATION_SEMAPHORE = threading.Semaphore(MAX_ANALYSTS)  # 最多同时允许 N 个 Goose 并发，防止跑满 API 与进程雪崩
-INVESTIGATION_RESULTS: dict[int, dict[str, Any]] = {}
-INVESTIGATION_RETRY_AT: dict[int, float] = {}
+INVESTIGATION_RESULTS: dict[str, dict[str, Any]] = {}  # instance_id -> result
+INVESTIGATION_RETRY_AT: dict[str, float] = {}  # instance_id -> retry_at
 
 
 def _goose_executable() -> str | None:
@@ -90,16 +93,27 @@ def _goose_executable() -> str | None:
     return shutil.which(value)
 
 
-def _record_investigation_result(pid: int, status: str, message: str, run_dir: Path | None = None) -> None:
+def _record_investigation_result(instance_id: str, pid: int, create_time: float | None, status: str, message: str, run_dir: Path | None = None) -> None:
+    # Persist investigation outcome bound to the frozen instance (pid:create_time).
+    # create_time is frozen by the caller at investigation start; we never re-read
+    # psutil at completion, so a reused PID cannot hijack the result. All lifecycle
+    # phases (running/retry/result/API) use the same instance_id.
     result = {
+        "instance_id": instance_id,
+        "pid": pid,
+        "create_time": create_time,
         "status": status,
         "message": message,
         "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     if run_dir is not None:
         result["log_dir"] = str(run_dir)
+        path = run_dir / 'result.json'
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(result, ensure_ascii=False))
+        os.replace(temporary, path)
     with INVESTIGATION_LOCK:
-        INVESTIGATION_RESULTS[pid] = result
+        INVESTIGATION_RESULTS[instance_id] = result
 
 
 def now() -> float:
@@ -114,25 +128,38 @@ def analyst_route() -> dict:
     return load_analyst_route()
 
 
+def _freeze_instance(pid: int, struct: dict[str, Any]) -> tuple[str, float | None]:
+    """调查启动时冻结实例身份。create_time 一经确定即贯穿整个生命周期。
+    返回 (instance_id, create_time)。"""
+    create_time = struct.get("create_time")
+    if create_time is None:
+        try:
+            create_time = psutil.Process(pid).create_time()
+        except psutil.Error:
+            create_time = None
+    return f"{pid}:{create_time}", create_time
+
+
 def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool = False):
     """由 Goose 执行后台非交互式受控逆向接管（模型路由见 llm.yaml）"""
     if not AUTONOMOUS_ANALYSIS_ENABLED:
         return
+    instance_id, create_time = _freeze_instance(pid, struct)
     with INVESTIGATION_LOCK:
-        if pid in INVESTIGATING_PIDS:
+        if instance_id in INVESTIGATING_INSTANCES:
             return
-        retry_at = INVESTIGATION_RETRY_AT.get(pid, 0)
+        retry_at = INVESTIGATION_RETRY_AT.get(instance_id, 0)
         if not force and now() < retry_at:
             return
-        INVESTIGATING_PIDS.add(pid)
+        INVESTIGATING_INSTANCES[instance_id] = create_time
 
     goose_bin = _goose_executable()
     if not goose_bin:
         message = f"未找到 Goose CLI（当前解析值: {GOOSE}）。请安装 block-goose-cli 或设置 ASG_GOOSE_BIN。"
-        _record_investigation_result(pid, "unavailable", message)
+        _record_investigation_result(instance_id, pid, create_time, "unavailable", message)
         with INVESTIGATION_LOCK:
-            INVESTIGATION_RETRY_AT[pid] = now() + GOOSE_RETRY_COOLDOWN_S
-            INVESTIGATING_PIDS.discard(pid)
+            INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
+            INVESTIGATING_INSTANCES.pop(instance_id, None)
         print(f"[Analyst Unavailable PID={pid}] {message}", file=sys.stderr)
         return
 
@@ -140,9 +167,9 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
     # 否则几十个候选会在 semaphore 后等待数十分钟，看板就像永远卡住。
     if not INVESTIGATION_SEMAPHORE.acquire(blocking=False):
         with INVESTIGATION_LOCK:
-            INVESTIGATING_PIDS.discard(pid)
+            INVESTIGATING_INSTANCES.pop(instance_id, None)
         if force:
-            _record_investigation_result(pid, "busy", "分析器并发槽位已满，请稍后重试")
+            _record_investigation_result(instance_id, pid, create_time, "busy", "分析器并发槽位已满，请稍后重试")
         return
 
     try:
@@ -157,6 +184,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
         with STATE_LOCK:
             SCAN_STATE["active_investigations"][pid] = {
                 "status": "investigating",
+                "instance_id": instance_id,
                 "started_at": time.strftime("%H:%M:%S"),
                 "log_dir": str(run_dir)
             }
@@ -166,16 +194,16 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             key = load_analyst_key(route)
             if not key:
                 message = "LLM 凭据缺失: " + str(route.get("key_env", "?"))
-                _record_investigation_result(pid, "failed", message, run_dir)
+                _record_investigation_result(instance_id, pid, create_time, "failed", message, run_dir)
                 print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
                 return
             if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
                 message = "上游 TLS 证书无效；已阻止深度数据外发。修复证书，或明确设置 ASG_ALLOW_INSECURE_ANALYST=1"
-                _record_investigation_result(pid, "blocked", message, run_dir)
+                _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir)
                 print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)
                 return
 
-            extension = f"asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={run_dir} ASG_RECIPE_DIR={recipes_dir} ASG_TARGET_STREAM_FILE={stream_file} python runtime/analyst_tools.py"
+            extension = 'asg-runtime-tools:' + shlex.join([sys.executable, '-B', str(ROOT / 'runtime' / 'analyst_tools.py')])
             cmd = [
                 goose_bin, "run", "--no-profile", "--no-session",
                 "--recipe", str(RECIPE),
@@ -190,6 +218,9 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
 
             env = os.environ.copy()
             env.update(build_goose_env(route, key, pid))
+            env.update(ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
+                       ASG_AUDIT_DIR=str(run_dir), ASG_RECIPE_DIR=str(recipes_dir),
+                       ASG_TARGET_STREAM_FILE=str(stream_file))
 
             out_path = run_dir / "analyst_stdout.jsonl"
             err_path = run_dir / "analyst_stderr.log"
@@ -212,27 +243,47 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                     and identity not in ["", "unknown", "unknown-runtime", "unidentified-agent"]
                     and recipe.get("confidence", 0) >= 0.3
                 ):
-                    # 写入指纹库
-                    entry = matcher.remember(struct, recipe, elapsed_ms)
-                    _record_investigation_result(pid, "succeeded", f"已保存候选配方 {entry.get('id')}，未安装／未验证", run_dir)
+                    # 写入指纹库：证据必须绑定本次调查启动时冻结的实例
+                    validated = validate_recipe(recipe, run_dir / 'evidence',
+                                                target={'pid': pid, 'create_time': create_time})
+                    evidence = validated['evidence']
+                    hook_evidence_supported = validated['hook_evidence_supported']
+                    # Re-check identity/build after the investigation, before committing.
+                    current = analyzer.analyze(pid)
+                    if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
+                        raise ValueError('Target changed during investigation')
+                    entry = matcher.remember_verified(struct, recipe, evidence, elapsed_ms)
+                    hook_text = "接入点建议有证据支持" if hook_evidence_supported else "接入点未知/未证实"
+                    _record_investigation_result(instance_id, pid, create_time, "succeeded",
+                                                 f"已保存候选配方 {entry.get('id')}（{hook_text}），未安装／未验证", run_dir)
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
-                    _record_investigation_result(pid, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
+                    _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
             else:
-                _record_investigation_result(pid, "failed", f"Goose 未产生有效 Recipe (returncode={cp.returncode})", run_dir)
-                print(f"[Analyst] 接管完成但未产生有效 Recipe (returncode={cp.returncode})", file=sys.stderr)
+                stderr_tail = ''
+                try:
+                    err_txt = err_path.read_text(encoding='utf-8', errors='replace').strip().splitlines()
+                    if err_txt:
+                        stderr_tail = redact('\n'.join(err_txt[-6:]))[-600:]
+                except OSError:
+                    pass
+                reason = f"Goose 未产生有效 Recipe (returncode={cp.returncode})"
+                if stderr_tail:
+                    reason += "；stderr 尾部: " + stderr_tail
+                _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
+                print(f"[Analyst] 接管完成但未产生有效 Recipe; returncode={cp.returncode}; stderr_tail={stderr_tail[:200]}", file=sys.stderr)
 
         except subprocess.TimeoutExpired:
-            _record_investigation_result(pid, "failed", f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)", run_dir)
+            _record_investigation_result(instance_id, pid, create_time, "failed", f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)", run_dir)
             print(f"[Analyst Error PID={pid}] Goose timeout after {GOOSE_TIMEOUT_S}s", file=sys.stderr)
         except Exception as exc:
-            _record_investigation_result(pid, "failed", f"{type(exc).__name__}: {exc}", run_dir)
+            _record_investigation_result(instance_id, pid, create_time, "failed", f"{type(exc).__name__}: {exc}", run_dir)
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:
             with INVESTIGATION_LOCK:
-                INVESTIGATION_RETRY_AT[pid] = now() + GOOSE_RETRY_COOLDOWN_S
-                INVESTIGATING_PIDS.discard(pid)
+                INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
+                INVESTIGATING_INSTANCES.pop(instance_id, None)
             with STATE_LOCK:
                 SCAN_STATE["active_investigations"].pop(pid, None)
             # 立即更新指纹库统计与扫描结果
@@ -336,7 +387,9 @@ def scan_agents_once():
                     "config_dirs": []
                 }
             
-            matched_fp, match_ms = matcher.match(struct)
+            match_result = matcher.classify(struct)
+            matched_fp = match_result['entry'] if match_result['status'] == 'exact' else None
+            match_ms = match_result['match_ms']
             print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
             
             # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
@@ -353,10 +406,23 @@ def scan_agents_once():
                 # 尚未命中指纹库：未逆向接管前展示为待调查状态
                 display_name = f"未知 Agent ({name})"
 
+            instance_id = f"{pid}:{pinfo.get('create_time')}"
             is_investigating = False
             with INVESTIGATION_LOCK:
-                is_investigating = (pid in INVESTIGATING_PIDS)
-                investigation_result = dict(INVESTIGATION_RESULTS.get(pid, {}))
+                is_investigating = (instance_id in INVESTIGATING_INSTANCES)
+                investigation_result = dict(INVESTIGATION_RESULTS.get(instance_id, {}))
+            if investigation_result.get('create_time') != pinfo.get('create_time'):
+                investigation_result = {}
+                run_root = Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard')))
+                for prior in sorted(run_root.glob(f'pid_{pid}_*/result.json'), reverse=True)[:32]:
+                    try:
+                        saved = json.loads(prior.read_text())
+                        if saved.get('instance_id') == instance_id or                            (saved.get('create_time') is not None and saved.get('create_time') == pinfo.get('create_time')):
+                            investigation_result = saved
+                            with INVESTIGATION_LOCK: INVESTIGATION_RESULTS[instance_id] = saved
+                            break
+                    except (OSError, ValueError):
+                        continue
             if not AUTONOMOUS_ANALYSIS_ENABLED and not investigation_result:
                 investigation_result = {"status": "disabled", "message": "自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)"}
 
@@ -385,10 +451,31 @@ def scan_agents_once():
             adapter_info.update(presentation(AUTONOMOUS_ANALYSIS_ENABLED,
                 is_investigating, investigation_result, metadata_identity(pinfo) or local_identity))
             adapter_info['investigating'] = adapter_info['investigation']['status'] == 'running'
+            adapter_info['match_status'] = match_result['status']
+            adapter_info['match_reason'] = match_result['reason']
+            adapter_info['fingerprint_revision'] = matched_fp.get('revision') if matched_fp else None
+            adapter_info['recipe_status'] = 'structure_validated_hook_unverified' if matched_fp else 'not_available'
             adapter_info['historical_recipe'] = recipe_obj
             for field in adapter_info['assets']:
                 adapter_info[field] = None
-            adapter_info['hook'] = '未安装'
+            with STATE_LOCK:
+                active_run = dict(SCAN_STATE['active_investigations'].get(pid, {}))
+            if active_run.get('instance_id') and active_run['instance_id'] != instance_id:
+                active_run = {}  # 复用 PID 的旧运行态不进入新实例
+            log_dir = active_run.get('log_dir') or investigation_result.get('log_dir')
+            if log_dir:
+                for ev_path in sorted((Path(log_dir) / 'evidence').glob('ev-*.json')):
+                    try:
+                        ev = json.loads(ev_path.read_text())
+                        result = ev.get('result', {})
+                        if ev.get('tool') == 'get_target_context': result = result.get('local_evidence', {})
+                        if ev.get('tool') in ('get_target_context', 'inspect_config_surface') and not ev.get('error'):
+                            collections = result.get('assets', {})
+                            for value in collections.values(): value['source'] = ev['evidence_id'] + ': ' + value.get('source', '')
+                            adapter_info['assets'].update({k: v for k, v in presentation(True, collections=collections)['assets'].items() if k in collections})
+                    except (OSError, ValueError):
+                        continue
+            adapter_info['hook'] = '未安装' 
             adapter_info['observation'] = '未接入／未验证'
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             
@@ -408,10 +495,11 @@ def scan_agents_once():
             })
 
             # 自动接入闭环：若发现陌生 Agent 或尚未拥有深度治理全景档案的已匹配 Agent，立即在后台拉起 Goose 进行自主逆向！
-            needs_deep_governance = not recipe_obj.get("model_routing")
+            needs_deep_governance = False  # exact compatibility reuses investigation, even when model is unknown
             with INVESTIGATION_LOCK:
-                retry_ready = now() >= INVESTIGATION_RETRY_AT.get(pid, 0)
-            if AUTONOMOUS_ANALYSIS_ENABLED and (not is_matched or needs_deep_governance) and not is_investigating and retry_ready:
+                retry_ready = now() >= INVESTIGATION_RETRY_AT.get(instance_id, 0)
+            target_allowed = not os.environ.get('ASG_ANALYST_TARGET_PID') or str(pid) == os.environ['ASG_ANALYST_TARGET_PID']
+            if target_allowed and AUTONOMOUS_ANALYSIS_ENABLED and (not is_matched or needs_deep_governance) and not is_investigating and retry_ready:
                 threading.Thread(
                     target=run_autonomous_investigation,
                     args=(pid, struct),
@@ -785,7 +873,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <script>
 function assetText(adapter, key) {
   const item = (adapter.assets || {})[key] || {label: '尚未采集'};
-  return escapeHtml(item.label + (item.message ? '：' + item.message : '') +
+  return escapeHtml(item.label + (item.message ? '：' + item.message : '') + (item.source ? ' [来源: ' + item.source + ']' : '') +
     (item.value ? ' · ' + JSON.stringify(item.value) : ''));
 }
 function renderTools(tools) {
@@ -1013,7 +1101,7 @@ async function updateUI() {
       const isInvestigating = backendInvestigating;
       
       const statusHtml = escapeHtml(investigation.label + ' · ' + (investigation.message || '') +
-        ' | ' + (isMatched ? '指纹匹配（兼容性待验证）' : '未命中指纹') + ' | Hook: ' + a.adapter.hook_state.label);
+        ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
 
@@ -1180,7 +1268,15 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.wfile.write(HTML_PAGE.encode("utf-8"))
         elif self.path == "/api/state":
             with STATE_LOCK:
-                data = json.dumps(SCAN_STATE, ensure_ascii=False)
+                snapshot = deepcopy(SCAN_STATE)
+            with INVESTIGATION_LOCK:
+                for agent in snapshot['agents']:
+                    adapter = agent['adapter']
+                    inst = agent.get('instance_id') or f"{agent['pid']}:{adapter.get('create_time')}"
+                    adapter['investigation'] = presentation(AUTONOMOUS_ANALYSIS_ENABLED,
+                        inst in INVESTIGATING_INSTANCES, INVESTIGATION_RESULTS.get(inst))['investigation']
+                    adapter['investigating'] = adapter['investigation']['status'] == 'running'
+            data = json.dumps(snapshot, ensure_ascii=False)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()

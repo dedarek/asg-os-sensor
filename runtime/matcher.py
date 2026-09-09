@@ -165,37 +165,9 @@ def features_of(struct: dict) -> dict:
 
 
 def match(struct: dict):
-    """纯读匹配: 绝不修改指纹库, 绝不写盘。
-
-    命中返回 (entry深拷贝, 耗时ms); 未命中返回 (None, 耗时ms)。
-    统计命中请显式调用 record_hit(entry["id"])。
-    """
-    t0 = time.time()
-    db = load()
-    f = features_of(struct)
-
-    for e in db.get("fingerprints", []):
-        ef = e.get("features", {})
-        if ef.get("exe") != f["exe"] or ef.get("runtime") != f["runtime"]:
-            continue
-
-        # 1. 相同核心入口模块/脚本 (如都执行 -m hermes_cli.main): 同类 Agent。
-        if f.get("entry_token") and ef.get("entry_token") == f["entry_token"]:
-            return deepcopy(e), int((time.time() - t0) * 1000)
-
-        fover = len(set(ef.get("flags", [])) & set(f["flags"]))
-        cover = len(set(ef.get("config_dirs", [])) & set(f["config_dirs"]))
-
-        # 2. 脚本型/原生 Agent: 配置目录命中 + flags 兼容, 或两边都无 flags 时以结构吻合为准。
-        if ef.get("config_dirs") or f["config_dirs"]:
-            if cover >= 1 and (fover >= 1 or len(f.get("flags", [])) == 0):
-                pass
-            elif cover < 1 or fover < 2:
-                continue
-        elif fover < 1 and not (len(ef.get("flags", [])) == 0 and len(f.get("flags", [])) == 0):
-            continue
-        return deepcopy(e), int((time.time() - t0) * 1000)
-    return None, int((time.time() - t0) * 1000)
+    """Compatibility wrapper: only exact may be reused; similar is available via classify."""
+    result = classify(struct)
+    return (result['entry'] if result['status'] == 'exact' else None), result['match_ms']
 
 
 def record_hit(entry_id: str) -> int:
@@ -269,4 +241,105 @@ def remember(struct: dict, recipe: dict, mount_ms: int) -> dict:
         return deepcopy(entry)
 
     return _locked_update(_mutate)
+
+
+
+def classify(struct: dict) -> dict:
+    """Pure read: legacy fingerprints are references, never compatible proof.
+
+    exact 只证明「可执行文件内容、入口（脚本/模块）、运行时/平台、启动参数与工作目录」
+    在本次观测中未变 —— 配置内容、依赖版本、插件/MCP 集合、模型路由等变更不在覆盖范围内，
+    因此 exact 命中不代表 Hook 已安装、已生效或防线健全。
+    """
+    start = time.monotonic()
+    f = features_of(struct)
+    compatible = struct.get('compatibility')
+    similar = None
+    EXACT_BOUNDS = [
+        'covered: executable content, entry content (script/module digest), runtime, platform, launch argv+cwd',
+        'not covered: config file contents, dependency versions, MCP/plugin/marketplace sets, model routing, network behavior',
+        'exact reuse only provides a recipe for investigation; hook install and effectiveness remain unverified',
+    ]
+    for entry in load().get('fingerprints', []):
+        ef = entry.get('features', {})
+        same_runtime = f['exe'] and ef.get('exe') == f['exe'] and ef.get('runtime') == f['runtime']
+        if same_runtime and compatible and entry.get('investigation_verified') is True:
+            for revision in reversed(entry.get('revisions', [])):
+                if revision.get('compatibility') == compatible:
+                    return {'status': 'exact', 'entry': deepcopy(dict(entry, hook_recipe=revision['recipe'], revision=revision['revision'])),
+                            'bounds': EXACT_BOUNDS,
+                            'reason': 'Observed build and launch constraints unchanged; Hook still unverified',
+                            'match_ms': int((time.monotonic()-start)*1000)}
+        if f['exe'] and ef.get('exe') == f['exe'] and ef.get('runtime') == f['runtime']:
+            similar = deepcopy(entry)
+    return {'status': 'similar' if similar else 'miss', 'entry': similar,
+            'reason': 'Historical reference only' if similar else 'No family reference',
+            'match_ms': int((time.monotonic()-start)*1000)}
+
+
+def _family_identity_matches(observed, prior) -> bool:
+    """同一家族证据：同一可执行内容（解释器/二进制）+ 入口身份一致。
+
+    仅凭 exe basename + runtime 相同不足（node/python 等共享运行时广泛存在）；相似命中
+    只是调查参考，升级/演进必须由本函数用 digest 证据裁断，禁止凭模型提供的旧 id 直接合并。
+    prior 取自目标库条目最近一次 revision 的 compatibility（含 digest）。
+    """
+    if not isinstance(observed, dict) or not isinstance(prior, dict):
+        return False
+    o_exe = observed.get('executable'); p_exe = prior.get('executable')
+    if not o_exe or not p_exe or o_exe != p_exe:
+        return False  # 解释器/可执行文件内容不同 → 不是同一家族
+    o_entry = observed.get('entry'); p_entry = prior.get('entry')
+    if o_entry and p_entry and o_entry == p_entry:
+        return True  # 入口文件内容一致
+    o_path = observed.get('entry_path'); p_path = prior.get('entry_path')
+    if o_path and p_path and o_path == p_path:
+        return True  # 入口路径一致（内容演进后仍同属一族）
+    return False
+
+
+def remember_verified(struct, recipe, evidence, mount_ms=0):
+    """Supervisor-only entry: evidence validated before a revision may be reusable.
+
+    演进（evolves_prior_harness）必须通过入口/包身份证据门禁：先比较可执行文件 digest
+    与入口身份（entry digest 或 entry_path），再决定是否挂到既有家族；证据不足时拒绝
+    合并并明确报错，调用方应当新建家族或重新调查。
+    """
+    if not struct.get('compatibility') or not evidence:
+        raise ValueError('Observed compatibility and MCP evidence required')
+    if not isinstance(recipe.get('hook'), dict) or not recipe.get('agent_identity_name'):
+        raise ValueError('Invalid investigation recipe')
+    f = features_of(struct)
+
+    def mutate(db):
+        target = recipe.get('match_features', {}).get('evolves_prior_harness')
+        entry = next((e for e in db.get('fingerprints', []) if e['id'] == target), None) if target else None
+        if target and entry is not None:
+            prior_compat = None
+            for rev in reversed(entry.get('revisions') or []):
+                if rev.get('compatibility') is not None:
+                    prior_compat = rev['compatibility']
+                    break
+            if prior_compat is None:
+                prior_compat = entry.get('compatibility') or {}
+            if not _family_identity_matches(struct.get('compatibility') or {}, prior_compat or {}):
+                raise ValueError('Evolution target lacks family identity evidence (exe/entry/package); similar is reference only, do not merge')
+        elif target and entry is None:
+            raise ValueError('Evolution target not found in fingerprint DB')
+        if entry is None:
+            entry = {'id': 'harness-' + __import__('uuid').uuid4().hex[:12], 'features': f,
+                     'first_seen': time.strftime('%Y-%m-%dT%H:%M:%S'), 'revisions': [], 'match_count': 0}
+            db.setdefault('fingerprints', []).append(entry)
+        if not entry.get('revisions') and entry.get('hook_recipe'):
+            entry['revisions'] = [{'revision': 0, 'recipe': deepcopy(entry['hook_recipe']), 'compatibility': None,
+                                   'evidence': [], 'status': 'legacy-unverified'}]
+        revision = max((r['revision'] for r in entry['revisions']), default=0) + 1
+        entry['revisions'].append({'revision': revision, 'recipe': deepcopy(recipe),
+                                  'compatibility': deepcopy(struct['compatibility']), 'evidence': deepcopy(evidence),
+                                  'status': 'recipe_validated_hook_unverified'})
+        entry.update(name=recipe['agent_identity_name'], hook_recipe=deepcopy(recipe), revision=revision,
+                     investigation_verified=True, hook_verified=False, mount_ms=mount_ms)
+        return deepcopy(entry)
+
+    return _locked_update(mutate)
 

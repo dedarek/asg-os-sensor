@@ -142,8 +142,8 @@ class MatcherStage1Tests(unittest.TestCase):
         before = path.read_bytes()
 
         entry, ms = matcher.match(NATIVE_STRUCT)
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry["id"], "harness-01")
+        self.assertIsNone(entry)  # Legacy fixture is a reference, not reusable proof.
+        self.assertEqual(matcher.classify(NATIVE_STRUCT)['status'], 'similar')
         # 纯读: 文件逐字节不变, 计数不隐式增长
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(matcher.load()["fingerprints"][0]["match_count"], 7)
@@ -182,8 +182,8 @@ class MatcherStage1Tests(unittest.TestCase):
         # 原生二进制无脚本入口, 不应强制 entry_token
         matcher.remember(NATIVE_STRUCT, _recipe("nativesrv"), 8)
         hit, _ = matcher.match(NATIVE_STRUCT)
-        self.assertIsNotNone(hit)
-        self.assertEqual(hit["id"], "harness-01")
+        self.assertIsNone(hit)  # Native exact proof is covered in test_goose_stage1.
+        self.assertEqual(matcher.classify(NATIVE_STRUCT)['status'], 'similar')
 
     def test_record_hit_explicit_and_match_stays_clean(self):
         matcher.remember(NATIVE_STRUCT, _recipe("nativesrv"), 8)

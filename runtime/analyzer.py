@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import psutil
+from runtime.compatibility import observe
 
 HOME = str(Path.home()).lower()
 
@@ -160,7 +161,7 @@ def analyze(pid):
         runtime, recipe = "python", "sitecustomize-sdk"
     else:
         runtime, recipe = "native", "sandbox-or-uprobe"
-    return {"pid": pid, "exe": eb,
+    return {"pid": pid, "create_time": p.create_time(), "compatibility": observe(exe, cmd, cwd), "exe": eb,
             "exe_full": exe, "argv_shape": argv_shape,
             "parents": parents, "cwd": cwd,
             "config_dirs": sorted(config_dirs),
