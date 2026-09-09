@@ -46,3 +46,21 @@ docs/stage1/ 下文件为准。
 ## 进入下一阶段（Hook 安装与生效验证）的条件
 - 条件未齐：接入点证据映射（验证 hook.method 存在）、Hook 安装器、生效验证与
   回滚、真实跨版本复用复跑。当前完成 发现→调查→落库→复用。
+
+
+## 架构边界：通用核心 vs OpenCode 特定（泛化性约束）
+- 通用（无产品名特判）：发现评分（asg_os_sensor.Sensor）、实例归属（identity.
+  ownership, instance_id=pid:create_time）、证据采集接口（collection.collect 契约）、
+  调查调度（monitor_dashboard 生命周期）、指纹与版本（matcher：classify exact/
+  similar/miss + revisions + 演进门禁）、配方校验（recipe_validation：绑定实例+
+  真实成功结果+hook proposed/unverified）、事件契约（runtime/hook_node/preload.js
+  与 e2e/hook/sitecustomize.py：只抓公共面、脱敏、fail-open）。
+- OpenCode 特定（仅作为第一份真实验收样本，不进入核心）：桌面包 bundle 元数据、
+  本地监听端口 52714 的候选观察点。其配置路径（~/.config/opencode/opencode.jsonc、
+  Application Support/ai.opencode.desktop、/Users/mac/CLAUDE.md 存在但进程未加载）
+  均只作为证据字段记录，不作为核心逻辑输入。
+- 第二种适配（合成/mock）：test_adapter_stage1.py 以 Python sitecustomize 机制走
+  同一 core 契约，证明换配方不改核心；unittest 通过，明确标注不冒充第二个真实
+  Agent 已验收。
+- 能力边界：发现/识别身份/资产可见性/可观测/可阻断为独立能力，不承诺所有 Agent
+  可 Hook；无法接入时明确 unsupported/limited，不伪成功。

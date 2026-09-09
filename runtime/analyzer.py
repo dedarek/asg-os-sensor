@@ -101,11 +101,8 @@ def analyze(pid):
         if a.startswith("-"):
             argv_shape.append(a)
         elif any(ext in a.lower() for ext in [".js", ".py", ".ts", "dist", "bundle", "cli", "agent"]):
+            # 通用入口保留：不做产品名匹配，避免"名单过拟合"；指纹/身份由证据驱动。
             p_name = Path(a).name
-            for token in ("pi-coding-agent", "piagent", "claude-code", "codex", "opencode", "goose"):
-                if token in a.lower():
-                    p_name = f"<{token}:{p_name}>"
-                    break
             argv_shape.append(p_name)
         else:
             argv_shape.append("<val>")

@@ -119,3 +119,16 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
   负例）；新增 family_identity（同壳不同 app / 原生升级 / 共享 node 不同入口 /
   同脚本升级）与 cross_instance_reuse_no_reinvestigation 用例。
 - 结果：47 tests OK（8 discovery + 39 stage1）。
+
+
+## 2026-09-09 泛化性约束落实（用户最高优先, 与顾问路径一致）
+- 核心代码审计结果：matcher/collection/compatibility/recipe_validation/status 全部无
+  产品名特判；runtime/analyzer.py 曾有产品名单(argv_shape 打标签)已移除，改为通用
+  basename 保留——"不开名单过拟合"实现落地，任何 Python 源码中不再含
+  pi-coding-agent/piagent/claude-code/codex/opencode/goose 产品词组。
+- 新增第二种接入机制的隔离适配测试 test_adapter_stage1.py（合成/mock，不冒充第二
+  个真实 Agent 验收）：Python sitecustomize 运行时钩子机制（与 OpenCode 的 Node
+  桌面机制不同）走同一核心契约——collect→validate→remember_verified→classify 复用
+  与签名变化拒绝，全程无产品特判；证明核心无需改写即可更换接入配方。
+- 全量 49 tests OK（8 discovery + 41 stage1）。
+- WORKLOG 仍为唯一最新日志入口；REVIEW 同步更新。
