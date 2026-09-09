@@ -39,6 +39,7 @@ except ImportError:  # pragma: no cover
     _WINDOWS = False
 
 _DEFAULT_DB = Path(__file__).resolve().parent / "fingerprints.json"
+_NOCHANGE = object()  # mutator 未修改库的哨兵: 命中时不落盘
 _THREAD_LOCK = threading.Lock()
 
 
@@ -86,12 +87,10 @@ def load() -> dict:
     with _THREAD_LOCK:
         try:
             raw = db_path().read_text(encoding="utf-8")
-        except (FileNotFoundError, OSError):
+        except FileNotFoundError:
             return {"fingerprints": [], "version": 1}
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            return {"fingerprints": [], "version": 1}
+        # 损坏或读取失败必须报错并保留原文件, 禁止静默当作空库后被覆盖。
+        data = json.loads(raw)
         return deepcopy(data)
 
 
@@ -132,10 +131,12 @@ def _locked_update(mutator: Callable[[dict], Any]) -> Any:
             try:
                 raw = path.read_text(encoding="utf-8")
                 db = json.loads(raw)
-            except (FileNotFoundError, OSError, json.JSONDecodeError):
+            except FileNotFoundError:
                 db = {"fingerprints": [], "version": 1}
+            # 损坏/读取失败: 报错且不落盘, 保留原文件。
             result = mutator(db)
-            _write_atomic(path, db)
+            if result is not _NOCHANGE:
+                _write_atomic(path, db)
             return result
 
 
@@ -204,18 +205,19 @@ def record_hit(entry_id: str) -> int:
     未找到 entry_id 返回 0 且不写盘。
     """
 
-    def _mutate(db: dict) -> int:
+    def _mutate(db: dict):
         for e in db.get("fingerprints", []):
             if e.get("id") == entry_id:
                 count = int(e.get("match_count", 0)) + 1
                 e["match_count"] = count
                 e["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                 return count
-        return 0
+        return _NOCHANGE  # 未命中: 不产生任何磁盘写
 
     if not entry_id:
         return 0
-    return _locked_update(_mutate)
+    result = _locked_update(_mutate)
+    return 0 if result is _NOCHANGE else result
 
 
 def remember(struct: dict, recipe: dict, mount_ms: int) -> dict:

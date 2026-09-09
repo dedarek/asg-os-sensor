@@ -368,8 +368,19 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     raise ValueError(f"tool not allowlisted: {name}")
 
 
+def _prior_db() -> Path:
+    """指纹库路径: 统一走 matcher.db_path()(ASG_FINGERPRINT_DB 可隔离)。
+    子进程(goose 扩展)通过继承环境变量获得同一隔离配置, 避免读到另一份历史。
+    """
+    try:
+        from runtime import matcher as _matcher
+        return _matcher.db_path()
+    except Exception:
+        return ROOT / "runtime" / "fingerprints.json"
+
+
 def load_prior() -> dict[str, Any]:
-    candidates = [RECIPE_DIR / "committed.json", ROOT / "runtime" / "fingerprints.json"]
+    candidates = [RECIPE_DIR / "committed.json", _prior_db()]
     for path in candidates:
         if path.exists():
             try:

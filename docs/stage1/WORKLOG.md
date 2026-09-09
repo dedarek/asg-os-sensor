@@ -28,3 +28,25 @@
     跨进程并发新增 4 条不丢）。
 - 结果：python3 -B -m unittest test_discovery test_matcher_stage1 → 17 tests OK。
 - 未做（下一提交）：exact/similar/miss 三态、指纹/配方版本化、期望演进、UI 状态文案修正。
+
+## 2026-09-09 S0c — 修复提交(review P1/P2)
+- P1-1 E2E 默认隔离: e2e/e2e_unknown.py 新增 make_run_root(), 每次运行创建
+  独立目录 e2e/artifacts/unknown-runtime/<ts>-<uuid>/ 并把 ASG_FINGERPRINT_DB
+  指向该目录下的新库; main() 不再 rmtree(RUN_ROOT), 不再写/清空任何指纹库文件。
+  子进程(sensor/goose 扩展)经 env 继承同一隔离库。
+- P1-2 损坏库禁止静默清库: runtime/matcher.py 的 load()/ _locked_update() 仅
+  FileNotFoundError 才初始化空库; JSON 损坏或读取失败一律 raise 且不落盘,
+  原文件逐字节保留。record_hit() 未命中返回 _NOCHANGE 哨兵, _locked_update
+  检测到未修改则不写盘(修复前未命中也会整库重写)。
+- P2 Goose prior 隔离: runtime/analyst_tools.py load_prior() 的默认库 fallback
+  改走 _prior_db()(即 matcher.db_path(), 读取 ASG_FINGERPRINT_DB); 子进程
+  继承 env 获得同一配置, 不会读到另一份历史。
+- 测试(区分): 原有 test_discovery.py 8 用例未改动; test_matcher_stage1.py
+  现 15 用例: 上轮 9 + 本轮新增 6 (未命中 mtime/内容均不变、损坏库 load/
+  record_hit 均 raise 且原文件保留、缺失库惰性初始化(纯读/未命中不建文件)、
+  spawn 跨进程并发新增 4 条不丢、analyst_tools prior 指向隔离库、
+  e2e make_run_root 两次调用目录不同且生产库 mtime/内容不变)。
+- 全量: python3 -B -m unittest test_discovery test_matcher_stage1 → 23 tests OK。
+- 已知限制: msvcrt(Windows)锁分支本机无法执行, 仅静态审查; 跨进程锁语义由
+  POSIX flock + spawn 测试覆盖。未运行旧 E2E(需真实 Goose 与网络, 且本机 TLS
+  证书过期); 原生二进制正例通过不代表兼容性判断已完成。

@@ -13,12 +13,26 @@ import shutil
 import signal
 import subprocess
 import threading
+import uuid
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+def make_run_root() -> Path:
+    """每次运行创建全新隔离目录, 并把 ASG_FINGERPRINT_DB 指向该目录下的新库。
+    绝不触碰/清空默认指纹库(production runtime/fingerprints.json)或历史证据;
+    sensor / goose 扩展等所有子进程通过继承环境变量获得同一隔离配置。
+    """
+    run_root = ROOT / "e2e" / "artifacts" / "unknown-runtime" / (
+        time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
+    )
+    run_root.mkdir(parents=True, exist_ok=True)
+    os.environ["ASG_FINGERPRINT_DB"] = str(run_root / "fingerprints.json")
+    return run_root
+
+
 RUN_ROOT = ROOT / "e2e" / "artifacts" / "unknown-runtime"
 RECIPE = Path(os.environ.get("ASG_ANALYST_RECIPE", str(ROOT / "recipes" / "runtime_analyst.yaml")))
 def _resolve_goose() -> Path:
@@ -235,7 +249,7 @@ def run_phase(label: str, duration: float = 18.0) -> dict[str, Any]:
         result: dict[str, Any] = {"label": label, "pid": pid, "argv": argv, "identified": identified, "structure": struct, "matcher": {"hit": bool(matched), "elapsed_ms": match_ms}, "started_at": iso(started)}
         if matched:
             result["path"] = "remembered-recipe"
-            result["recipe_source"] = "runtime/fingerprints.json"
+            result["recipe_source"] = os.environ.get("ASG_FINGERPRINT_DB", "runtime/fingerprints.json")
             result["adapter"] = apply_stream_adapter(run_dir, stream)
         else:
             analyst_started = now()
@@ -283,7 +297,7 @@ def build_execution_manifest(report: dict[str, Any]) -> dict[str, Any]:
         },
         "phases": {
             "first": {"path": "first", "path_taken": report["first"].get("path"), "matcher": report["first"].get("matcher"), "tool_call_count": len(report["first"].get("analyst", {}).get("tool_calls", [])), "recipe": "first/recipes/committed.json"},
-            "second": {"path": "second", "path_taken": report["second"].get("path"), "matcher": report["second"].get("matcher"), "memory": "runtime/fingerprints.json"}
+            "second": {"path": "second", "path_taken": report["second"].get("path"), "matcher": report["second"].get("matcher"), "memory": os.environ.get("ASG_FINGERPRINT_DB", "runtime/fingerprints.json")}
         },
         "replay_files": files,
         "report": "run_report.json"
@@ -291,9 +305,9 @@ def build_execution_manifest(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    if RUN_ROOT.exists():
-        shutil.rmtree(RUN_ROOT)
-    (matcher.db_path()).write_text(json.dumps({"fingerprints": [], "version": 1}, indent=1), encoding="utf-8")
+    # 每次运行自动创建独立目录与独立指纹库(绝不默认清空已有库或证据)。
+    global RUN_ROOT
+    RUN_ROOT = make_run_root()
     first = run_phase("first", 180.0)
     second = run_phase("second", 60.0)
     report = {"run_id": iso(), "root": str(RUN_ROOT), "first": first, "second": second, "assertions": {"first_identified": bool(first.get("identified")), "first_was_miss": first.get("matcher", {}).get("hit") is False, "analyst_called_tools": len(first.get("analyst", {}).get("tool_calls", [])) > 0, "candidate_committed": bool(first.get("candidate")), "semantic_events_captured": first.get("adapter", {}).get("event_count", 0) >= 2, "second_was_hit": second.get("matcher", {}).get("hit") is True, "second_used_memory": second.get("path") == "remembered-recipe", "no_forbidden_tool": not any(c.get("tool") in {"shell", "developer", "filesystem"} for c in first.get("analyst", {}).get("tool_calls", []))}}

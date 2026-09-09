@@ -54,6 +54,14 @@ def _worker_remember(name, distinct=False):
     matcher.remember(struct, _recipe(name), 5)
 
 
+def _worker_remember_spawn(name):
+    """spawn 跨进程工作函数(模块级, 可 pickle)。不同进程各自建独立指纹。"""
+    struct = dict(NATIVE_STRUCT)
+    struct["exe"] = "nativesrv-" + str(name)
+    struct["argv_shape"] = [struct["exe"], "--serve", "--port", "9000", "--json"]
+    matcher.remember(struct, _recipe(name), 5)
+
+
 class MatcherStage1Tests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -194,6 +202,86 @@ class MatcherStage1Tests(unittest.TestCase):
         ids = {e["id"] for e in db["fingerprints"]}
         self.assertEqual(len(ids), 4, ids)
         json.loads(matcher.db_path().read_text(encoding="utf-8"))
+
+
+    def test_record_hit_miss_no_write(self):
+        """未命中: 内容与 mtime 均不变, 证明完全没有落盘。"""
+        matcher.remember(NATIVE_STRUCT, _recipe("nativesrv"), 8)
+        path = matcher.db_path()
+        before_data = path.read_bytes()
+        before_mtime = path.stat().st_mtime_ns
+        self.assertEqual(matcher.record_hit("harness-999"), 0)
+        self.assertEqual(path.read_bytes(), before_data)
+        self.assertEqual(path.stat().st_mtime_ns, before_mtime)
+
+    def test_corrupt_db_never_overwritten(self):
+        """损坏库: load / record_hit 必须报错, 且原文件逐字节保留(禁止静默清库)。"""
+        path = matcher.db_path()
+        corrupt = b'{broken json!!'
+        path.write_bytes(corrupt)
+        with self.assertRaises(json.JSONDecodeError):
+            matcher.load()
+        with self.assertRaises(json.JSONDecodeError):
+            matcher.record_hit("harness-01")
+        self.assertEqual(path.read_bytes(), corrupt)
+
+    def test_missing_db_inits_only_on_real_write(self):
+        """只有文件不存在才能初始化; 纯读与未命中写不得创建库文件。"""
+        path = matcher.db_path()
+        self.assertFalse(path.exists())
+        self.assertEqual(matcher.load(), {"fingerprints": [], "version": 1})
+        self.assertFalse(path.exists())
+        self.assertEqual(matcher.record_hit("harness-01"), 0)
+        self.assertFalse(path.exists())
+        matcher.remember(NATIVE_STRUCT, _recipe("nativesrv"), 8)
+        self.assertTrue(path.exists())
+
+    def test_cross_process_spawn_concurrent_create(self):
+        """spawn 跨进程(非 fork)并发新增: 文件锁仍保证 4 条不丢、无半写。"""
+        ctx = multiprocessing.get_context("spawn")
+        procs = [ctx.Process(target=_worker_remember_spawn, args=(f"agent-{i}",)) for i in range(4)]
+        for pr in procs:
+            pr.start()
+        for pr in procs:
+            pr.join(60)
+            self.assertEqual(pr.exitcode, 0)
+        db = matcher.load()
+        self.assertEqual(len({e["id"] for e in db["fingerprints"]}), 4)
+        json.loads(matcher.db_path().read_text(encoding="utf-8"))
+
+    def test_analyst_tools_prior_reads_isolated_db(self):
+        """P2: analyst_tools 的 prior 读取统一走隔离库(ASG_FINGERPRINT_DB)。"""
+        import importlib.util
+        mod_path = str(Path(__file__).resolve().parent / "runtime" / "analyst_tools.py")
+        spec = importlib.util.spec_from_file_location("asg_analyst_tools_s1", mod_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertEqual(str(mod._prior_db()), os.environ["ASG_FINGERPRINT_DB"])
+
+    def test_e2e_make_run_root_isolation(self):
+        """P1: E2E 每次运行创建独立目录与独立库; 生产库文件不被触碰。"""
+        import importlib.util
+        mod_path = str(Path(__file__).resolve().parent / "e2e" / "e2e_unknown.py")
+        spec = importlib.util.spec_from_file_location("asg_e2e_unknown_s1", mod_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        prod_db = mod.ROOT / "runtime" / "fingerprints.json"
+        before = None
+        if prod_db.exists():
+            before = (prod_db.read_bytes(), prod_db.stat().st_mtime_ns)
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            mod.ROOT = Path(tmp.name)  # artifacts 写入重定向到临时目录
+            r1 = mod.make_run_root()
+            r2 = mod.make_run_root()
+            self.assertNotEqual(r1, r2)
+            self.assertTrue(r1.is_dir() and r2.is_dir())
+            self.assertEqual(os.environ["ASG_FINGERPRINT_DB"], str(r2 / "fingerprints.json"))
+            self.assertFalse((r2 / "fingerprints.json").exists())  # 惰性初始化
+        finally:
+            tmp.cleanup()
+        if before is not None:
+            self.assertEqual((prod_db.read_bytes(), prod_db.stat().st_mtime_ns), before)
 
 
 if __name__ == "__main__":
