@@ -1,0 +1,37 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_a9f9543b85df9e 251-265
+runtime/opencode/asg-observe.js
+  s_b0143c6f6e2ba8::t_337ac5654cf936 4-5,7-8,16-17,19-20,22,27-36,49-51,58,76
+runtime/opencode/event_api.py
+  s_655532ed3c4512::t_2de69c26d536bb 2-15,25-34,38,43-52,55-56,58,60-61,63,66-67,69,76-79,82,85-86,89-90,92,95,101-109,111,113-114,117-120,122-130,132-137,140,142-146,149,151,154
+runtime/opencode/ghost_install.py
+  s_655532ed3c4512::t_5fb6619efbde55 2,4-8,11-15,24,26,32,34-36,57-63,72-80,83-88,92-103,106-107,110-115,120,122-124,126,133-134,137-141,148-149,151,153-156,158-197,203,205-208,210,213-216,218-223,225,266
+runtime/opencode/server.py
+  s_b0143c6f6e2ba8::t_886408e0a98538 1-111
+test_opencode_plugin.py
+  s_b0143c6f6e2ba8::t_445a4fe49f11cc 2-4,10,14-15,18-82,86,88-89,91,97-155,157-159,161-185,187-188,190-193,195-203,205-213,215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "9405be9b249d33e7f6d46acc735882623bd21e57",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
