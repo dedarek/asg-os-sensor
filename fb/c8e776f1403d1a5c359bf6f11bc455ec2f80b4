@@ -1,0 +1,31 @@
+docs/stage1/REVIEW.md
+  s_b0143c6f6e2ba8::t_49d6497408eab4 1-54,57-58
+runtime/opencode/server.py
+  s_655532ed3c4512::t_c8583fb417aee3 53-55,75-89,93,98-100
+test_real_cli.py
+  s_b0143c6f6e2ba8::t_4c21def812a43f 2,11,13,18,22,26-27,32,34,41,48,51,64,67-70,74-77,79-80,83-84,86-90,92-120,125-131,147-150,155-157,159,162,164-166,169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "fbc8e776f1403d1a5c359bf6f11bc455ec2f80b4",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
