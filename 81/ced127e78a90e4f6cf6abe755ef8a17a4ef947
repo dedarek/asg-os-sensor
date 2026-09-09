@@ -1,0 +1,55 @@
+docs/stage1/HOOK_INSTALL_PLAN.md
+  s_655532ed3c4512::t_6860c1a5f01225 1-30
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_3da12e9b48105b 71-139
+monitor_dashboard.py
+  s_b0143c6f6e2ba8::t_f931a833b6fd20 16-17,32,81,84-85,96-100,102-104,111-114,116,131-142,147,149,151,154,159,161-162,170,172,187,197,202,206,221-223,246-258,261,264-275,278,281,285-286,390-392,409,412-425,454-457,461-478,498,500-502,876,1104,1271-1279
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_aff31e9b3e34fc 1,3,8,10-29,32
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_72ccffced4751b 31-37,58,62-67,72,78-82,147,228,236-238,245-257,259-261,263-266,297,333-334
+runtime/analyzer.py
+  s_b0143c6f6e2ba8::t_279a17e89a50a8 13,164
+runtime/collection.py
+  s_655532ed3c4512::t_553cc5d7f68501 1-95
+runtime/compatibility.py
+  s_b0143c6f6e2ba8::t_31b10238610d27 1-54
+runtime/identity.py
+  s_655532ed3c4512::t_f06c47a74f16aa 65,79
+runtime/llm_proxy.py
+  s_b0143c6f6e2ba8::t_6b2d543ed473e8 38-43
+runtime/matcher.py
+  s_655532ed3c4512::t_f064ea7c9e59ce 168-170,245-345
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_5c5453775b7c84 1-102
+test_goose_stage1.py
+  s_b0143c6f6e2ba8::t_bd2c9395f2fb42 1-191
+test_matcher_stage1.py
+  s_655532ed3c4512::t_1140ad7a66b47f 145-146,185-186
+test_status_stage1.py
+  s_655532ed3c4512::t_1c40331dc6a227 85,100-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "81ced127e78a90e4f6cf6abe755ef8a17a4ef947",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
