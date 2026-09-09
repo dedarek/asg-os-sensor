@@ -1,0 +1,21 @@
+runtime/opencode/server.py
+  s_655532ed3c4512::t_76e5d7b63f41bf 29-40,43-44,46-55,59-61,140
+test_real_cli.py
+  s_655532ed3c4512::t_a3556f223fd8fd 3,7-8,30-31,34,36-50,55-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1831da1af27d3100f8f3ef3fb9aa49a7b116dd1e",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
