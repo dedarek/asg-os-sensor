@@ -1,0 +1,26 @@
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_18d3009bd5095e 22-25,377,379,381-382
+.gitignore
+  s_655532ed3c4512::t_5229f0de368373 24-25
+test_matcher_stage1.py
+  s_655532ed3c4512::t_339706f9180dc7 16,66-103,325-366
+  s_655532ed3c4512::t_d91b825215d92c 367
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_7e5d1a894d0ffd 53-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "41a53b5a62b80965085badd5db24fa57749a4f19",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
