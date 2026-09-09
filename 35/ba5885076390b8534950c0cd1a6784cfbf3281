@@ -1,0 +1,19 @@
+docs/stage1/WORKLOG.md
+  s_b0143c6f6e2ba8::t_56def6741e96d1 183-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "35ba5885076390b8534950c0cd1a6784cfbf3281",
+  "prompts": {},
+  "sessions": {
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
