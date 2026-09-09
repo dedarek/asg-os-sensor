@@ -209,3 +209,21 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 合成 SDK 集成测试保持独立（可复现、随机 nonce、双次请求、卸载验证），不冒充真实
   验收；其随机文件名不是实例握手能力——真实接入仍需 nonce+PID/create_time 握手、
   事件关联与 API。
+
+
+## 2026-09-09 隔离验收准备完成（HEAD 5d37c8c）
+- runtime/opencode/asg-observe.mjs：纯观测插件（tool.execute.before/after +
+  hook.loaded）。只记录 ts/event_type/adapter_source/nonce/pid/call_id/tool/
+  outcome；不记录参数内容与密钥；fail-open 不影响工具执行。
+- runtime/opencode/event_api.py：EventVerifier 接收端验证 nonce + psutil
+  (pid).create_time() 与预期快照比对（拒绝错误 nonce/PID 复用/缺 pid），
+  健康 = hook.loaded 且绑定有效；未握手不显示已安装生效。
+- runtime/opencode/ghost_install.py：plan/preflight/install/uninstall 隔离工作区
+  （默认 artifacts/stage1/opencode-observe, gitignore）；幂等拒绝覆盖、记录
+  sha256+nonce、卸载回滚；preflight 打印全局配置隔离局限与 UI-open 需求。
+- 测试：test_opencode_plugin.py(+ .js fixture) 真实 node 子进程加载插件，
+  <1s 通过，进程清理；无参数/密钥泄漏、字段白名单、绑定正反例、健康、
+  卸载无事件。全量 51 tests OK。
+- 待用户步骤（真实加载触发）：在桌面打开隔离工作区；若引擎未加载插件由用户
+  重启该工作区引擎（非全局）。未打开 UI、未重启/终止现有 Agent、未改全局配置
+  或现有项目、未部署到真实实例。
