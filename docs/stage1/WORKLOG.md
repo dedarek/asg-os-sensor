@@ -180,3 +180,32 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 结果: synthetic hook integration OK: request+response=1/1, stub_reqs=2。
 - 定位: 仅合成 SDK Hook 集成测试，不称真实 Agent B 阶段验收；真实 OpenCode
   Hook 尚未安装。
+
+## 2026-09-10 A 阶段结论修正（依据实测，区分"已找到/未找到"证据）
+- 修正1：此前"asar 无字符串→桌面未实现插件机制"是错误推断。引擎 bundle
+  out/main/chunks/node-Cuna2N2U.js (33MB) 内实际包含：tool.execute.before ×9、
+  .opencode ×41、plugin(s) ×656、hook ×329；插件加载 Glob.scan("{plugin,plugins}/
+  *.{ts,js}", cwd=configDir) + pathToFileURL 动态导入；plugin 契约 tool.execute.before
+  (input, output) 可改 output.args、config(cfg) 改合并配置（与官方文档一致）。
+  结论改为"在已检查范围内找到插件实现证据"，不再说"未实现"。
+- 修正2：NodeService 参数只证明 Electron Node 服务进程；它 fork 的 sidecar.js
+  加载上述 chunk 的 Server —— 证据链为 main/index.js -> utilityProcess.fork
+  (sidecar.js) -> import chunks/node-Cuna2N2U.js Server。引擎确实运行在 NodeService。
+- 配置链：globalConfigFile() 搜索 opencode.jsonc/opencode.json/config.json；
+  支持 OPENCODE_CONFIG_DIR 环境变量（config: Flag.OPENCODE_CONFIG_DIR ??
+  Path.config）与 OPENCODE_CONFIG=<file> 追加配置 —— 官方隔离配置入口。
+- 未知保持未知：桌面 app 无 CLI 入口（which opencode 无）；启动仅处理 opencode://
+  协议与文件选择器；插件需在应用打开工作区时由引擎加载。
+
+## 独立测试工作区方案（B 阶段真实接入，尚需用户操作）
+- 引擎/插件证据已明确；缺失的关键一步是"用户通过桌面 UI 打开一个独立测试工作区"
+  —— 桌面实例不接受 CLI 项目参数，插件在打开工作区时加载。自动化无法替代该 UI
+  操作；将隔离工作区目录 + .opencode/plugins/asg-observe.js（写入该工作区, 非全局）
+  作为插件搜索路径（cwd=configDir 或工作区 .opencode）。
+- 影响评估：插件仅写入独立测试工作区目录；不触碰用户全局配置、不修改 app.asar、
+  不重启真实工作实例（OpenCode 45780/桌面进程未动）。打开工作区需用户最小操作。
+- 需用户决策：是否在桌面打开测试工作区；打开后若引擎/会话未加载插件，由用户重启
+  该工作区引擎（非全局应用重启）。此操作需顾问/用户确认后实施，不擅自执行。
+- 合成 SDK 集成测试保持独立（可复现、随机 nonce、双次请求、卸载验证），不冒充真实
+  验收；其随机文件名不是实例握手能力——真实接入仍需 nonce+PID/create_time 握手、
+  事件关联与 API。
