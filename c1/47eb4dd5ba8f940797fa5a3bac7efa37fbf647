@@ -1,0 +1,31 @@
+docs/stage1/TOOL_DELIVERY_STATUS.md
+  s_b0143c6f6e2ba8::t_41381b85906316 1-8
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_06896a14205485 155-182
+test_synthetic_hook_integration.py
+  s_b0143c6f6e2ba8::t_f070ba29e13428 1-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "c147eb4dd5ba8f940797fa5a3bac7efa37fbf647",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
