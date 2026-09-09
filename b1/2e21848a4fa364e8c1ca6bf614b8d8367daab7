@@ -1,0 +1,27 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_b23fd0962f5ce0 31-52
+e2e/e2e_unknown.py
+  s_655532ed3c4512::t_8e053798becfc2 16,23-35,252,300,308-310
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_54968693273244 371-381,383
+runtime/matcher.py
+  s_655532ed3c4512::t_6da75cf1f72ad6 42,90,92-93,134,136,138-139,208,215,219-220
+test_matcher_stage1.py
+  s_655532ed3c4512::t_9480474ab05358 57-64,207-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b12e21848a4fa364e8c1ca6bf614b8d8367daab7",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
