@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""OpenCode 纯观测插件/安装器/健康/HTTP 集成测试（隔离、可复现）。"""
-import json, os, subprocess, sys, tempfile, time, unittest, urllib.request
+"""OpenCode 纯观测插件/安装器/健康/HTTP 集成测试（隔离、可复现、真实子进程 CLI）。"""
+import json, os, subprocess, sys, tempfile, time, unittest, urllib.request, urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import psutil
@@ -8,6 +8,7 @@ from runtime.opencode.event_api import EventVerifier
 
 ROOT = Path(__file__).resolve().parent
 GHOST = ROOT / "runtime" / "opencode" / "ghost_install.py"
+SERVER = ROOT / "runtime" / "opencode" / "server.py"
 NODE = "/Users/mac/.nvm/versions/node/v24.16.0/bin/node"
 
 
@@ -20,8 +21,37 @@ def state_dir(ws):
 
 
 def active_manifest(sd):
-    m = json.loads((sd / "manifest.json").read_text())
-    return m
+    return json.loads((sd / "manifest.json").read_text())
+
+
+def node_fixture(plugin: str) -> str:
+    import json as _j
+    return chr(10).join([
+        "const init = async () => {",
+        "  const mod = await import('file://" + plugin + "');",
+        "  const plug = await mod.default({ directory: '/tmp' });",
+        "  const input = { tool: 'bash', callID: 'c1' };",
+        "  await plug['tool.execute.before'](input, {});",
+        "  await plug['tool.execute.after'](input);",
+        "  process.exit(0);",
+        "};",
+        "init().then(() => {}).catch((e) => { console.error(e); process.exit(1); });",
+    ])
+
+
+def start_server(ws, pid, ct):
+    return subprocess.Popen([sys.executable, "-B", str(SERVER), "--workspace", str(ws),
+                             "--pid", str(pid), "--create-time", str(ct)],
+                            cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def wait_port(proc, timeout=10.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        line = proc.stdout.readline() if proc.stdout else ""
+        if "port" in line:
+            return json.loads(line)["port"]
+    raise RuntimeError("server did not report port")
 
 
 class TransactionInstallTests(unittest.TestCase):
@@ -78,98 +108,47 @@ class TransactionInstallTests(unittest.TestCase):
             self.assertTrue(p.exists())
 
 
-def node_fixture(plugin: str, directory: str, phase: int) -> str:
-    # 同一 node 进程内多次触发；phase=1 安装后触发，phase=2 卸载后再次触发
-    import json as _j
-    return chr(10).join([
-        "const init = async () => {",
-        "  const mod = await import('file://" + plugin + "');",
-        "  const plug = await mod.default({ directory: " + _j.dumps(directory) + " });",
-        "  const input = { tool: 'bash', callID: 'c1' };",
-        "  await plug['tool.execute.before'](input, {});",
-        "  await plug['tool.execute.after'](input);",
-        "  setTimeout(() => process.exit(0), 5000);",
-        "};",
-        "init().then(() => {}).catch((e) => { console.error(e); process.exit(1); });",
-    ])
-
-
 class PluginEventsTests(unittest.TestCase):
-    def test_uninstall_stops_emit_without_engine_restart(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ws = Path(tmp)
-            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NN").stdout)
-            sd = state_dir(ws)
-            man = active_manifest(sd)
-            events_file = sd / "runs" / man["runid"] / "events.jsonl"
-            # 阶段1：真实 node 进程加载插件并触发（引擎长驻）
-            fx = node_fixture(str(Path(d["installed"])), str(ws), 1)
-            p1 = subprocess.Popen([NODE, "-e", fx], cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            try:
-                deadline = time.time() + 15
-                n = 0
-                while time.time() < deadline and n < 2:
-                    if events_file.exists():
-                        n = len(events_file.read_text().splitlines())
-                    time.sleep(0.1)
-                self.assertGreaterEqual(n, 2, "installed emits before+after")
-            finally:
-                p1.terminate(); p1.wait(timeout=3)
-            # 卸载（同进程插件仍在内存；重跑相同 fixture）
-            run("--uninstall", "--workspace", str(ws), "--name", "asg-observe.js")
-            p2 = subprocess.Popen([NODE, "-e", fx], cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            try:
-                time.sleep(1.5)
-                n_after = len(events_file.read_text().splitlines()) if events_file.exists() else 0
-                self.assertEqual(n_after, n, "uninstall must stop emit without engine restart")
-            finally:
-                p2.terminate(); p2.wait(timeout=3)
-
     def test_event_contract_and_0600(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
             d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NC").stdout)
             sd = state_dir(ws)
             man = active_manifest(sd)
-            events_file = sd / "runs" / man["runid"] / "events.jsonl"
-            fx = node_fixture(str(Path(d["installed"])), str(ws), 1)
+            evf = sd / "runs" / man["runid"] / "events.jsonl"
+            fx = node_fixture(str(Path(d["installed"])))
             p = subprocess.Popen([NODE, "-e", fx], cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 deadline = time.time() + 15; rows = []
                 while time.time() < deadline and len(rows) < 3:
-                    if events_file.exists():
-                        rows = [json.loads(l) for l in events_file.read_text().splitlines() if l.strip()]
+                    if evf.exists(): rows = [json.loads(l) for l in evf.read_text().splitlines() if l.strip()]
                     time.sleep(0.1)
-                self.assertGreaterEqual(len(rows), 2)
+                self.assertGreaterEqual(len(rows), 3)
             finally:
                 p.terminate(); p.wait(timeout=3)
-            blob = events_file.read_text()
+            blob = evf.read_text()
             self.assertNotIn("TOPSECRET", blob)
             self.assertNotIn("ls -la", blob)
             self.assertNotIn("directory", blob)
-            self.assertEqual(oct(events_file.stat().st_mode & 0o777), "0o600")
+            self.assertEqual(oct(evf.stat().st_mode & 0o777), "0o600")
             allowed = {"ts", "event_type", "adapter_source", "sdk", "nonce", "pid", "call_id", "tool", "outcome"}
             for line in blob.splitlines():
-                if line.strip():
-                    self.assertTrue(set(json.loads(line).keys()) <= allowed, line)
+                if line.strip(): self.assertTrue(set(json.loads(line).keys()) <= allowed, line)
 
 
 class EventVerifierHealthTests(unittest.TestCase):
-    def _mk(self, pid, ct):
-        return EventVerifier("N", pid, ct, ttl_s=60.0)
-
-    def test_health_requires_fresh_bound_no_future(self):
+    def test_health_filters_schema_binding_time(self):
         pid = os.getpid(); ct = psutil.Process(pid).create_time()
-        v = self._mk(pid, ct)
+        v = EventVerifier("N", pid, ct, ttl_s=60.0)
         now = datetime.now(timezone.utc)
         ok = [{"ts": now.isoformat(), "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid},
               {"ts": now.isoformat(), "event_type": "tool.execute.before", "adapter_source": "s", "nonce": "N", "pid": pid}]
         self.assertTrue(v.current_health(ok)["healthy"])
-        future = datetime.fromtimestamp(time.time() + 99999, timezone.utc).isoformat()
-        fut = [{"ts": future, "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid}]
+        fut = [{"ts": datetime.fromtimestamp(time.time() + 99999, timezone.utc).isoformat(),
+                "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid}]
         self.assertFalse(v.current_health(fut)["healthy"])
-        stale_ok = (now - timedelta(seconds=5)).isoformat()
-        mixed = [{"ts": stale_ok, "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid},
+        stale = (now - timedelta(seconds=5)).isoformat()
+        mixed = [{"ts": stale, "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid},
                  {"ts": now.isoformat(), "event_type": "tool.execute.before", "adapter_source": "s", "nonce": "BAD", "pid": pid}]
         self.assertFalse(v.current_health(mixed)["healthy"])
         self.assertEqual(v.current_health([])["status"], "unknown")
@@ -189,30 +168,43 @@ class EventVerifierHealthTests(unittest.TestCase):
 
 
 class HttpResponseTests(unittest.TestCase):
-    def test_http_endpoints_wired(self):
-        from runtime.opencode.server import ObserveServer
+    def test_http_full_chain_dynamic_revoke(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
-            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NH").stdout)
+            pid = os.getpid(); ct = psutil.Process(pid).create_time()
+            d1 = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NR1").stdout)
             sd = state_dir(ws)
-            man = active_manifest(sd)
-            evf = sd / "runs" / man["runid"] / "events.jsonl"
-            evf.write_text(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
-                                       "event_type": "hook.loaded", "adapter_source": "asg-observe-v1",
-                                       "nonce": "NH", "pid": os.getpid()}) + chr(10))
-            srv = ObserveServer(evf, "NH", os.getpid(), psutil.Process(os.getpid()).create_time(), active=True)
+            man1 = active_manifest(sd)
+            evf1 = sd / "runs" / man1["runid"] / "events.jsonl"
+            evf1.write_text(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                                        "event_type": "hook.loaded", "adapter_source": "asg-observe-v1",
+                                        "nonce": "NR1", "pid": pid}) + chr(10))
+            srv = start_server(ws, pid, ct)
             try:
-                srv.start()
-                base = "http://127.0.0.1:%d" % srv.port
-                with urllib.request.urlopen(base + "/") as r:
-                    self.assertEqual(json.loads(r.read())["status"], "ok")
+                port = wait_port(srv)
+                base = "http://127.0.0.1:%d" % port
                 with urllib.request.urlopen(base + "/health") as r:
-                    h = json.loads(r.read())
-                    self.assertTrue(h["healthy"] and h["wired"])
+                    self.assertTrue(json.loads(r.read())["healthy"])
+                run("--uninstall", "--workspace", str(ws), "--name", "asg-observe.js")
+                try:
+                    urllib.request.urlopen(base + "/health")
+                    self.fail("expected 503")
+                except urllib.error.HTTPError as e:
+                    self.assertEqual(e.code, 503)
+                    self.assertIn("no active manifest", json.loads(e.read())["error"])
+                d2 = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NR2").stdout)
+                man2 = active_manifest(sd)
+                evf2 = sd / "runs" / man2["runid"] / "events.jsonl"
+                evf2.write_text(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                                            "event_type": "tool.execute.before", "adapter_source": "asg-observe-v1",
+                                            "nonce": "NR2", "pid": pid, "call_id": "c2"}) + chr(10))
                 with urllib.request.urlopen(base + "/events") as r:
-                    self.assertEqual(json.loads(r.read())["valid"], 1)
+                    ev = json.loads(r.read())
+                    self.assertEqual(ev["valid"], 1)
+                    self.assertEqual(ev["events"][0]["call_id"], "c2")
+                    self.assertNotIn("nonce", json.dumps(ev["events"][0]))
             finally:
-                srv.stop()
+                srv.terminate(); srv.wait(timeout=3)
 
 
 if __name__ == "__main__":

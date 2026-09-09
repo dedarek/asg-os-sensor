@@ -1,32 +1,40 @@
 // ASG 纯观测插件（OpenCode 引擎扩展点 tool.execute.before/after）。
-// 本文件是 CJS .js：引擎加载器 glob"{plugin,plugins}/*.{ts,js}" 才会发现它
-// （.mjs 不在扫描范围）。nonce 与事件路径不依赖注入环境变量，而是从插件同目录
-// .asg-observe/runs/<runid>/ 下的 nonce 与 events.jsonl 文件读取 —— 用户打开工作区
-// 即可工作，无需启动脚本自定义 env，也不要求全局重启。
-// 只记录：ts, event_type, adapter_source, nonce, pid（自报，接收端独立校验
-// PID+create_time）, call_id(关联 ID), tool 名, outcome；绝不记录参数内容或密钥。
-// nonce 缺失（卸载后）立即停止写事件；任何失败均吞掉（fail-open），不影响原工具执行。
+// CJS .js：引擎 glob"{plugin,plugins}/*.{ts,js}" 才扫描 .ts/.js（.mjs 不在范围）。
+// 加载时冻结 runid；每次 emit 核对 manifest 仍 active 且同 run。卸载(active 变 false/改名)或
+// 重装(新 runid)后，旧已加载回调立即停止写——旧回调不复活，必须重新加载插件握手。
+// nonce/事件路径不依赖 env：从 .asg-observe/manifest.json + runs/<runid>/{nonce,events.jsonl} 读取。
+// 事件文件 0600；只记录 ts/event_type/adapter_source/nonce/pid/call_id/tool/outcome；fail-open。
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
 
 const DIR = __dirname;
 const STATEDIR = path.join(DIR, ".asg-observe");
+const MANIFEST = path.join(STATEDIR, "manifest.json");
 
-function activeRun() {
-  // 安装器维护 runs/<runid>/{nonce,events.jsonl}；manifest.json 记录当前 active run
+function readManifest() {
   try {
-    const man = JSON.parse(fs.readFileSync(path.join(STATEDIR, "manifest.json"), "utf8"));
-    return man.active ? man.runid : null;
+    return JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
   } catch (e) {
     return null;
   }
 }
 
+// 初始化时冻结绑定（新加载才能绑定新 run；卸载/重装后旧回调见到 run 不同即停）
+const FROZEN = (() => {
+  const m = readManifest();
+  return m && m.active ? m.runid : null;
+})();
+
+function activeRun() {
+  const m = readManifest();
+  if (!m || !m.active || m.runid !== FROZEN) return null; // 同 run 且 active
+  return m.runid;
+}
+
 function emit(ev) {
-  // 卸载后（或从未安装）nonce 缺失 -> 立即停止写，不产生任何事件
   const runid = activeRun();
-  if (!runid) return;
+  if (!runid) return; // 卸载/重装后立即停写
   let nonce = "";
   try {
     nonce = fs.readFileSync(path.join(STATEDIR, "runs", runid, "nonce"), "utf8").trim();
@@ -63,7 +71,7 @@ function emit(ev) {
 }
 
 module.exports = async ({ directory }) => {
-  // 启动（handshake）：插件被引擎真实加载时立即落盘一条。不输出 directory。
+  // 握手：插件被引擎真实加载时立即落盘一条（只在新加载时产生）
   emit({ event_type: "hook.loaded" });
   return {
     "tool.execute.before": async (input, output) => {
