@@ -23,6 +23,10 @@ This project implements **Zero-Prior OS-Level Agent Governance**:
   - `fingerprints.json`: Persistent repository of runtime recipes and behavioral signatures.
 - `recipes/`: Investigation directives and boundary policies for the Analyst agent.
 - `e2e/`: Full end-to-end verification suites (`e2e_unknown.py`, test runners, and real binary verification).
+ - `runtime/llm_config.py`: Analyst LLM route loader (llm.yaml + env/.env, OpenAI-compatible).
+ - `llm.yaml`: Analyst LLM routes (provider/model/base_url/key_env, no secrets).
+ - `.env.example`: Credential template (copy to `.env`, never commit `.env`).
+ - `verify_llm.py`: LLM route smoke test (`chat/completions` + `responses`).
 
 ## Quick Start
 1. Install dependencies:
@@ -42,6 +46,21 @@ This project implements **Zero-Prior OS-Level Agent Governance**:
    ```
    http://127.0.0.1:8080
    ```
+4. Configure Analyst LLM (optional, enables autonomous reverse-engineering):
+   ```bash
+   cp .env.example .env
+   ```
+   Fill `ASG_ANALYST_API_KEY` in `.env` (route `custom-openai` in `llm.yaml`), then:
+   ```bash
+   python verify_llm.py
+   ```
+   Add more routes in `llm.yaml`, switch via `ASG_ANALYST_ROUTE`, override model via `ASG_ANALYST_MODEL`.
+
+   Runtime knobs such as `ASG_SCAN_INTERVAL`, `ASG_MAX_ANALYSTS`, `ASG_GOOSE_TIMEOUT`,
+   `ASG_INGEST_URL`, and test sink settings are listed in `.env.example`.
+   `ASG_INSECURE_SSL=1` is an emergency compatibility mode for an expired upstream
+   certificate; smoke requests can use a loopback-only proxy. Runtime findings remain
+   blocked unless `ASG_ALLOW_INSECURE_ANALYST=1` explicitly acknowledges that risk.
 
 
 ## Key Guarantees

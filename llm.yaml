@@ -1,0 +1,13 @@
+# ASG Analyst LLM providers (OpenAI-compatible). No secrets here.
+# Secrets come from environment variables or .env (see .env.example).
+default_route: custom-openai
+routes:
+  custom-openai:
+    provider: openai
+    model: qwen38-27b
+    base_url: https://aicloud-app.lenovo.com.cn/qwen38-27b/v1
+    key_env: ASG_ANALYST_API_KEY
+    chat_path: /chat/completions
+    responses_path: /responses
+    extra_headers: {}
+    timeout_s: 30

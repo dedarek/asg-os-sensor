@@ -16,6 +16,9 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
 ROOT = BASE.parent
+LEGACY_AGENT = Path(os.environ.get("ASG_E2E_AGENT", str(BASE / "agent.py"))).expanduser()
+E2E_MODEL = os.environ.get("ASG_E2E_MODEL", "runtime-model")
+AGENT_CMD_MARKER = str(LEGACY_AGENT).replace("\\", "/")
 EVENTS = ROOT / "events.jsonl"
 ADAPT = BASE / "adapter_events.jsonl"
 SLOG = BASE / "sensor_e2e.log"
@@ -66,6 +69,12 @@ def norm(c):
 
 
 def main():
+    # 历史 E2E 依赖一个未入库的真实 agent.py。未显式提供时，转到仓库内置、
+    # 可复现的零先验 E2E；仍可用 ASG_E2E_AGENT/ASG_E2E_MODEL 运行旧链路。
+    if not LEGACY_AGENT.is_file():
+        from e2e_unknown import main as unknown_main
+        return unknown_main()
+
     # Step 0: 清数据 + 清陈旧 sensor(防多 sensor 同写一份证据)
     try:
         import psutil
@@ -116,7 +125,7 @@ def main():
         env["PYTHONPATH"] = pp + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         env["PYTHONIOENCODING"] = "utf-8"
         return subprocess.run(
-            [sys.executable, str(BASE / "agent.py"), "--model", "deepseek-v4-flash"],
+            [sys.executable, str(LEGACY_AGENT), "--model", E2E_MODEL],
             capture_output=True, text=True, timeout=420, env=env, cwd=str(BASE))
 
     # Step 2: 基线 (无钩子)
@@ -125,7 +134,7 @@ def main():
     (BASE / "baseline_stdout.txt").write_text(p0.stdout, encoding="utf-8")
     time.sleep(8)  # 给 sensor 增量轮检出
     evs = load(EVENTS)
-    r1 = [e for e in evs if e.get("rule") == "R1" and "e2e/agent.py" in norm(e.get("cmdline"))]
+    r1 = [e for e in evs if e.get("rule") == "R1" and AGENT_CMD_MARKER in norm(e.get("cmdline"))]
     check("基线任务完成", "all tasks done" in p0.stdout, f"rc={p0.returncode}")
     check("sensor发现agent(R1)", len(r1) >= 1, f"R1数={len(r1)}")
     check("基线零语义事件", load(ADAPT) == [])
@@ -155,7 +164,7 @@ def main():
 
     # agent pid(取挂接轮 R1)
     evs = load(EVENTS)
-    apids = sorted({e["pid"] for e in evs if "e2e/agent.py" in norm(e.get("cmdline"))})
+    apids = sorted({e["pid"] for e in evs if AGENT_CMD_MARKER in norm(e.get("cmdline"))})
 
     # Step 5: R2 (双层: OS 句柄优先, 抓不住瞬时句柄时由 runtime 语义补位.
     # 这正是"EDR 看动作、runtime 看内容"的分工实证, 不是放水: 两层都留痕.)

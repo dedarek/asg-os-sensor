@@ -20,13 +20,26 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN_ROOT = ROOT / "e2e" / "artifacts" / "unknown-runtime"
-RECIPE = ROOT / "recipes" / "runtime_analyst.yaml"
-GOOSE = Path.home() / ".local" / "bin" / "goose.exe"
-if not GOOSE.exists():
-    GOOSE = Path(shutil.which("goose") or shutil.which("goose.exe") or "goose")
+RECIPE = Path(os.environ.get("ASG_ANALYST_RECIPE", str(ROOT / "recipes" / "runtime_analyst.yaml")))
+def _resolve_goose() -> Path:
+    custom = os.environ.get("ASG_GOOSE_BIN", "").strip()
+    if custom:
+        return Path(custom)
+    for cand in [Path.home() / ".local" / "bin" / "goose", Path.home() / ".local" / "bin" / "goose.exe"]:
+        if cand.exists():
+            return cand
+    found = shutil.which("goose") or shutil.which("goose.exe")
+    if found:
+        return Path(found)
+    return Path("goose")
+GOOSE = _resolve_goose()
 
 sys.path.insert(0, str(ROOT))
 from runtime import analyzer, matcher  # noqa: E402
+from runtime.llm_config import analyst_key as load_analyst_key
+from runtime.llm_config import analyst_route as load_analyst_route
+from runtime.llm_config import goose_env as build_goose_env
+from runtime.llm_config import mask_key as mask_analyst_key
 
 
 def now() -> float:
@@ -134,49 +147,26 @@ def start_target(run_dir: Path, duration: float) -> tuple[subprocess.Popen, Path
     return proc, stream, argv
 
 
-def analyst_route() -> dict[str, str]:
-    route = os.environ.get("ASG_ANALYST_ROUTE", "opencode-go").strip().lower()
-    routes = {
-        "commandcode": {
-            "provider": "openai",
-            "model": "deepseek/deepseek-v4-flash",
-            "base_url": "https://api.commandcode.ai/provider/v1",
-            "key_env": "COMMANDCODE_API_KEY",
-        },
-        "opencode-go": {
-            "provider": "openai",
-            "model": "deepseek-v4-flash",
-            "base_url": "https://opencode.ai/zen/go/v1",
-            "key_env": "OPENCODE_GO_API_KEY",
-        },
-    }
-    if route not in routes:
-        raise ValueError(f"ASG_ANALYST_ROUTE must be commandcode or opencode-go, got {route!r}")
-    return {"route": route, **routes[route]}
+def analyst_route() -> dict:
+    return load_analyst_route()
 
 
 def run_analyst(run_dir: Path, pid: int, stream: Path) -> tuple[int, list[str]]:
     route = analyst_route()
-    key = os.environ.get(route["key_env"], "")
+    key = load_analyst_key(route)
     if not key:
-        raise RuntimeError(f"missing active credential: {route['key_env']}")
+        raise RuntimeError("missing active credential: " + str(route.get("key_env")) + " route=" + str(route.get("route")) + " key=" + mask_analyst_key(key))
+    if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
+        raise RuntimeError("upstream TLS is insecure; fix the certificate or explicitly set ASG_ALLOW_INSECURE_ANALYST=1")
     extension = "asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={audit} ASG_RECIPE_DIR={recipes} ASG_TARGET_STREAM_FILE={stream} python runtime/analyst_tools.py".format(pid=pid, audit=run_dir, recipes=run_dir / "recipes", stream=stream)
-    # Goose remains the mature loop; the provider is OpenAI-compatible and the
-    # only permitted model is DeepSeek. Secrets stay in the child environment.
-    cmd = [str(GOOSE), "run", "--no-profile", "--no-session", "--recipe", str(RECIPE), "--params", f"target_pid={pid}", "--provider", route["provider"], "--model", route["model"], "--max-turns", "12", "--max-tool-repetitions", "2", "--output-format", "stream-json", "--with-extension", extension]
+    # Goose remains the mature loop; provider is OpenAI-compatible per llm.yaml. Secrets stay in child env.
+    max_turns = os.environ.get("ASG_GOOSE_MAX_TURNS", "12").strip() or "12"
+    cmd_timeout = int(os.environ.get("ASG_GOOSE_TIMEOUT", "180").strip() or "180")
+    cmd = [str(GOOSE), "run", "--no-profile", "--no-session", "--recipe", str(RECIPE), "--params", f"target_pid={pid}", "--provider", route["provider"], "--model", route["model"], "--max-turns", max_turns, "--max-tool-repetitions", "2", "--output-format", "stream-json", "--with-extension", extension]
     env = os.environ.copy()
-    env["GOOSE_PROVIDER"] = route["provider"]
-    env["GOOSE_MODEL"] = route["model"]
-    env["GOOSE_MODE"] = "auto"
-    env["OPENAI_BASE_URL"] = route["base_url"]
-    env["OPENAI_API_KEY"] = key
-    if route["route"] == "opencode-go":
-        # OpenCode Go requires a stable session-routing header; Goose exposes
-        # custom OpenAI headers through a comma-separated setting. This value is per Analyst run,
-        # never a user credential.
-        env["OPENAI_CUSTOM_HEADERS"] = f"x-opencode-session=asg-runtime-{pid},x-opencode-client=asg-runtime-analyst"
+    env.update(build_goose_env(route, key, pid))
     out_path, err_path = run_dir / "analyst_stdout.jsonl", run_dir / "analyst_stderr.log"
-    completed = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=180)
+    completed = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=cmd_timeout)
     write_json(run_dir / "analyst_command.json", {"argv": cmd, "environment": {"GOOSE_PROVIDER": route["provider"], "GOOSE_MODEL": route["model"], "OPENAI_BASE_URL": route["base_url"], "credential_env": route["key_env"], "GOOSE_MODE": "auto"}, "returncode": completed.returncode})
     return completed.returncode, cmd
 
@@ -285,7 +275,7 @@ def build_execution_manifest(report: dict[str, Any]) -> dict[str, Any]:
             files.append(str(p.relative_to(RUN_ROOT)).replace("\\", "/"))
     return {
         "purpose": "blind unknown-runtime discovery and iterative attachment",
-        "model_constraint": "DeepSeek-only Analyst; target identity is not supplied to Analyst",
+        "model_constraint": "LLM-routed Analyst (see llm.yaml); target identity is not supplied to Analyst",
         "blind_boundary": {
             "analyst_receives": ["behavioral process shape", "tree depth/count", "runtime capability shapes", "event types and content-block types", "redacted prior memory"],
             "analyst_does_not_receive": ["vendor/product identity", "executable path/name", "raw cwd/open paths", "prompt bodies", "tool arguments", "credentials"],

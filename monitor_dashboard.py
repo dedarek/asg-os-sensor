@@ -1,8 +1,8 @@
 """ASG Agent Live Monitor & Autonomous Runtime Governance Engine
 功能：
-1. 30s 周期实时扫描操作系统进程，通过零先验行为特征画像打分（识别 Agent）
+1. 周期实时扫描操作系统进程，通过零先验行为特征画像打分（识别 Agent，间隔 ASG_SCAN_INTERVAL）
 2. 特征指纹比对：已沉淀的 Agent 实现毫秒级命中路由与 Adapter 挂接
-3. 陌生 Agent 自动逆向接管：自动异步调度 Goose (DeepSeek) 执行 Agent Work 受控调查
+3. 陌生 Agent 自动逆向接管：自动异步调度 Goose 执行 Agent Work 受控调查（LLM 路由见 llm.yaml）
 4. 自主推导 Agent 真实业务名称、通信协议与观测 Recipe，并自动沉淀至指纹库
 5. 实时拦截/挂接语义事件流，展示最新脱敏消息
 """
@@ -21,24 +21,52 @@ from typing import Any
 import psutil
 
 # 确保根目录在 sys.path
-ROOT = Path("D:/proj/asg-os-sensor")
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher
 from runtime.stream_parser import redact
+from runtime.llm_config import analyst_key as load_analyst_key
+from runtime.llm_config import analyst_route as load_analyst_route
+from runtime.llm_config import goose_env as build_goose_env
+from runtime.llm_config import load_environment
+from runtime.llm_config import mask_key as mask_analyst_key
 
-GOOSE = Path.home() / ".local" / "bin" / "goose.exe"
-if not GOOSE.exists():
-    GOOSE = Path(shutil.which("goose") or shutil.which("goose.exe") or "goose")
-RECIPE = ROOT / "recipes" / "runtime_analyst.yaml"
+load_environment()
+
+def _resolve_goose() -> Path:
+    custom = os.environ.get("ASG_GOOSE_BIN", "").strip()
+    if custom:
+        return Path(custom)
+    for cand in [Path.home() / ".local" / "bin" / "goose", Path.home() / ".local" / "bin" / "goose.exe"]:
+        if cand.exists():
+            return cand
+    found = shutil.which("goose") or shutil.which("goose.exe")
+    if found:
+        return Path(found)
+    return Path("goose")
+GOOSE = _resolve_goose()
+RECIPE = Path(os.environ.get("ASG_ANALYST_RECIPE", str(ROOT / "recipes" / "runtime_analyst.yaml")))
 
 # 共享状态与锁
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.environ.get(name, default)))
+    except Exception:
+        return default
+SCAN_INTERVAL_S = _env_int("ASG_SCAN_INTERVAL", 30)
+MAX_ANALYSTS = _env_int("ASG_MAX_ANALYSTS", 2)
+GOOSE_MAX_TURNS = _env_int("ASG_GOOSE_MAX_TURNS", 12)
+GOOSE_TIMEOUT_S = _env_int("ASG_GOOSE_TIMEOUT", 180)
+GOOSE_RETRY_COOLDOWN_S = _env_int("ASG_GOOSE_RETRY_COOLDOWN", 300)
+AUTONOMOUS_ANALYSIS_ENABLED = os.environ.get("ASG_AUTONOMOUS_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
 STATE_LOCK = threading.Lock()
 SCAN_STATE = {
     "last_scan_time": None,
-    "scan_interval": 30,
+    "scan_interval": SCAN_INTERVAL_S,
     "scan_count": 0,
+    "autonomous_analysis": AUTONOMOUS_ANALYSIS_ENABLED,
     "agents": [],
     "fingerprints_count": 0,
     "active_investigations": {}  # pid -> {status, started_at, turns}
@@ -47,7 +75,29 @@ SCAN_STATE = {
 # 记录当前已挂起正在调查的 PID，避免重复拉起多个 Goose
 INVESTIGATING_PIDS = set()
 INVESTIGATION_LOCK = threading.Lock()
-INVESTIGATION_SEMAPHORE = threading.Semaphore(2)  # 最多同时允许 2 个 Goose 并发，防止跑满 API 与进程雪崩
+INVESTIGATION_SEMAPHORE = threading.Semaphore(MAX_ANALYSTS)  # 最多同时允许 N 个 Goose 并发，防止跑满 API 与进程雪崩
+INVESTIGATION_RESULTS: dict[int, dict[str, Any]] = {}
+INVESTIGATION_RETRY_AT: dict[int, float] = {}
+
+
+def _goose_executable() -> str | None:
+    """返回可执行 Goose 路径；避免缺失时进入无限后台重试。"""
+    value = str(GOOSE)
+    if GOOSE.is_absolute() or GOOSE.parent != Path("."):
+        return value if GOOSE.is_file() and os.access(GOOSE, os.X_OK) else None
+    return shutil.which(value)
+
+
+def _record_investigation_result(pid: int, status: str, message: str, run_dir: Path | None = None) -> None:
+    result = {
+        "status": status,
+        "message": message,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if run_dir is not None:
+        result["log_dir"] = str(run_dir)
+    with INVESTIGATION_LOCK:
+        INVESTIGATION_RESULTS[pid] = result
 
 
 def now() -> float:
@@ -58,35 +108,40 @@ def iso(ts: float | None = None) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts or now()))
 
 
-def analyst_route() -> dict[str, str]:
-    route = os.environ.get("ASG_ANALYST_ROUTE", "commandcode").strip().lower()
-    routes = {
-        "commandcode": {
-            "provider": "openai",
-            "model": "deepseek/deepseek-v4-flash",
-            "base_url": "https://api.commandcode.ai/provider/v1",
-            "key_env": "COMMANDCODE_API_KEY",
-        },
-        "opencode-go": {
-            "provider": "openai",
-            "model": "deepseek-v4-flash",
-            "base_url": "https://opencode.ai/zen/go/v1",
-            "key_env": "OPENCODE_GO_API_KEY",
-        },
-    }
-    if route not in routes:
-        route = "commandcode"
-    return {"route": route, **routes[route]}
+def analyst_route() -> dict:
+    return load_analyst_route()
 
 
-def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
-    """由 Goose (DeepSeek) 执行后台非交互式受控逆向接管"""
+def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool = False):
+    """由 Goose 执行后台非交互式受控逆向接管（模型路由见 llm.yaml）"""
     with INVESTIGATION_LOCK:
         if pid in INVESTIGATING_PIDS:
             return
+        retry_at = INVESTIGATION_RETRY_AT.get(pid, 0)
+        if not force and now() < retry_at:
+            return
         INVESTIGATING_PIDS.add(pid)
 
-    with INVESTIGATION_SEMAPHORE:
+    goose_bin = _goose_executable()
+    if not goose_bin:
+        message = f"未找到 Goose CLI（当前解析值: {GOOSE}）。请安装 block-goose-cli 或设置 ASG_GOOSE_BIN。"
+        _record_investigation_result(pid, "unavailable", message)
+        with INVESTIGATION_LOCK:
+            INVESTIGATION_RETRY_AT[pid] = now() + GOOSE_RETRY_COOLDOWN_S
+            INVESTIGATING_PIDS.discard(pid)
+        print(f"[Analyst Unavailable PID={pid}] {message}", file=sys.stderr)
+        return
+
+    # 不把所有候选都排进一个长队：只有拿到并发槽位的 PID 才进入“正在接管”。
+    # 否则几十个候选会在 semaphore 后等待数十分钟，看板就像永远卡住。
+    if not INVESTIGATION_SEMAPHORE.acquire(blocking=False):
+        with INVESTIGATION_LOCK:
+            INVESTIGATING_PIDS.discard(pid)
+        if force:
+            _record_investigation_result(pid, "busy", "分析器并发槽位已满，请稍后重试")
+        return
+
+    try:
         run_dir = ROOT / "e2e" / "artifacts" / "autonomous-governance" / f"pid_{pid}_{int(time.time())}"
         run_dir.mkdir(parents=True, exist_ok=True)
         recipes_dir = run_dir / "recipes"
@@ -104,47 +159,40 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
 
         try:
             route = analyst_route()
-            key = os.environ.get(route["key_env"], "")
+            key = load_analyst_key(route)
             if not key:
-                for env_path in [Path.home() / "AppData/Local/hermes/.env", Path.home() / ".env"]:
-                    if env_path.exists():
-                        for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                            if line.startswith(f"{route['key_env']}="):
-                                key = line.split("=", 1)[1].strip()
-                                break
-            
-            if not key:
-                print(f"[Analyst] 缺少凭据 {route['key_env']}，跳过接管 PID {pid}", file=sys.stderr)
+                message = "LLM 凭据缺失: " + str(route.get("key_env", "?"))
+                _record_investigation_result(pid, "failed", message, run_dir)
+                print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
+                return
+            if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
+                message = "上游 TLS 证书无效；已阻止深度数据外发。修复证书，或明确设置 ASG_ALLOW_INSECURE_ANALYST=1"
+                _record_investigation_result(pid, "blocked", message, run_dir)
+                print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)
                 return
 
             extension = f"asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={run_dir} ASG_RECIPE_DIR={recipes_dir} ASG_TARGET_STREAM_FILE={stream_file} python runtime/analyst_tools.py"
             cmd = [
-                str(GOOSE), "run", "--no-profile", "--no-session",
+                goose_bin, "run", "--no-profile", "--no-session",
                 "--recipe", str(RECIPE),
                 "--params", f"target_pid={pid}",
                 "--provider", route["provider"],
                 "--model", route["model"],
-                "--max-turns", "12",
+                "--max-turns", str(GOOSE_MAX_TURNS),
                 "--max-tool-repetitions", "2",
                 "--output-format", "stream-json",
                 "--with-extension", extension
             ]
 
             env = os.environ.copy()
-            env["GOOSE_PROVIDER"] = route["provider"]
-            env["GOOSE_MODEL"] = route["model"]
-            env["GOOSE_MODE"] = "auto"
-            env["OPENAI_BASE_URL"] = route["base_url"]
-            env["OPENAI_API_KEY"] = key
-            if route["route"] == "opencode-go":
-                env["OPENAI_CUSTOM_HEADERS"] = f"x-opencode-session=asg-live-{pid},x-opencode-client=asg-live-analyst"
+            env.update(build_goose_env(route, key, pid))
 
             out_path = run_dir / "analyst_stdout.jsonl"
             err_path = run_dir / "analyst_stderr.log"
 
             print(f"[Analyst] Goose 开始自主逆向接管 PID={pid}...")
             t0 = time.time()
-            cp = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=180)
+            cp = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=GOOSE_TIMEOUT_S)
             elapsed_ms = int((time.time() - t0) * 1000)
 
             # 检查是否成功产出 candidate.json
@@ -162,16 +210,24 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
                 ):
                     # 写入指纹库
                     entry = matcher.remember(struct, recipe, elapsed_ms)
+                    _record_investigation_result(pid, "succeeded", f"已生成并挂接 {entry.get('id')}", run_dir)
                     print(f"[Analyst] 接管成功并写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
+                    _record_investigation_result(pid, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
             else:
+                _record_investigation_result(pid, "failed", f"Goose 未产生有效 Recipe (returncode={cp.returncode})", run_dir)
                 print(f"[Analyst] 接管完成但未产生有效 Recipe (returncode={cp.returncode})", file=sys.stderr)
 
+        except subprocess.TimeoutExpired:
+            _record_investigation_result(pid, "failed", f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)", run_dir)
+            print(f"[Analyst Error PID={pid}] Goose timeout after {GOOSE_TIMEOUT_S}s", file=sys.stderr)
         except Exception as exc:
+            _record_investigation_result(pid, "failed", f"{type(exc).__name__}: {exc}", run_dir)
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:
             with INVESTIGATION_LOCK:
+                INVESTIGATION_RETRY_AT[pid] = now() + GOOSE_RETRY_COOLDOWN_S
                 INVESTIGATING_PIDS.discard(pid)
             with STATE_LOCK:
                 SCAN_STATE["active_investigations"].pop(pid, None)
@@ -184,7 +240,8 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any]):
                         SCAN_STATE["fingerprints_count"] = len(fp_data.get("fingerprints", []))
             except Exception:
                 pass
-        scan_agents_once()
+    finally:
+        INVESTIGATION_SEMAPHORE.release()
 
 
 def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
@@ -214,10 +271,11 @@ def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
 
 
 def scan_agents_once():
-    """执行一次完整的 30s OS 级扫描"""
+    """执行一次完整的 OS 级扫描；调用频率由 ASG_SCAN_INTERVAL 控制。"""
     global SCAN_STATE
     policies = load_policies()
     sensor = Sensor(policies)
+    threshold = int(policies.get("agent_score_threshold", 50))
     
     found_agents = []
     
@@ -235,7 +293,7 @@ def scan_agents_once():
 
             w = sensor.wrap_pid(pid)
             score, reasons = sensor.agent_score(w)
-            if score >= 50:
+            if score >= threshold:
                 candidates.append((proc, pinfo, score, reasons))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -292,11 +350,15 @@ def scan_agents_once():
             is_investigating = False
             with INVESTIGATION_LOCK:
                 is_investigating = (pid in INVESTIGATING_PIDS)
+                investigation_result = dict(INVESTIGATION_RESULTS.get(pid, {}))
+            if not AUTONOMOUS_ANALYSIS_ENABLED and not investigation_result:
+                investigation_result = {"status": "disabled", "message": "自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)"}
 
             recipe_obj = matched_fp.get("hook_recipe", {}) if matched_fp else {}
             adapter_info = {
                 "matched": is_matched,
                 "investigating": is_investigating,
+                "investigation": investigation_result,
                 "match_ms": match_ms,
                 "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
                 "behavioral_class": (recipe_obj.get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
@@ -330,7 +392,9 @@ def scan_agents_once():
 
             # 自动接入闭环：若发现陌生 Agent 或尚未拥有深度治理全景档案的已匹配 Agent，立即在后台拉起 Goose 进行自主逆向！
             needs_deep_governance = not recipe_obj.get("model_routing")
-            if (not is_matched or needs_deep_governance) and not is_investigating:
+            with INVESTIGATION_LOCK:
+                retry_ready = now() >= INVESTIGATION_RETRY_AT.get(pid, 0)
+            if AUTONOMOUS_ANALYSIS_ENABLED and (not is_matched or needs_deep_governance) and not is_investigating and retry_ready:
                 threading.Thread(
                     target=run_autonomous_investigation,
                     args=(pid, struct),
@@ -398,7 +462,7 @@ def background_scanner_loop():
             scan_agents_once()
         except Exception as e:
             print(f"[Scanner Error] {e}", file=sys.stderr)
-        time.sleep(30)
+        time.sleep(SCAN_INTERVAL_S)
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -635,7 +699,7 @@ HTML_PAGE = """<!DOCTYPE html>
     ASG 运行时治理 · 实时 Agent 监控与自主接管
   </div>
   <div class="meta-bar">
-    <div class="meta-item">扫描周期: <b>30s</b></div>
+    <div class="meta-item">扫描周期: <b id="scan-interval">-</b></div>
     <div class="meta-item">已存指纹: <b id="fp-count" style="cursor: pointer; text-decoration: underline;" onclick="openFpDrawer()">-</b></div>
     <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
     <div class="meta-item">上次更新: <b id="last-time">-</b></div>
@@ -875,6 +939,7 @@ async function updateUI() {
     const data = await res.json();
     document.getElementById('last-time').innerText = data.last_scan_time || '初始化中';
     document.getElementById('scan-count').innerText = data.scan_count;
+    document.getElementById('scan-interval').innerText = `${data.scan_interval || 30}s`;
     document.getElementById('fp-count').innerText = data.fingerprints_count;
     document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
     
@@ -914,16 +979,20 @@ async function updateUI() {
     let html = '';
     data.agents.forEach(a => {
       const isMatched = a.adapter && a.adapter.matched;
-      const isInvestigating = (a.adapter && a.adapter.investigating) || reinvestigatingPids.has(a.pid);
-      if (!isInvestigating && reinvestigatingPids.has(a.pid)) {
+      const backendInvestigating = !!(a.adapter && a.adapter.investigating);
+      const investigation = (a.adapter && a.adapter.investigation) || {};
+      if (!backendInvestigating && investigation.status && reinvestigatingPids.has(a.pid)) {
         reinvestigatingPids.delete(a.pid);
       }
+      const isInvestigating = backendInvestigating || reinvestigatingPids.has(a.pid);
       
       let statusHtml = '';
       if (isInvestigating) {
         statusHtml = `<span class="adapter-status adapter-working">⚡ 正在自主逆向接管中 (Goose Agent Work)...</span>`;
       } else if (isMatched) {
         statusHtml = `<span class="adapter-status">✓ 已适配挂接 (${a.adapter.harness_id} · ${a.adapter.match_ms}ms)</span>`;
+      } else if (['unavailable', 'failed', 'busy', 'blocked', 'disabled'].includes(investigation.status)) {
+        statusHtml = `<span class="adapter-status adapter-unmatched" title="${investigation.message || ''}">⚠ 逆向未完成：${investigation.message || '请查看服务日志'}</span>`;
       } else {
         statusHtml = `<span class="adapter-status adapter-unmatched">⚡ 陌生 Runtime (等待调度逆向)</span>`;
       }
@@ -1126,7 +1195,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
             query = urllib.parse.urlparse(self.path).query
             params = urllib.parse.parse_qs(query)
             pid = int(params.get("pid", [0])[0])
-            if pid:
+            if pid and AUTONOMOUS_ANALYSIS_ENABLED:
                 struct = {}
                 try:
                     struct = analyzer.analyze(pid)
@@ -1134,14 +1203,15 @@ class MonitorHandler(BaseHTTPRequestHandler):
                     pass
                 threading.Thread(
                     target=run_autonomous_investigation,
-                    args=(pid, struct),
+                    args=(pid, struct, True),
                     name=f"analyst-worker-manual-{pid}",
                     daemon=True
                 ).start()
-            self.send_response(200)
+            self.send_response(200 if AUTONOMOUS_ANALYSIS_ENABLED else 503)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status": "reinvestigating"}')
+            status = b'{"status": "reinvestigating"}' if AUTONOMOUS_ANALYSIS_ENABLED else b'{"status": "disabled", "message": "ASG_AUTONOMOUS_ANALYSIS=0"}'
+            self.wfile.write(status)
         else:
             self.send_response(404)
             self.end_headers()
@@ -1151,16 +1221,19 @@ class MonitorHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = 8080
+    host = os.environ.get("ASG_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = _env_int("ASG_PORT", 8080)
     print("[Monitor] 执行首次进程环境扫描...")
     scan_agents_once()
     
     t = threading.Thread(target=background_scanner_loop, name="scanner-thread", daemon=True)
     t.start()
-    print("[Monitor] 30s 扫描与自动接管引擎已启动")
+    print(f"[Monitor] {SCAN_INTERVAL_S}s 扫描与自动接管引擎已启动")
+    if not AUTONOMOUS_ANALYSIS_ENABLED:
+        print("[Monitor] 自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)")
     
-    server = ThreadingHTTPServer(("127.0.0.1", port), MonitorHandler)
-    print(f"[Monitor] Web 界面已就绪: http://127.0.0.1:{port}")
+    server = ThreadingHTTPServer((host, port), MonitorHandler)
+    print(f"[Monitor] Web 界面已就绪: http://{host}:{port}")
     server.serve_forever()
 
 

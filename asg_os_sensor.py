@@ -50,6 +50,8 @@ def load_policies():
         cfg["events_file"] = os.environ["ASG_EVENTS_FILE"]
     if os.environ.get("ASG_AGENT_SCORE_THRESHOLD"):
         cfg["agent_score_threshold"] = int(os.environ["ASG_AGENT_SCORE_THRESHOLD"])
+    if os.environ.get("ASG_INGEST_URL") is not None:
+        cfg["asg_ingest_url"] = os.environ["ASG_INGEST_URL"].strip()
     return cfg
 
 
@@ -164,7 +166,10 @@ class Sensor:
 
         # 排除系统级终端包装器与命令行容器自身 (bash/cmd/powershell 只是执行容器，由被拉起的子进程体现 agent)
         pname = (proc.info.get("name") or "").lower()
-        if pname in ("bash.exe", "sh.exe", "wsl.exe", "conhost.exe", "cmd.exe", "powershell.exe", "pwsh.exe"):
+        if pname in (
+            "bash", "sh", "zsh", "fish", "dash", "ksh",
+            "bash.exe", "sh.exe", "wsl.exe", "conhost.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
+        ):
             return -1, ["排除系统Shell/终端包装器自身"]
 
         # 排除 npm/npx/cmdlet 等纯包管理器与加载器 (它们只是用来启动真实进程的管道)

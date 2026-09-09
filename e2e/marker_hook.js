@@ -1,1 +1,3 @@
-require("fs").appendFileSync("D:/proj/asg-os-sensor/e2e/marker.txt", "HOOK_LOADED pid="+process.pid+" exec="+process.execPath+"\n");
+const path = require("path");
+const marker = process.env.ASG_MARKER_FILE || path.join(__dirname, "marker.txt");
+require("fs").appendFileSync(marker, "HOOK_LOADED pid=" + process.pid + " exec=" + process.execPath + "\n");

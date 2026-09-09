@@ -1,19 +1,26 @@
-"""极简透明 Anthropic -> CommandCode (DeepSeek) 适配桥 (方案 B)
-只负责：接收 Claude Code 的 Anthropic /v1/messages，转给 CommandCode /provider/v1/chat/completions (deepseek-v4-flash)，返回 Anthropic SSE 流。
+"""Anthropic -> OpenAI-compatible 透明适配桥 (llm.yaml 可配路由).
+只负责：接收 Anthropic /v1/messages，转给当前路由 chat/completions，返回 Anthropic SSE 流。
+路由与 key 来自 llm.yaml + 环境变量/.env，默认 custom-openai。
 """
 import json
 import os
 import sys
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import requests
 from pathlib import Path
-
-# 获取 commandcode key (优先从环境变量读取，避免硬编码)
-KEY = os.environ.get("COMMANDCODE_API_KEY", "")
-
-TARGET_URL = "https://api.commandcode.ai/provider/v1/chat/completions"
-TARGET_MODEL = "deepseek/deepseek-v4-flash"
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from runtime.llm_config import analyst_key
+from runtime.llm_config import analyst_route
+try:
+    import requests
+except ImportError:
+    requests = None
+def _bridge_target():
+    route = analyst_route()
+    base = str(route.get("base_url", "")).rstrip("/")
+    path = str(route.get("chat_path", "/chat/completions"))
+    return route, base + path, str(route.get("model", ""))
 
 class BridgeHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -52,21 +59,31 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 messages.append({"role": role, "content": "\n".join(text_parts)})
 
         stream = req.get("stream", False)
+        route, target_url, target_model = _bridge_target()
+        key = analyst_key(route)
+        if not key:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(("missing credential " + str(route.get("key_env")) + " for route " + str(route.get("route"))).encode("utf-8"))
+            return
+        if requests is None:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"missing dependency: requests (pip install -r requirements.txt)")
+            return
         openai_payload = {
-            "model": TARGET_MODEL,
+            "model": target_model,
             "messages": messages,
             "stream": stream,
             "max_tokens": req.get("max_tokens", 4096)
         }
-
         headers = {
-            "Authorization": f"Bearer {KEY}",
+            "Authorization": "Bearer " + key,
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
-
         try:
-            upstream = requests.post(TARGET_URL, headers=headers, json=openai_payload, stream=stream, timeout=60)
+            upstream = requests.post(target_url, headers=headers, json=openai_payload, stream=stream, timeout=60)
             if upstream.status_code != 200:
                 self.send_response(upstream.status_code)
                 self.end_headers()
@@ -167,9 +184,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
         pass
 
 def run():
-    port = 8765
-    server = HTTPServer(("127.0.0.1", port), BridgeHandler)
-    print(f"Bridge listening on http://127.0.0.1:{port}", flush=True)
+    host = os.environ.get("ASG_BRIDGE_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    try:
+        port = int(str(os.environ.get("ASG_BRIDGE_PORT", "8765")))
+    except Exception:
+        port = 8765
+    server = HTTPServer((host, port), BridgeHandler)
+    print(f"Bridge listening on http://{host}:{port}", flush=True)
     server.serve_forever()
 
 if __name__ == "__main__":
