@@ -132,3 +132,23 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
   与签名变化拒绝，全程无产品特判；证明核心无需改写即可更换接入配方。
 - 全量 49 tests OK（8 discovery + 41 stage1）。
 - WORKLOG 仍为唯一最新日志入口；REVIEW 同步更新。
+
+
+## 固定协作规则（用户要求，写入 WORKLOG 作为长期约定）
+- 每轮里程碑完成、最终提交、遇到阻塞或需要用户操作时，必须调用
+  send_message_to_thread 给顾问任务 01a0843f-7250-7591-b63b-e46e5fa83725。
+- 汇报内容必须包含：commit/工作树状态、真实与 mock 分开的证据、8081 状态、
+  未完成项与需要决策的事项；调用后停 review（不要只在本地任务结束）。
+- 不创建自动轮询；不做无汇报的静默结束。
+
+## 2026-09-10 B 阶段真实验收（非纯 mock，合成元素已标注）
+- 目标：最小纯观测 Hook 的隔离测试工作区闭环：安装→握手→事件→卸载。
+- 真实元素：真实 python 目标进程；真实 PYTHONPATH 注入安装 sitecustomize 钩子；
+  真实事件文件写盘（llm.request/llm.response 成对，adapter_source=auto-runtime-v2，
+  sdk=openai-chat）；真实 stub 端点收到 1 个 HTTP 请求；卸载后同调用不再产事件。
+- 合成元素（明确标注）：fake openai 包（仅 create 方法）+ 回环 stub 端点——本机
+  无 openai/litellm 且离线装不上，用于激活 sitecustomize 包裹面；不冒充第二个
+  真实 Agent 已验收。
+- 脚本: artifacts/stage1/reuse-e2e/acceptance_loop.py（gitignore）。
+- 结果: single unittest OK；B-loop request+response=1/1, stub_reqs=1。
+- 未改动用户全局配置/项目、未重启真实工作实例（OpenCode 45780 原样保留）。
