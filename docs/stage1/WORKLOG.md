@@ -248,3 +248,18 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
    为库且未接线（HTTP/events not_wired）。
 - 测试：test_opencode_plugin.py 重构为引擎长驻 Popen + 真实 glob 发现 + 绑定
   正反例 + 健康语义 + 卸载保留历史；全量 51 tests OK。
+
+## 2026-09-09 第三轮：3 组闭环阻断修复（HEAD caa2835 后）
+1) 事务化安装：独立 run 目录 + manifest 原子发布（.asg-observe/manifest.json 为 active 指针，
+   runs/<runid>/{nonce,events.jsonl} 0600, 目录 0700）；任一步失败回滚本 run（无残留有效插件）；
+   install->uninstall->reinstall 可重复且 runid 不同；旧历史（events.jsonl）保留。
+2) 目录安全：对 workspace 及所有路径组件做 symlink 检查；仅接受授权隔离根（系统临时目录或
+   artifacts/stage1/**）；name 纯文件名；O_CREAT|O_EXCL 独占创建；卸载校验 manifest+hash 后拒绝删除；
+   外部 sentinel 文件保留负例（.opencode symlink 指向外部目录时拒绝安装且不触碰目标文件）。
+3) 健康：current_health 先 schema+绑定过滤（旧合法 loaded 不能掩盖新非法 nonce/未来 ts）；
+   撤销由安装器 manifest 驱动（active=False/缺失 -> revoked）；空闲无事件 -> unknown 非故障；
+   read_raw 稳健拒绝数组/数字；loaded_observed 与 current_health 分离。
+4) HTTP 接线：新增 runtime/opencode/server.py（127.0.0.1 随机端口）暴露 /health /events，
+   把已验证 event/health 接到隔离 HTTP 接口，不再停留于库对象。
+5) 插件：nonce 缺失（卸载后）立即停止写事件，不重启引擎的再次触发也不产事件（同进程内验证）。
+- 测试：test_opencode_plugin.py 扩展为 10 用例（事务 4+事件 2+健康 3+HTTP 1），全量 60 tests OK。

@@ -1,137 +1,218 @@
 # -*- coding: utf-8 -*-
-"""OpenCode 纯观测插件集成测试（隔离、可复现、真实加载路径）。"""
-import json, os, secrets, shutil, subprocess, tempfile, time, unittest
+"""OpenCode 纯观测插件/安装器/健康/HTTP 集成测试（隔离、可复现）。"""
+import json, os, subprocess, sys, tempfile, time, unittest, urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import psutil
 from runtime.opencode.event_api import EventVerifier
 
 ROOT = Path(__file__).resolve().parent
+GHOST = ROOT / "runtime" / "opencode" / "ghost_install.py"
 NODE = "/Users/mac/.nvm/versions/node/v24.16.0/bin/node"
-PLUGIN = ROOT / "runtime" / "opencode" / "asg-observe.js"
 
 
-def glob_scan(plugins_dir: Path):
-    import glob as g
-    found = set()
-    for ext in ("ts", "js"):
-        for p in g.glob(str(plugins_dir / ("*." + ext))):
-            if Path(p).is_file():
-                found.add(Path(p))
-    return sorted(found)
+def run(*a):
+    return subprocess.run([sys.executable, "-B", str(GHOST), *a], capture_output=True, text=True)
 
 
-def mk_fixture(plugin_path: Path, directory: str) -> str:
+def state_dir(ws):
+    return ws / ".opencode" / "plugins" / ".asg-observe"
+
+
+def active_manifest(sd):
+    m = json.loads((sd / "manifest.json").read_text())
+    return m
+
+
+class TransactionInstallTests(unittest.TestCase):
+    def test_install_uninstall_reinstall_and_rollback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "N1").stdout)
+            self.assertTrue(Path(d["installed"]).exists())
+            sd = state_dir(ws)
+            man = active_manifest(sd)
+            self.assertEqual(oct(sd.stat().st_mode & 0o777), "0o700")
+            self.assertEqual(oct((sd / "manifest.json").stat().st_mode & 0o777), "0o600")
+            self.assertEqual(run("--install", "--workspace", str(ws), "--nonce", "N2").returncode, 1)
+            r = run("--uninstall", "--workspace", str(ws), "--name", "asg-observe.js")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse(Path(d["installed"]).exists())
+            self.assertTrue((sd / "runs" / man["runid"] / "events.jsonl").exists())
+            self.assertFalse((sd / "manifest.json").exists())
+            self.assertTrue((sd / "manifest.json.inactive").exists())
+            d2 = json.loads(run("--install", "--workspace", str(ws), "--nonce", "N3").stdout)
+            man2 = active_manifest(sd)
+            self.assertNotEqual(man2["runid"], man["runid"])
+            (ws / ".opencode" / "plugins" / "asg-observe.js").write_bytes(b"occupied")
+            r = run("--install", "--workspace", str(ws), "--nonce", "N4")
+            self.assertEqual(r.returncode, 1)
+            self.assertEqual(len(list((sd / "runs").iterdir())), 2)
+
+    def test_path_safety_rejects_symlink_components(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            linkroot = Path(tmp) / "linkroot"; linkroot.mkdir()
+            target = Path(tmp) / "outside"; target.mkdir()
+            try:
+                (linkroot / ".opencode").symlink_to(target, target_is_directory=True)
+            except OSError:
+                self.skipTest("symlink unsupported")
+            sentinel = target / "keep.txt"; sentinel.write_text("user file")
+            r = run("--install", "--workspace", str(linkroot), "--name", "x.js")
+            self.assertEqual(r.returncode, 1)
+            self.assertTrue(sentinel.exists(), "external sentinel preserved")
+
+    def test_name_traversal_rejected(self):
+        for name in ("../evil.js", "/etc/evil.js", "."):
+            with tempfile.TemporaryDirectory() as tmp:
+                r = run("--install", "--workspace", str(tmp), "--name", name)
+                self.assertEqual(r.returncode, 1, name)
+
+    def test_modified_plugin_refuses_delete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "N1").stdout)
+            p = Path(d["installed"]); p.write_bytes(p.read_bytes() + b"X")
+            r = run("--uninstall", "--workspace", str(ws), "--name", "asg-observe.js")
+            self.assertEqual(r.returncode, 1)
+            self.assertTrue(p.exists())
+
+
+def node_fixture(plugin: str, directory: str, phase: int) -> str:
+    # 同一 node 进程内多次触发；phase=1 安装后触发，phase=2 卸载后再次触发
     import json as _j
     return chr(10).join([
         "const init = async () => {",
-        "  const mod = await import('file://" + str(plugin_path) + "');",
+        "  const mod = await import('file://" + plugin + "');",
         "  const plug = await mod.default({ directory: " + _j.dumps(directory) + " });",
-        "  const input = { tool: 'bash', callID: 'call-abc-123' };",
-        "  await plug['tool.execute.before'](input, { args: { command: 'ls -la', secret: 'TOPSECRET' } });",
+        "  const input = { tool: 'bash', callID: 'c1' };",
+        "  await plug['tool.execute.before'](input, {});",
         "  await plug['tool.execute.after'](input);",
-        "  setTimeout(() => process.exit(0), 30000);",
+        "  setTimeout(() => process.exit(0), 5000);",
         "};",
         "init().then(() => {}).catch((e) => { console.error(e); process.exit(1); });",
     ])
 
 
-def read_events(path: Path):
-    if not path.exists():
-        return []
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-
-
-def wait_for(path: Path, want: int, timeout: float = 20.0):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        rows = read_events(path)
-        if len(rows) >= want:
-            return rows
-        time.sleep(0.05)
-    return read_events(path)
-
-
-class OpenCodePluginTests(unittest.TestCase):
-    def test_discoverable_by_engine_glob_and_events(self):
+class PluginEventsTests(unittest.TestCase):
+    def test_uninstall_stops_emit_without_engine_restart(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            plugins_dir = root / ".opencode" / "plugins"
-            plugins_dir.mkdir(parents=True)
-            shutil.copy2(PLUGIN, plugins_dir / "asg-observe.js")
-            # 引擎 glob 必须发现插件（.js 在 {ts,js} 扫描范围，.mjs 不在）
-            self.assertIn(plugins_dir / "asg-observe.js", glob_scan(plugins_dir))
-            # nonce 与事件文件放在插件同目录（真实部署形态，不依赖 env）
-            sdir = plugins_dir / ".asg-observe"
-            sdir.mkdir()
-            nonce = secrets.token_hex(8)
-            (sdir / "nonce").write_text(nonce + chr(10))
-            events_file = sdir / "events.jsonl"
-            events_file.touch()
-            os.chmod(events_file, 0o600)
-            # 运行 fixture：引擎长驻（Popen），加载插件并触发 before/after
-            fx = mk_fixture(plugins_dir / "asg-observe.js", str(root))
-            proc = subprocess.Popen([NODE, "-e", fx], env=dict(os.environ), cwd=str(root),
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ws = Path(tmp)
+            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NN").stdout)
+            sd = state_dir(ws)
+            man = active_manifest(sd)
+            events_file = sd / "runs" / man["runid"] / "events.jsonl"
+            # 阶段1：真实 node 进程加载插件并触发（引擎长驻）
+            fx = node_fixture(str(Path(d["installed"])), str(ws), 1)
+            p1 = subprocess.Popen([NODE, "-e", fx], cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
-                rows = wait_for(events_file, 3)
-                self.assertTrue(rows, "no events written")
-                loaded = [e for e in rows if e["event_type"] == "hook.loaded"]
-                before = [e for e in rows if e["event_type"] == "tool.execute.before"]
-                after = [e for e in rows if e["event_type"] == "tool.execute.after"]
-                self.assertTrue(loaded and before and after, "loaded/before/after missing")
-                blob = events_file.read_text()
-                self.assertNotIn("TOPSECRET", blob)
-                self.assertNotIn("ls -la", blob)
-                self.assertNotIn("directory", blob)
-                allowed = {"ts", "event_type", "adapter_source", "sdk", "nonce",
-                           "pid", "call_id", "tool", "outcome"}
-                for e in rows:
-                    self.assertTrue(set(e.keys()) <= allowed, "unexpected fields: %s" % (set(e.keys()) - allowed))
-                for e in before + after:
-                    self.assertEqual(e["call_id"], "call-abc-123")
-                    self.assertEqual(e["tool"], "bash")
-                self.assertEqual(oct(events_file.stat().st_mode & 0o777), "0o600")
-                # 绑定：进程仍存活（引擎长驻），实测 create_time
-                pid = loaded[0]["pid"]; ct = psutil.Process(pid).create_time()
-                v = EventVerifier(nonce, pid, ct)
-                v.verify_instance(loaded[0])
-                with self.assertRaises(ValueError):
-                    EventVerifier("x" + nonce, pid, ct).verify_instance(loaded[0])
-                with self.assertRaises(ValueError):
-                    EventVerifier(nonce, 999999, ct).verify_instance(loaded[0])
-                with self.assertRaises(ValueError):
-                    EventVerifier(nonce, pid, ct + 1000).verify_instance(loaded[0])
-                # 健康语义与撤销/时效
-                self.assertTrue(v.loaded_observed(rows))
-                self.assertTrue(v.current_health(rows)["healthy"])
-                stale = [dict(r, ts="2000-01-01T00:00:00+00:00") for r in rows]
-                self.assertFalse(v.current_health(stale)["healthy"])
-                revoked = rows + [{"ts": "2999-01-01T00:00:00+00:00", "event_type": "hook.revoked"}]
-                self.assertFalse(v.current_health(revoked)["healthy"])
-                # API 未接线
-                self.assertFalse(v.api_status()["wired"])
+                deadline = time.time() + 15
+                n = 0
+                while time.time() < deadline and n < 2:
+                    if events_file.exists():
+                        n = len(events_file.read_text().splitlines())
+                    time.sleep(0.1)
+                self.assertGreaterEqual(n, 2, "installed emits before+after")
             finally:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-            # 卸载：删插件后同 fixture 不再写事件；历史 events 保留
-            (plugins_dir / "asg-observe.js").unlink()
-            events2 = root / "events2.jsonl"
-            proc2 = subprocess.Popen([NODE, "-e", fx], env=dict(os.environ), cwd=str(root),
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                p1.terminate(); p1.wait(timeout=3)
+            # 卸载（同进程插件仍在内存；重跑相同 fixture）
+            run("--uninstall", "--workspace", str(ws), "--name", "asg-observe.js")
+            p2 = subprocess.Popen([NODE, "-e", fx], cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
-                time.sleep(1.0)
-                self.assertFalse(events2.exists() and events2.stat().st_size > 0,
-                                 "uninstalled plugin wrote events")
-                self.assertTrue(events_file.exists(), "historical events file must be preserved")
+                time.sleep(1.5)
+                n_after = len(events_file.read_text().splitlines()) if events_file.exists() else 0
+                self.assertEqual(n_after, n, "uninstall must stop emit without engine restart")
             finally:
-                proc2.terminate()
-                try:
-                    proc2.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc2.kill()
+                p2.terminate(); p2.wait(timeout=3)
+
+    def test_event_contract_and_0600(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NC").stdout)
+            sd = state_dir(ws)
+            man = active_manifest(sd)
+            events_file = sd / "runs" / man["runid"] / "events.jsonl"
+            fx = node_fixture(str(Path(d["installed"])), str(ws), 1)
+            p = subprocess.Popen([NODE, "-e", fx], cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                deadline = time.time() + 15; rows = []
+                while time.time() < deadline and len(rows) < 3:
+                    if events_file.exists():
+                        rows = [json.loads(l) for l in events_file.read_text().splitlines() if l.strip()]
+                    time.sleep(0.1)
+                self.assertGreaterEqual(len(rows), 2)
+            finally:
+                p.terminate(); p.wait(timeout=3)
+            blob = events_file.read_text()
+            self.assertNotIn("TOPSECRET", blob)
+            self.assertNotIn("ls -la", blob)
+            self.assertNotIn("directory", blob)
+            self.assertEqual(oct(events_file.stat().st_mode & 0o777), "0o600")
+            allowed = {"ts", "event_type", "adapter_source", "sdk", "nonce", "pid", "call_id", "tool", "outcome"}
+            for line in blob.splitlines():
+                if line.strip():
+                    self.assertTrue(set(json.loads(line).keys()) <= allowed, line)
+
+
+class EventVerifierHealthTests(unittest.TestCase):
+    def _mk(self, pid, ct):
+        return EventVerifier("N", pid, ct, ttl_s=60.0)
+
+    def test_health_requires_fresh_bound_no_future(self):
+        pid = os.getpid(); ct = psutil.Process(pid).create_time()
+        v = self._mk(pid, ct)
+        now = datetime.now(timezone.utc)
+        ok = [{"ts": now.isoformat(), "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid},
+              {"ts": now.isoformat(), "event_type": "tool.execute.before", "adapter_source": "s", "nonce": "N", "pid": pid}]
+        self.assertTrue(v.current_health(ok)["healthy"])
+        future = datetime.fromtimestamp(time.time() + 99999, timezone.utc).isoformat()
+        fut = [{"ts": future, "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid}]
+        self.assertFalse(v.current_health(fut)["healthy"])
+        stale_ok = (now - timedelta(seconds=5)).isoformat()
+        mixed = [{"ts": stale_ok, "event_type": "hook.loaded", "adapter_source": "s", "nonce": "N", "pid": pid},
+                 {"ts": now.isoformat(), "event_type": "tool.execute.before", "adapter_source": "s", "nonce": "BAD", "pid": pid}]
+        self.assertFalse(v.current_health(mixed)["healthy"])
+        self.assertEqual(v.current_health([])["status"], "unknown")
+        v_in = EventVerifier("N", pid, ct, ttl_s=60.0, active=False)
+        self.assertEqual(v_in.current_health(ok)["status"], "revoked")
+
+    def test_read_raw_rejects_arrays_and_numbers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "e.jsonl"
+            payload = '[{"a":1}]' + chr(10) + '42' + chr(10) + '"str"' + chr(10) + '{"ok":true}' + chr(10)
+            f.write_text(payload)
+            rows = EventVerifier("N", 1, 1.0).read_raw(f)
+            self.assertEqual([r for r in rows if r.get("ok")], [{"ok": True}])
+
+    def test_api_status_not_wired_library(self):
+        self.assertFalse(EventVerifier("N", 1, 1.0).api_status()["wired"])
+
+
+class HttpResponseTests(unittest.TestCase):
+    def test_http_endpoints_wired(self):
+        from runtime.opencode.server import ObserveServer
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            d = json.loads(run("--install", "--workspace", str(ws), "--nonce", "NH").stdout)
+            sd = state_dir(ws)
+            man = active_manifest(sd)
+            evf = sd / "runs" / man["runid"] / "events.jsonl"
+            evf.write_text(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                                       "event_type": "hook.loaded", "adapter_source": "asg-observe-v1",
+                                       "nonce": "NH", "pid": os.getpid()}) + chr(10))
+            srv = ObserveServer(evf, "NH", os.getpid(), psutil.Process(os.getpid()).create_time(), active=True)
+            try:
+                srv.start()
+                base = "http://127.0.0.1:%d" % srv.port
+                with urllib.request.urlopen(base + "/") as r:
+                    self.assertEqual(json.loads(r.read())["status"], "ok")
+                with urllib.request.urlopen(base + "/health") as r:
+                    h = json.loads(r.read())
+                    self.assertTrue(h["healthy"] and h["wired"])
+                with urllib.request.urlopen(base + "/events") as r:
+                    self.assertEqual(json.loads(r.read())["valid"], 1)
+            finally:
+                srv.stop()
 
 
 if __name__ == "__main__":

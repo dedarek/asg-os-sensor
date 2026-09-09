@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""ASG OpenCode 观测插件：通用安装计划 / dry-run / 隔离安装 / 卸载回滚。
+"""ASG OpenCode 观测插件：事务化隔离安装 / dry-run / 卸载回滚。
 
-只针对独立测试工作区目录（--workspace，默认 artifacts/stage1/opencode-observe，
-该目录在 .gitignore 内）：不触碰用户全局配置、现有项目，不打开 UI，不重启/终止
-现有 Agent。安装时把 nonce 写入插件同目录 .asg-observe/nonce；事件写入同目录
-events.jsonl（权限 0600）；两者不依赖注入环境变量，用户打开工作区即可工作。
+只针对独立测试工作区目录：不触碰用户全局配置、现有项目，不打开 UI，不重启/终止
+现有 Agent。安装采用独立 run 目录 + manifest 原子发布：
+  .asg-observe/manifest.json   <- 当前 active run（原子替换发布）
+  .asg-observe/runs/<runid>/   <- 每轮安装的 nonce(0600) 与 events.jsonl(0600)
+支持 install -> uninstall -> reinstall；任一步失败回滚本 run（无残留有效插件）。
 
 安全约束（评审要求）：
-- ROOT 通过查找含 runtime/opencode/asg-observe.js 的仓库根来定位，不限 cwd。
-- name 只能是纯文件名（拒绝绝对路径/../ 穿越）；workspace 必须已存在且为目录。
-- 拒绝 symlink 目标；插件文件用 O_CREAT|O_EXCL 原子独占创建（已存在即拒绝覆盖）。
-- 持久 manifest 记录 name/sha256/nonce/workspace/installed_at；卸载必须校验
-  manifest+hash，文件被修改后拒绝删除（保留用户文件负例）。
+- ROOT 通过查找含 runtime/opencode/asg-observe.js 的仓库根定位，不限 cwd。
+- 仅接受授权隔离根（系统临时目录或仓库 artifacts/stage1/**）；workspace 及其全部
+  路径组件均拒绝 symlink；ws 不 resolve 隐藏到隔离区外。
+- name 纯文件名（拒绝绝对路径/../）；插件文件 O_CREAT|O_EXCL 原子独占创建。
+- state 目录 0700、manifest 0600；拒绝已有无归属 state；卸载同样验证路径。
 """
 import argparse
 import hashlib
@@ -20,19 +21,19 @@ import os
 import secrets
 import stat
 import sys
-from pathlib import Path
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 PLUGIN_NAME = "asg-observe.js"
 STATEDIR_NAME = ".asg-observe"
 
 
-def repo_root():
-    """任意 cwd 下定位仓库根：向上找含 runtime/opencode/asg-observe.js 的目录。"""
+def repo_root() -> Path:
     here = Path(__file__).resolve()
-    for ancestor in [here] + list(here.parents):
-        if (ancestor / "runtime" / "opencode" / PLUGIN_NAME).exists():
-            return ancestor
+    for anc in [here] + list(here.parents):
+        if (anc / "runtime" / "opencode" / PLUGIN_NAME).exists():
+            return anc
     raise SystemExit("cannot locate repo root (runtime/opencode/%s not found)" % PLUGIN_NAME)
 
 
@@ -45,7 +46,6 @@ def log(msg):
 
 
 def sanitize_name(name: str) -> str:
-    """只允许纯文件名：拒绝绝对路径、目录分隔与 .. 穿越。"""
     base = os.path.basename(name)
     if not name or name != base:
         raise ValueError("plugin name must be a bare filename")
@@ -54,7 +54,13 @@ def sanitize_name(name: str) -> str:
     return base
 
 
-def check_symlink_free(p: Path, label: str):
+def authorized_roots() -> list:
+    roots = [Path(tempfile.gettempdir()).resolve()]
+    roots.append((repo_root() / "artifacts" / "stage1").resolve())
+    return roots
+
+
+def check_no_symlink(p: Path, label: str):
     try:
         st = p.lstat()
     except FileNotFoundError:
@@ -63,128 +69,160 @@ def check_symlink_free(p: Path, label: str):
         raise ValueError("%s must not be a symlink: %s" % (label, p))
 
 
+def check_path_components(p: Path, label: str):
+    """校验路径全部组件非 symlink（防中间目录链向隔离区外）。"""
+    cur = Path(p.anchor) if p.anchor else Path("/")
+    for part in p.parts[1:]:
+        cur = cur / part
+        check_no_symlink(cur, label)
+    check_no_symlink(p, label)
+
+
 def ensure_workspace(ws: Path) -> Path:
     ws = ws.resolve()
-    if not ws.exists():
-        raise ValueError("workspace missing: %s" % ws)
-    if not ws.is_dir():
-        raise ValueError("workspace is not a directory: %s" % ws)
+    ok = any(str(ws) == str(r) or str(ws).startswith(str(r) + os.sep) for r in authorized_roots())
+    if not ok:
+        raise ValueError("workspace outside authorized isolation roots: %s" % ws)
+    if not ws.exists() or not ws.is_dir():
+        raise ValueError("workspace missing/not a dir: %s" % ws)
+    check_path_components(ws, "workspace")
     return ws
 
 
-def plugin_dir(ws: Path) -> Path:
-    return ws / ".opencode" / "plugins"
+def check_state_dir(ws: Path) -> Path:
+    sd = ws / ".opencode" / "plugins" / STATEDIR_NAME
+    if sd.exists():
+        mp = sd / "manifest.json"
+        inactive = sd / "manifest.json.inactive"
+        # 本工具卸载时保留 inactive manifest 作为历史；允许重装
+        if not mp.exists() and not inactive.exists():
+            raise ValueError("existing unowned state dir without manifest: %s" % sd)
+        if not mp.exists() and inactive.exists():
+            # 旧 inactive 应用于旧 run；重装将发布新 manifest
+            pass
+    return sd
 
 
-def state_dir(ws: Path) -> Path:
-    return ws / ".opencode" / "plugins" / STATEDIR_NAME
+def manifest_path(sd: Path) -> Path:
+    return sd / "manifest.json"
 
 
-def manifest_path(ws: Path) -> Path:
-    return state_dir(ws) / "manifest.json"
+def read_manifest(sd: Path):
+    mp = manifest_path(sd)
+    if not mp.exists():
+        return None
+    m = json.loads(mp.read_text())
+    return m if m.get("active") else None
 
 
 def plan(ws: Path, name: str):
     return [
-        "1. workspace=%s (isolated; not user project)" % ws.resolve(),
+        "1. workspace=%s (isolated; authorized root check)" % ws.resolve(),
         "2. engine plugin glob {plugin,plugins}/*.{ts,js} scans cwd=config dir",
-        "3. create workspace/.opencode/plugins/%s (bare filename only)" % name,
-        "4. write .asg-observe/nonce + events.jsonl (0600) beside plugin",
-        "5. write/refresh manifest.json (name, sha256, nonce, workspace, installed_at)",
+        "3. create .asg-observe/runs/<runid>/{nonce,events.jsonl} (0600, dir 0700)",
+        "4. copy plugin into workspace/.opencode/plugins/%s (O_EXCL)" % name,
+        "5. atomically publish .asg-observe/manifest.json (active run)",
         "6. user opens workspace in Desktop UI (cannot be automated)",
-        "7. engine loads plugin -> hook.loaded event; receiver validates PID+create_time+nonce",
+        "7. engine loads plugin -> hook.loaded; receiver validates nonce+PID+create_time",
     ]
 
 
 def preflight(ws: Path, name: str):
-    ws = ws.resolve()
     issues = []
-    if not ws.exists():
-        issues.append("workspace missing: %s" % ws)
-    elif not ws.is_dir():
-        issues.append("workspace not a dir: %s" % ws)
-    pd = plugin_dir(ws)
     try:
-        check_symlink_free(pd, "plugin dir")
+        ensure_workspace(ws)
+        check_state_dir(ws)
     except ValueError as e:
         issues.append(str(e))
-    if pd.exists():
-        for item in pd.iterdir():
-            if item.name not in (STATEDIR_NAME, name):
-                issues.append("unexpected file preserved: %s" % item.name)
-    limits = [
-        "global config (opencode.json/opencode.jsonc/config.json) still searched by engine",
-        "engine installs @opencode-ai/plugin dep into workspace dir on load (network fetch)",
-        "plugin loads only when workspace is opened in Desktop UI",
-    ]
-    return {"workspace": str(ws), "plugin": str(plugin_source()), "name": name,
-            "clean": len(issues) == 0, "issues": issues, "limits": limits}
+    return {"workspace": str(ws.resolve()), "plugin": str(plugin_source()), "name": name,
+            "clean": len(issues) == 0, "issues": issues,
+            "limits": ["global config still searched by engine",
+                        "engine installs @opencode-ai/plugin dep into workspace dir (network)",
+                        "plugin loads only when workspace opened in Desktop UI"]}
 
 
 def install(ws: Path, name: str, nonce: str):
     ws = ensure_workspace(ws)
     name = sanitize_name(name)
     src = plugin_source()
-    pd = plugin_dir(ws)
-    check_symlink_free(pd, "plugin dir")
+    pd = ws / ".opencode" / "plugins"
+    check_path_components(pd, "plugins dir")
     pd.mkdir(parents=True, exist_ok=True)
-    sd = state_dir(ws)
+    sd = check_state_dir(ws)
     sd.mkdir(parents=True, exist_ok=True)
-    dest = pd / name
-    if dest.exists():
-        log("refusing to overwrite existing plugin: %s" % dest)
-        return 1
-    data = src.read_bytes()
-    fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.chmod(sd, 0o700)
+    runid = secrets.token_hex(8)
+    run_dir = sd / "runs" / runid
+    created = []
     try:
-        os.write(fd, data)
-    finally:
-        os.close(fd)
-    sha = hashlib.sha256(data).hexdigest()
-    for fname, content in (("nonce", nonce + chr(10)), ("events.jsonl", "")):
-        fpath = sd / fname
-        fd2 = os.open(str(fpath), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        try:
-            os.write(fd2, content.encode())
-        finally:
-            os.close(fd2)
-    manifest = {"name": name, "sha256": sha, "nonce": nonce,
-                "workspace": str(ws), "installed_at": datetime.now(timezone.utc).isoformat()}
-    mp = manifest_path(ws)
-    tmp = mp.with_suffix(".tmp")
-    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-    os.replace(tmp, mp)
-    print(json.dumps({"installed": str(dest), "sha256": sha, "nonce": nonce,
-                      "events_file": str(sd / "events.jsonl"),
+        run_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(run_dir, 0o700)
+        created.append(run_dir)
+        nf = run_dir / "nonce"
+        fd = os.open(str(nf), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.write(fd, (nonce + chr(10)).encode()); os.close(fd)
+        created.append(nf)
+        ef = run_dir / "events.jsonl"
+        fd = os.open(str(ef), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.write(fd, b""); os.close(fd)
+        created.append(ef)
+        data = src.read_bytes()
+        dest = pd / name
+        if dest.exists():
+            raise ValueError("plugin already exists (uninstall first): %s" % dest)
+        fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.write(fd, data); os.close(fd)
+        created.append(dest)
+        sha = hashlib.sha256(data).hexdigest()
+        man = {"manifest_version": 1, "name": name, "runid": runid, "active": True,
+                "sha256": sha, "nonce": nonce, "workspace": str(ws),
+                "installed_at": datetime.now(timezone.utc).isoformat()}
+        mp = manifest_path(sd)
+        tmp = mp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(man, indent=2, ensure_ascii=False))
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, mp)
+        created.append(mp)
+    except (ValueError, OSError) as e:
+        for item in reversed(created):
+            try:
+                if item.is_dir() and not item.is_symlink():
+                    item.rmdir()
+                else:
+                    item.unlink()
+            except OSError:
+                pass
+        raise
+    print(json.dumps({"installed": str(dest), "runid": runid, "sha256": sha,
+                      "nonce": nonce, "events_file": str(ef),
                       "next": "open workspace in Desktop UI to load plugin"}, ensure_ascii=False))
     return 0
 
 
 def uninstall(ws: Path, name: str):
-    ws = ws.resolve()
+    ws = ensure_workspace(ws)
     name = sanitize_name(name)
-    dest = ws / ".opencode" / "plugins" / name
-    sd = state_dir(ws)
-    mp = manifest_path(ws)
-    if not dest.exists():
-        log("not installed: %s" % dest)
-        return 1
+    pd = ws / ".opencode" / "plugins"
+    check_path_components(pd, "plugins dir")
+    sd = check_state_dir(ws)
+    mp = manifest_path(sd)
     if not mp.exists():
-        log("refusing uninstall without manifest: %s" % mp)
-        return 1
+        raise ValueError("refusing uninstall without manifest")
     man = json.loads(mp.read_text())
     if man.get("name") != name or man.get("workspace") != str(ws):
-        log("manifest does not match install (name/workspace)")
-        return 1
+        raise ValueError("manifest does not match install (name/workspace)")
+    dest = pd / name
+    if not dest.exists():
+        raise ValueError("plugin file missing: %s" % dest)
     if hashlib.sha256(dest.read_bytes()).hexdigest() != man.get("sha256"):
-        log("plugin file was modified since install; refusing delete (preserve user files)")
-        return 1
+        raise ValueError("plugin file modified since install; refusing delete (preserve user files)")
+    runid = man.get("runid")
+    os.replace(mp, mp.with_name("manifest.json.inactive"))
+    nf = sd / "runs" / runid / "nonce"
+    if nf.exists():
+        nf.unlink()
     dest.unlink()
-    for fname in ("nonce", "manifest.json"):
-        p = sd / fname
-        if p.exists():
-            p.unlink()
-    print(json.dumps({"uninstalled": str(dest),
+    print(json.dumps({"uninstalled": str(dest), "runid": runid,
                       "next": "restart workspace engine to confirm no events"}, ensure_ascii=False))
     return 0
 
