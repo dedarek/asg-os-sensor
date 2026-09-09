@@ -293,7 +293,7 @@ def build_execution_manifest(report: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     if RUN_ROOT.exists():
         shutil.rmtree(RUN_ROOT)
-    (ROOT / "runtime" / "fingerprints.json").write_text(json.dumps({"fingerprints": [], "version": 1}, indent=1), encoding="utf-8")
+    (matcher.db_path()).write_text(json.dumps({"fingerprints": [], "version": 1}, indent=1), encoding="utf-8")
     first = run_phase("first", 180.0)
     second = run_phase("second", 60.0)
     report = {"run_id": iso(), "root": str(RUN_ROOT), "first": first, "second": second, "assertions": {"first_identified": bool(first.get("identified")), "first_was_miss": first.get("matcher", {}).get("hit") is False, "analyst_called_tools": len(first.get("analyst", {}).get("tool_calls", [])) > 0, "candidate_committed": bool(first.get("candidate")), "semantic_events_captured": first.get("adapter", {}).get("event_count", 0) >= 2, "second_was_hit": second.get("matcher", {}).get("hit") is True, "second_used_memory": second.get("path") == "remembered-recipe", "no_forbidden_tool": not any(c.get("tool") in {"shell", "developer", "filesystem"} for c in first.get("analyst", {}).get("tool_calls", []))}}

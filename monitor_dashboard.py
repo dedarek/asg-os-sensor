@@ -234,7 +234,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 SCAN_STATE["active_investigations"].pop(pid, None)
             # 立即更新指纹库统计与扫描结果
             try:
-                fp_path = ROOT / "runtime" / "fingerprints.json"
+                fp_path = matcher.db_path()
                 if fp_path.exists():
                     fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
                     with STATE_LOCK:
@@ -448,7 +448,7 @@ def scan_agents_once():
 
     # 更新指纹库统计
     fp_count = 0
-    fp_path = ROOT / "runtime" / "fingerprints.json"
+    fp_path = matcher.db_path()
     if fp_path.exists():
         try:
             fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
@@ -1174,7 +1174,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode("utf-8"))
         elif self.path == "/api/fingerprints":
-            fp_path = ROOT / "runtime" / "fingerprints.json"
+            fp_path = matcher.db_path()
             fps = []
             if fp_path.exists():
                 try:
