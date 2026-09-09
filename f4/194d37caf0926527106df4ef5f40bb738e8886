@@ -1,0 +1,41 @@
+test_discovery.py
+  s_1512a994888af5::t_34b2e0d38811bc 2-5,8,23-43
+  s_1512a994888af5::t_257b0499fc5d9f 1,6-7,9-22,44-85
+README.md
+  s_1512a994888af5::t_8f3151fc15711d 72
+  s_1512a994888af5::t_257b0499fc5d9f 8-9,12-14
+  s_1512a994888af5::t_34b2e0d38811bc 10-11
+identities.yaml
+  s_1512a994888af5::t_054296ec4df179 1-30
+asg_os_sensor.py
+  s_1512a994888af5::t_63f59a5c25302b 23,199-201,210-218,224,283-284,403
+  s_1512a994888af5::t_f05b7b5fc68e0e 202-209
+  s_1512a994888af5::t_8f3151fc15711d 219-223
+  s_1512a994888af5::t_1683a26cf8354c 78,198
+  s_1512a994888af5::t_b979aafe1e82a4 231,234,240,246
+runtime/identity.py
+  s_1512a994888af5::t_63f59a5c25302b 20
+  s_1512a994888af5::t_b54f53d6bc96e1 3-4,38,44-103
+  s_1512a994888af5::t_34b2e0d38811bc 5,12-15
+  s_1512a994888af5::t_054296ec4df179 1-2,6-11,16-19,21-37,39-43,104-130
+monitor_dashboard.py
+  s_1512a994888af5::t_1683a26cf8354c 285-286,293-294,311-312,342-345,386-387,421-423,426,432,438
+  s_1512a994888af5::t_b979aafe1e82a4 961,971,1008,1055,1063
+  s_1512a994888af5::t_63f59a5c25302b 29,287,302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "f4194d37caf0926527106df4ef5f40bb738e8886",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
