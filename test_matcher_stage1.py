@@ -13,6 +13,7 @@
 import json
 import multiprocessing
 import os
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -60,6 +61,44 @@ def _worker_remember_spawn(name):
     struct["exe"] = "nativesrv-" + str(name)
     struct["argv_shape"] = [struct["exe"], "--serve", "--port", "9000", "--json"]
     matcher.remember(struct, _recipe(name), 5)
+
+
+def _mcp_get_prior(env: dict):
+    """真实脚本路径启动 analyst_tools 并调用 MCP get_prior_recipe。
+
+    返回 {"returncode", "result": dict, "stderr"}。result 为 MCP 工具返回的
+    content[0].text 解析后的 dict (含 path/value)。
+    """
+    root = Path(__file__).resolve().parent
+    proc = subprocess.Popen(
+        [sys.executable, "-B", "runtime/analyst_tools.py"],
+        cwd=str(root), env=env,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True,
+    )
+    req = (
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                    "params": {"protocolVersion": "2024-11-05", "capabilities": {}}})
+        + "\n"
+        + json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                      "params": {"name": "get_prior_recipe", "arguments": {}}})
+        + "\n"
+    )
+    out, err = proc.communicate(req, timeout=30)
+    result = {"returncode": proc.returncode, "result": None, "stderr": err}
+    for line in (out or "").splitlines():
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("id") == 2 and "result" in msg:
+            content = (msg["result"].get("content") or [])
+            if content:
+                try:
+                    result["result"] = json.loads(content[0].get("text", ""))
+                except (json.JSONDecodeError, TypeError):
+                    result["result"] = content[0].get("text")
+    return result
 
 
 class MatcherStage1Tests(unittest.TestCase):
@@ -283,7 +322,49 @@ class MatcherStage1Tests(unittest.TestCase):
         if before is not None:
             self.assertEqual((prod_db.read_bytes(), prod_db.stat().st_mtime_ns), before)
 
+    def test_subprocess_mcp_prior_isolated_db(self):
+        """真实启动路径 + 隔离库: 默认库与隔离库放不同标记, 验证 MCP 返回隔离库内容。"""
+        iso_path = matcher.db_path()  # setUp 已指向临时隔离库
+        iso_path.write_text(json.dumps({
+            "version": 2,
+            "marker": "ISOLATED-DB",
+            "fingerprints": [{
+                "id": "iso-1", "name": "iso-agent", "match_count": 3,
+                "features": {"exe": "iso", "runtime": "native", "entry_token": "",
+                             "flags": [], "config_dirs": []},
+                "hook_recipe": {"name_marker": "ISOLATED-RECIPE"},
+            }],
+        }), encoding="utf-8")
+        prod_db = Path(__file__).resolve().parent / "runtime" / "fingerprints.json"
+        prod_before = None
+        if prod_db.exists():
+            prod_before = (prod_db.read_bytes(), prod_db.stat().st_mtime_ns)
+
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env.setdefault("ASG_FINGERPRINT_DB", str(iso_path))
+        res = _mcp_get_prior(env)
+
+        self.assertEqual(res["returncode"], 0, res["stderr"])
+        self.assertIsNotNone(res["result"])
+        self.assertEqual(res["result"]["path"], str(iso_path))
+        self.assertEqual(res["result"]["value"]["marker"], "ISOLATED-DB")
+        self.assertEqual(res["result"]["value"]["fingerprints"][0]["name"], "iso-agent")
+        # 隔离库路径差异即可证明未回退默认库: 默认库不含该标记
+        if prod_before is not None:
+            self.assertEqual((prod_db.read_bytes(), prod_db.stat().st_mtime_ns), prod_before)
+
+    def test_subprocess_mcp_prior_default_path_without_pythonpath(self):
+        """无 PYTHONPATH、未设隔离库: 导入路径修复后应读到默认库, 而非导入失败回退。"""
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env.pop("ASG_FINGERPRINT_DB", None)
+        res = _mcp_get_prior(env)
+        self.assertEqual(res["returncode"], 0, res["stderr"])
+        self.assertIsNotNone(res["result"])
+        self.assertTrue(
+            str(res["result"]["path"]).endswith("runtime/fingerprints.json"),
+            res["result"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-

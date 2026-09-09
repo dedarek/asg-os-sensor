@@ -21,3 +21,5 @@ snap_drawer.js
 e2e/artifacts/autonomous-governance/
 # stage1 isolated run artifacts (never commit raw runs)
 artifacts/stage1/
+# e2e per-run isolation dirs (timestamp run-ids); keep prior tracked evidence
+e2e/artifacts/unknown-runtime/[0-9]*

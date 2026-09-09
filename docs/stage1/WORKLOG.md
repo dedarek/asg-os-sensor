@@ -50,3 +50,21 @@
 - 已知限制: msvcrt(Windows)锁分支本机无法执行, 仅静态审查; 跨进程锁语义由
   POSIX flock + spawn 测试覆盖。未运行旧 E2E(需真实 Goose 与网络, 且本机 TLS
   证书过期); 原生二进制正例通过不代表兼容性判断已完成。
+
+## 2026-09-09 S0d — 修复提交(review: 脚本启动导入路径 + 子进程 MCP 隔离验证)
+- P1 脚本启动导入路径: runtime/analyst_tools.py 在 ROOT 定义后把项目根挂入
+  sys.path(仅当未包含), 保证 `python runtime/analyst_tools.py` 启动时
+  `from runtime import matcher` 可用; _prior_db() 移除宽泛 try/except,
+  显式指定隔离库后任何导入/读取错误都会显式报错, 禁止静默回退默认库。
+- P2 子进程 MCP 回归测试(测试进程内 import 无法覆盖的问题):
+  * test_subprocess_mcp_prior_isolated_db: 去 PYTHONPATH 真实脚本启动,
+    ASG_FINGERPRINT_DB 指向带 ISOLATED-DB 标记的临时库, 走 MCP initialize +
+    tools/call get_prior_recipe, 断言返回 path 与 value.marker 均为隔离库内容,
+    且生产库 mtime/内容不变。
+  * test_subprocess_mcp_prior_default_path_without_pythonpath: 无 PYTHONPATH、
+    未设隔离库时读到默认库(导入路径修复生效), 而非导入失败回退。
+- .gitignore: 新增 `e2e/artifacts/unknown-runtime/[0-9]*` 精确忽略时间戳 run-id
+  目录(已验证 git check-ignore 命中、旧 first/second 证据不受影响);
+  测试子进程产生的 e2e/artifacts/evidence 与 analyst_tool_calls.jsonl 已清理。
+- 全量: python3 -B -m unittest test_discovery test_matcher_stage1 → 25 tests OK
+  (原有 8 + test_matcher_stage1 17: 上轮 15 + 本轮新增 2)。

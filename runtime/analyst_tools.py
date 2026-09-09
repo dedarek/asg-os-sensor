@@ -19,6 +19,10 @@ from typing import Any
 import psutil
 
 ROOT = Path(__file__).resolve().parents[1]
+# 扩展可能以脚本方式启动 (python runtime/analyst_tools.py):
+# 显式把项目根加入导入路径, 保证 from runtime import matcher 可用。
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 AUDIT_DIR = Path(os.environ.get("ASG_AUDIT_DIR", ROOT / "e2e" / "artifacts"))
 EVIDENCE_DIR = AUDIT_DIR / "evidence"
 RECIPE_DIR = Path(os.environ.get("ASG_RECIPE_DIR", AUDIT_DIR / "recipes"))
@@ -370,13 +374,12 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 def _prior_db() -> Path:
     """指纹库路径: 统一走 matcher.db_path()(ASG_FINGERPRINT_DB 可隔离)。
+
     子进程(goose 扩展)通过继承环境变量获得同一隔离配置, 避免读到另一份历史。
+    一旦显式指定隔离库, 任何导入/读取错误都必须显式报错, 禁止静默回退默认库。
     """
-    try:
-        from runtime import matcher as _matcher
-        return _matcher.db_path()
-    except Exception:
-        return ROOT / "runtime" / "fingerprints.json"
+    from runtime import matcher as _matcher
+    return _matcher.db_path()
 
 
 def load_prior() -> dict[str, Any]:
