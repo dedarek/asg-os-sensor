@@ -12,7 +12,9 @@ This project implements **Zero-Prior OS-Level Agent Governance**:
 4. **Behavioral Memory & Instant Routing**: Successful recipes and structural features are fingerprinted. Subsequent encounters achieve millisecond-level routing, skipping autonomous exploration.
 
 ## Architecture
+- `monitor_dashboard.py`: Web-based governance console and real-time dashboard (`http://127.0.0.1:8080`) featuring KPI metrics, dynamic fingerprint library drawer, and per-agent deep inspection.
 - `asg_os_sensor.py`: Lightweight OS-level daemon tracking process behaviors, network egress, and dangerous CLI patterns.
+- `start_dashboard.bat` / `start_dashboard.sh`: One-click portable launch scripts for Windows and Linux/macOS.
 - `runtime/`:
   - `analyzer.py`: Process inspection and runtime feature extraction.
   - `analyst_tools.py`: Sandboxed, non-invasive investigation toolset exposed to the autonomous analyst.
@@ -21,6 +23,26 @@ This project implements **Zero-Prior OS-Level Agent Governance**:
   - `fingerprints.json`: Persistent repository of runtime recipes and behavioral signatures.
 - `recipes/`: Investigation directives and boundary policies for the Analyst agent.
 - `e2e/`: Full end-to-end verification suites (`e2e_unknown.py`, test runners, and real binary verification).
+
+## Quick Start
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Start the governance dashboard:
+   - On Windows: double-click `start_dashboard.bat` or run:
+     ```cmd
+     python monitor_dashboard.py
+     ```
+   - On Linux/macOS:
+     ```bash
+     bash start_dashboard.sh
+     ```
+3. Open your browser and navigate to:
+   ```
+   http://127.0.0.1:8080
+   ```
+
 
 ## Key Guarantees
 - **Zero-Prior Detection**: No hardcoded harness names, vendor domains, or pre-configured signatures.

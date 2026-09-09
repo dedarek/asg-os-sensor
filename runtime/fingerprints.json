@@ -4,7 +4,7 @@
    "id": "harness-01",
    "name": "codex",
    "first_seen": "2026-09-08T14:27:43",
-   "match_count": 739,
+   "match_count": 2623,
    "mount_ms": 61349,
    "features": {
     "exe": "node.exe",
@@ -91,13 +91,13 @@
     "fallback": "If the stream remains empty and no configuration surface is observable, rely on the codex.js script token, the node.exe-launched codex.exe worker child, the terminal parent lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active codex CLI agent, citing prior-memory harness-01. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>', 'codex.js'] argv shape and node.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'codex' derived from the codex.js script token, the codex.exe worker child, and the harness-01 fingerprint match."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\node\\node.exe",
-   "last_seen": "2026-09-08T17:49:02"
+   "last_seen": "2026-09-09T10:06:13"
   },
   {
    "id": "harness-02",
    "name": "hermes-agent",
    "first_seen": "2026-09-08T14:42:48",
-   "match_count": 216,
+   "match_count": 2100,
    "mount_ms": 79662,
    "features": {
     "exe": "python.exe",
@@ -207,13 +207,13 @@
     "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'hermes-agent/python.exe' + 'hermes_cli.main' module tokens, the '-m' flag, the Hermes.exe parent lineage, the 'serve --host 127.0.0.1 --port 0' child cmdline, the npx-spawned @modelcontextprotocol/server-github MCP child chain, and the --help/--version probe shapes (43-line stream-capable help, 1-line version) to characterize the runtime as an active Hermes-hosted hermes-agent Python CLI server, citing prior-memory harness-02. If the stream later emits output, parse text/JSON lines consistent with the stream-oriented CLI surface. If the target stays silent, classify it as an idle agent and re-observe the tree/runtime/network surface on a later cycle (watch for the ephemeral 127.0.0.1 listener and GitHub outbound traffic); if the target terminates, re-scan for a respawned process sharing the ['hermes-agent/python.exe', '-m', 'hermes_cli.main', 'serve', '--host', '127.0.0.1', '--port', '0'] argv shape under the Hermes.exe lineage."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe",
-   "last_seen": "2026-09-08T17:49:02"
+   "last_seen": "2026-09-09T10:06:14"
   },
   {
    "id": "harness-03",
    "name": "WorkBuddy / sheetagent",
    "first_seen": "2026-09-08T14:42:49",
-   "match_count": 395,
+   "match_count": 2279,
    "mount_ms": 69127,
    "features": {
     "exe": "node.exe",
@@ -315,7 +315,7 @@
     "fallback": "If the stream remains empty and no configuration surface is observable, rely on the 'sheetagent/start.mjs' script token, the WorkBuddy.exe parent lineage, the node.exe-hosted conhost.exe child lineage, and the --help/--version probe shapes (437-line JSON-capable help, 1-line version) to characterize the runtime as an active WorkBuddy-hosted sheetagent Node.js CLI worker. If the stream later emits output, parse text/JSON lines consistent with the JSON-capable CLI surface. If the target stays silent, classify it as an idle worker and re-observe the tree/runtime surface on a later cycle; if the target terminates, re-scan for a respawned process sharing the ['<value>','sheetagent/start.mjs'] argv shape and WorkBuddy.exe lineage. If identity cannot be confirmed from distinguishing script/config tokens, keep the structural identity 'WorkBuddy / sheetagent' derived from the sheetagent/start.mjs script token and the WorkBuddy.exe host lineage."
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
-   "last_seen": "2026-09-08T17:49:02"
+   "last_seen": "2026-09-09T10:06:13"
   }
  ],
  "version": 1

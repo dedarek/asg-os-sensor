@@ -9,3 +9,7 @@ htmlcov/
 .env
 .env.*
 *.local
+*.png
+snap_drawer.js
+*.tmp
+e2e/artifacts/autonomous-governance/
