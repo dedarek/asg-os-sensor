@@ -152,3 +152,31 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 脚本: artifacts/stage1/reuse-e2e/acceptance_loop.py（gitignore）。
 - 结果: single unittest OK；B-loop request+response=1/1, stub_reqs=1。
 - 未改动用户全局配置/项目、未重启真实工作实例（OpenCode 45780 原样保留）。
+
+## 2026-09-10 A 阶段证据纠正（不再把"未观测"当"未加载"/"已加载"）
+- NodeService 引擎证据（实测）: 45780 子进程 46482 命令行含
+  --utility-sub-type=node.mojom.NodeService，运行用户目录数据
+  --user-data-dir=.../Application Support/ai.opencode.desktop —— 引擎在 Electron
+  的 NodeService utility 进程中，非独立 CLI。
+- 配置加载链证据（实测）: 进程实际打开 Application Support/ai.opencode.desktop
+  （drafts.sqlite/Local Storage/leveldb），未观测到打开 ~/.config/opencode/
+  opencode.jsonc 或 plugins/ 或 /Users/mac/CLAUDE.md。注意: 读取后关闭 FD 常见，
+  "未观测到打开"不能证明"未加载"，只能作为未观测证据记录；CLAUDE.md 存在(379B)
+  作为文件存在证据，不构成生效规则。
+- 插件机制证据（实测）: grep app.asar 全部 out/main、out/preload、sidecar.js ——
+  不含 tool.execute.before / .opencode/plugins / plugin / hook / config.json 字符串。
+  结论: 桌面 1.18.25 包内无官方文档描述插件扩展点的实现证据；.opencode/plugins
+  仅是设计文档接口，本机包无该机制字符串。待确认适用于本机引擎版本的加载机制。
+- 因此真实 Hook 接入点尚未证实；先记录 观测面（NodeService 引擎、Application
+  Support 配置、CLAUDE.md 存在）与合成验证，不宣称真实安装器/握手已完成。
+
+## 2026-09-10 合成 SDK 钩子集成测试（纳入版本管理, 可复现）
+- 文件: test_synthetic_hook_integration.py（根目录, 版本管理内; 旧 gitignored
+  artifacts 版已废弃）。
+- 修复（按 review）：每次 temp 目录 + secrets 随机 nonce；finally 关闭 socket；
+  安装/卸载两次运行均断言 returncode==0；stub 收到 2 次请求（安装后+卸载后）,
+  卸载后事件文件为空 → 证明无事件非因调用失败假通过；fake openai SDK 包在 temp
+  动态生成，fixture 纳入版本管理（测试内 build_fake_sdk）。
+- 结果: synthetic hook integration OK: request+response=1/1, stub_reqs=2。
+- 定位: 仅合成 SDK Hook 集成测试，不称真实 Agent B 阶段验收；真实 OpenCode
+  Hook 尚未安装。
