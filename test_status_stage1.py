@@ -139,5 +139,49 @@ class TruthTests(unittest.TestCase):
         with dashboard.INVESTIGATION_LOCK:
             dashboard.INVESTIGATION_RESULTS.clear()
 
+
+    def test_cross_instance_reuse_no_reinvestigation(self):
+        # 合成目标（随机命名脚本）：实例 A 调查落库后，同入口新实例（新 pid+create_time）
+        # 必须 exact 复用，且调查函数不再被调用（无新增 Goose）。
+        from runtime import matcher as m, compatibility as compat
+        from runtime.recipe_validation import validate as v
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = root / ('agent-' + 'xyz987')  # 随机命名、非产品名单
+            script.write_text('fastapi_worker = True')
+            calls = {'count': 0}
+            def fake_investigate(pid, struct, force=False):
+                calls['count'] += 1
+                return None
+            with patch.dict(os.environ, {'ASG_FINGERPRINT_DB': str(root / 'fp.json'),
+                                         'ASG_AUDIT_DIR': str(root / 'audit'),
+                                         'ASG_RECIPE_DIR': str(root / 'recipes')}):
+                c1 = compat.observe(str(script), [str(script)], str(root))
+                struct_a = {'exe': script.name, 'runtime': 'native', 'create_time': 100.0, 'compatibility': c1}
+                recipe_a = {'agent_identity_name': script.name, 'match_features': {'runtime': 'native'},
+                            'hook': {'method': 'unsupported', 'restart_required': 'unknown', 'capabilities': [],
+                                     'verification': 'pending', 'rollback': 'none', 'limitations': ['unknown']},
+                            'observation': 'obs', 'fallback': 'manual', 'evidence_refs': ['ev-1-abcdef1234'], 'confidence': 0.9}
+                ev = {'tool': 'get_target_context', 'error': None,
+                      'result': {'target': {'pid': 4242, 'create_time': 100.0}},
+                      'target': {'pid': 4242, 'create_time': 100.0}}
+                (root / 'ev-1-abcdef1234.json').write_text(json.dumps(ev))
+                out = v(recipe_a, root, target={'pid': 4242, 'create_time': 100.0})
+                m.remember_verified(struct_a, recipe_a, out['evidence'])
+                # 模拟第二次启动：新 pid+create_time，同入口
+                c2 = compat.observe(str(script), [str(script)], str(root))
+                struct_b = {'exe': script.name, 'runtime': 'native', 'create_time': 200.0, 'compatibility': c2}
+                with patch.object(dashboard, 'run_autonomous_investigation', side_effect=fake_investigate) as ri:
+                    classified = m.classify(struct_b)
+                    self.assertEqual(classified['status'], 'exact')
+                    # 循环一次扫描模拟（inst B 已 exact，不应拉起调查）
+                    retry_ready = dashboard.now() >= dashboard.INVESTIGATION_RETRY_AT.get("4242:200.0", 0)
+                    is_matched = classified['status'] == 'exact'
+                    is_investigating = "4242:200.0" in dashboard.INVESTIGATING_INSTANCES
+                    if retry_ready and not is_matched and not is_investigating:
+                        ri(struct_b['exe'], struct_b)
+                    self.assertEqual(calls['count'], 0)  # 没有新增 Goose 调用
+
+
 if __name__ == '__main__':
     unittest.main()

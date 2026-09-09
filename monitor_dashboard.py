@@ -253,7 +253,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                     if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
                         raise ValueError('Target changed during investigation')
                     entry = matcher.remember_verified(struct, recipe, evidence, elapsed_ms)
-                    hook_text = "接入点建议有证据支持" if hook_evidence_supported else "接入点未知/未证实"
+                    hook_text = "接入点 proposed/unverified（未核对接入点证据）"
                     _record_investigation_result(instance_id, pid, create_time, "succeeded",
                                                  f"已保存候选配方 {entry.get('id')}（{hook_text}），未安装／未验证", run_dir)
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")

@@ -3,9 +3,9 @@
 结构校验只证明"配方形态合格、证据存在且成功"，不等于 Hook 建议有证据支持、更不等于
 Hook 已安装或已验证。返回值明确区分二者:
 - evidence: 通过校验的证据摘要 (每条均已绑定目标实例、结果非空)。
-- hook_evidence_supported: hook.method 是否为本地证据可支持的接入点;
-  仅当 method 明确 (非 unsupported/unknown/unconfirmed) 才为 True,
-  且 True 也只表示"建议有接入点候选"，仍需部署验证。
+- hook_evidence_supported: hook.method 是否为本地证据可支持的接入点。
+  当前没有可核对接入点存在的证据映射，因此恒为 False (proposed/unverified)；
+  结构校验通过并不等于 Hook 建议有证据支持。
 """
 import json
 import re
@@ -15,7 +15,6 @@ OBSERVATION_TOOLS = ('get_target_context', 'inspect_config_surface',
                      'observe_tree', 'observe_runtime_surface',
                      'inspect_network_peers', 'inspect_execution_trace',
                      'inspect_stream')
-UNSUPPORTED_METHODS = {'unsupported', 'unknown', 'unconfirmed', 'not-found', 'none'}
 
 
 def _real_success(item) -> bool:
@@ -97,6 +96,9 @@ def validate(recipe, evidence_dir, target=None):
         if seen_target != exp:
             raise ValueError('Evidence bound to a different instance than the investigation target')
 
-    method = hook['method'].strip().lower()
-    hook_evidence_supported = method not in UNSUPPORTED_METHODS
+    # hook evidence support cannot be inferred from a negative word list.
+    # Evidence exists and is bound to the instance, but no evidence structure
+    # verifies the hook.method entrypoint. Until an explicit mapping exists,
+    # hook_evidence_supported is always False (proposed/unverified).
+    hook_evidence_supported = False
     return {'evidence': evidence, 'hook_evidence_supported': hook_evidence_supported}

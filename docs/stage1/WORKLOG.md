@@ -1,3 +1,4 @@
+> 唯一最新日志入口：docs/stage1/WORKLOG.md（本文件）。根目录同名文件只存历史轮次概览。
 # Stage1 WORKLOG
 
 ## 2026-09-09 S0 — 基线核查与计划
@@ -68,72 +69,53 @@
   测试子进程产生的 e2e/artifacts/evidence 与 analyst_tool_calls.jsonl 已清理。
 - 全量: python3 -B -m unittest test_discovery test_matcher_stage1 → 25 tests OK
   (原有 8 + test_matcher_stage1 17: 上轮 15 + 本轮新增 2)。
-## 2026-09-09 中断检查点 + 本轮收口 → 独立提交
-- 中断检查点: 上一轮实现批次在推理提供商 http://127.0.0.1:10100/v1/responses 502 时中断,
-  当时已有 8 改 5 增(调查/采集/校验/生命周期)未提交, 基线复跑 40 tests OK。
-  本轮先补记录, 再按顾问意见收口, 独立提交。
-- 本轮修复:
-  1) recipe_validation: validate() 只验证证据文件存在与工具名的漏洞已修——
-     现在强制 证据绑定调查启动时冻结的实例 (target.pid + target.create_time)、
-     结果必须含真实数据(占位 status/message 不算)、观测工具白名单,
-     跨实例/PID 复用的历史证据一律拒绝; 返回 dict 区分 evidence 与
-     hook_evidence_supported(结构校验通过 ≠ Hook 建议有证据支持;
-     method=unsupported/unknown 等不算已证实接入点)。
-  2) 生命周期实例绑定: INVESTIGATING_PIDS/investigation 结果与 retry 从 pid 键
-     改 instance_id = pid:create_time, _record_investigation_result 不再在结束时
-     重新读 psutil(避免复用 PID 误归属); scan 与 /api/state 均按 instance_id
-     查询, PID 复用负例测试覆盖 result/running/retry 三路不串。
-  3) matcher: remember_verified 演进门禁 -- 只同 exe/runtime 不视为同家族
-     (node/python 共享解释器), 需可执行内容 digest + 入口身份(entry digest 或
-     entry_path)之一匹配才允许演进; 模型随便给旧 id 不通过证据校验即拒绝合并;
-     classify exact 附 bounds 说明覆盖边界(配置内容/依赖版本/插件/MCP/模型路由
-     不在 exact 覆盖内), 避免过度宣称。
-  4) collection: 局部失败保留已成功项(全部失败才 failed), limitations 文案
-     区分"本机读取解析字段"与"不外发原始内容/凭据", 不再出现
-     "No raw config ... read" 的误导性说法(实际代码 read_text 读取本地文件)。
-  5) 失败归因: Goose 未产 recipe 时附带 stderr 尾部(脱敏), 便于区分上游 502
-     与 Goose 自身失败, 不再只报 returncode。
-- 测试区分:
-  * 原有(未改动): test_discovery.py 8 用例。
-  * 新增/更新(本轮): test_goose_stage1.py(证据绑定 2、unsupported hook 1、
-    演进门禁 1、collect 局部失败 1、proxy 1 等) + test_status_stage1.py
-    (PID 复用不串生命周期、result 用冻结 create_time)。
-  全量 45 tests OK: python3 -B -m unittest test_discovery test_matcher_stage1
-    test_status_stage1 test_goose_stage1
-- 已知限制: Windows msvcrt 锁分支无法本机执行(静态审查); 真实 Goose 本轮是否重跑
-  取决于 LLM 密钥与授权 TLS(ASG_ALLOW_INSECURE_ANALYST), 见 REVIEW。
- ## 2026-09-09 中断检查点 + 本轮收口 → 独立提交
-- 中断检查点: 上一轮实现批次在推理提供商 http://127.0.0.1:10100/v1/responses 502 时中断,
-  当时已有 8 改 5 增(调查/采集/校验/生命周期)未提交, 基线复跑 40 tests OK。
-  本轮先补记录, 再按顾问意见收口, 独立提交。
-- 本轮修复:
-  1) recipe_validation: validate() 只验证证据文件存在与工具名的漏洞已修——
-     现在强制 证据绑定调查启动时冻结的实例 (target.pid + target.create_time)、
-     结果必须含真实数据(占位 status/message 不算)、观测工具白名单,
-     跨实例/PID 复用的历史证据一律拒绝; 返回 dict 区分 evidence 与
-     hook_evidence_supported(结构校验通过 ≠ Hook 建议有证据支持;
-     method=unsupported/unknown 等不算已证实接入点)。
-  2) 生命周期实例绑定: INVESTIGATING_PIDS/investigation 结果与 retry 从 pid 键
-     改 instance_id = pid:create_time, _record_investigation_result 不再在结束时
-     重新读 psutil(避免复用 PID 误归属); scan 与 /api/state 均按 instance_id
-     查询, PID 复用负例测试覆盖 result/running/retry 三路不串。
-  3) matcher: remember_verified 演进门禁 -- 只同 exe/runtime 不视为同家族
-     (node/python 共享解释器), 需可执行内容 digest + 入口身份(entry digest 或
-     entry_path)之一匹配才允许演进; 模型随便给旧 id 不通过证据校验即拒绝合并;
-     classify exact 附 bounds 说明覆盖边界(配置内容/依赖版本/插件/MCP/模型路由
-     不在 exact 覆盖内), 避免过度宣称。
-  4) collection: 局部失败保留已成功项(全部失败才 failed), limitations 文案
-     区分"本机读取解析字段"与"不外发原始内容/凭据", 不再出现
-     "No raw config ... read" 的误导性说法(实际代码 read_text 读取本地文件)。
-  5) 失败归因: Goose 未产 recipe 时附带 stderr 尾部(脱敏), 便于区分上游 502
-     与 Goose 自身失败, 不再只报 returncode。
-- 测试区分:
-  * 原有(未改动): test_discovery.py 8 用例。
-  * 新增/更新(本轮): test_goose_stage1.py(证据绑定 2、unsupported hook 1、
-    演进门禁 1、collect 局部失败 1、proxy 1 等) + test_status_stage1.py
-    (PID 复用不串生命周期、result 用冻结 create_time)。
-  全量 45 tests OK: python3 -B -m unittest test_discovery test_matcher_stage1
-    test_status_stage1 test_goose_stage1
-- 已知限制: Windows msvcrt 锁分支无法本机执行(静态审查); 真实 Goose 本轮是否重跑
-  取决于 LLM 密钥与授权 TLS(ASG_ALLOW_INSECURE_ANALYST), 见 REVIEW。
- 
+## 2026-09-09 中断检查点 — 502 中断的未提交批次（先记录，再继续）
+
+上一轮实现批次因推理提供商 http://127.0.0.1:10100/v1/responses 502 中断，未提交。
+中断时刻 git status 为 8 改 5 增（monitor_dashboard/recipes/analyst_tools/analyzer/
+identity/llm_proxy/matcher + collection/compatibility/recipe_validation/
+test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演示服务
+（PID 61613, authorized-goose 隔离库）运行中（旧代码）。
+
+顾问中途审核（待本轮落实）：
+1) recipe_validation.validate 只验证证据文件存在与工具名，无 result 内容也通过；
+   必须绑定本次目标 PID+create_time、真实成功结果；结构校验≠Hook 建议有证据支持；
+   未知接入点不可标为已证实。
+2) /api/state 实时覆盖按 PID 取值绕过 scan 的 create_time 校验；_record_
+   investigation_result 结束时重新取 PID 创建时间会给复用 PID 误归属；生命周期
+   必须绑定调查启动时实例 ID（running/retry/result/API），补 PID 复用负例。
+3) remember_verified 演进只校验同 exe/runtime 不足判断同家族（共享 node/python）；
+   similar 只是调查参考，演进需要入口/包身份等证据，不能凭模型给旧 id 就合并；
+   exact 需讲清配置/依赖变更未覆盖的边界。
+4) collect 只支持有限 JSON 文件和 CWD 规则，不能称资产采集完整；保留已采集成功
+   项及局部失败；"No raw config ... read" 与实际 read_text 不符，应区分本地读取
+   和脱敏外发。
+5) WORKLOG/REVIEW 仍旧且未记录本批修改，先补中断检查点再继续。
+
+## 2026-09-09 本轮收口（提交 81ced12, 后经中途 review 修正）
+- recipe_validation.validate 强制证据绑定冻结实例 (target.pid+create_time)、真实
+  成功结果、观测工具白名单；返回 {'evidence':[...], 'hook_evidence_supported':bool}。
+- 生命周期绑定 instance_id=pid:create_time（running/retry/result/API 一致）；
+  _record_investigation_result 不再结束时重读 psutil，PID 复用不串；补负例测试。
+- remember_verified 演进门禁：同 exe/runtime 不足（node/python 共享），需可执行
+  digest+入口身份（entry digest 或 entry_path）匹配；模型给旧 id 无证据即拒绝；
+  classify exact 附 bounds（配置/依赖/插件/模型路由不在 exact 覆盖）。
+- collect 局部失败保留成功项（全失败才 failed）；文案区分"本机读取解析字段"与
+  "不外发原始内容/凭据"，移除 "No raw config ... read" 误导措辞。
+- Goose 未产 recipe 时附 stderr 尾部（脱敏），区分上游 502 与 Goose 自身失败。
+- 测试：全量 45 OK（8 discovery + 15+8 matcher + 6+4 status + 10+2 goose）。
+
+## 2026-09-09 中途 review 修复（顾问复核后独立提交）
+- P1 recipe_validation：hook_evidence_supported 不再由"不在负面名单"推断，恒为
+  False（proposed/unverified）。结构校验通过只证明证据存在且绑定实例；无任何证据
+  结构能核对 hook.method 接入点。任意外部 method（含虚构）都不得 supported。
+- P1 matcher：_family_identity_matches 重写为"身份 vs 构建兼容"两段式，不把
+  entry='native' 常量当身份；同路径原生直接同族；.app/.exe 包名一致允许升级演进；
+  同壳不同 app 不合并；脚本入口 basename 一致允许升级；显式区分身份（允许演进）
+  与 compatibility digest（决定 exact，升级后 digest 变≠ exact）。
+- P1 呈现层：runtime/status.py 对 succeeded 消息保守化，历史持久化
+  "接入点建议有证据支持" 一律改写为 proposed/unverified，重启不恢复虚假结论。
+- P2 测试：更新 test_validate_ok_and_structure_only（恒 False + 4 种虚构 method
+  负例）；新增 family_identity（同壳不同 app / 原生升级 / 共享 node 不同入口 /
+  同脚本升级）与 cross_instance_reuse_no_reinvestigation 用例。
+- 结果：47 tests OK（8 discovery + 39 stage1）。

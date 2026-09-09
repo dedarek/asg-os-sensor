@@ -25,9 +25,14 @@ def investigation_state(enabled, running=False, result=None):
                 'source': 'ASG_AUTONOMOUS_ANALYSIS', 'can_request': False}
     status = 'running' if running else {'succeeded': 'succeeded', 'failed': 'failed',
         'unavailable': 'failed', 'blocked': 'failed', 'busy': 'not_scheduled'}.get(result.get('status'), 'not_scheduled')
+    message = result.get('message', '')
+    # 保守呈现：历史持久化消息中废弃的'接入点建议有证据支持'断言一律改为 proposed/unverified。
+    # 当前没有可核对接入点存在的证据映射，结构校验通过不代表 Hook 有证据支持。
+    if status == 'succeeded' and message:
+        message = message.replace('接入点建议有证据支持', '接入点 proposed/unverified（未核对接入点证据）')
     return {'status': status, 'label': {'running': '执行中', 'succeeded': '成功',
             'failed': '失败', 'not_scheduled': '未调度'}[status],
-            'message': result.get('message', ''), 'source': 'investigation_scheduler',
+            'message': message, 'source': 'investigation_scheduler',
             'can_request': not running}
 
 

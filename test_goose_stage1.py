@@ -81,11 +81,14 @@ class GooseStageTests(unittest.TestCase):
         self._write_evidence()
         result = validate(self.recipe, self.root, target=self.TARGET)
         self.assertEqual(result['evidence'], self.evidence)
-        # hook.method=unsupported → 结构校验通过，但 Hook 建议无证据支持
+        # 结构校验通过只证明证据存在且绑定实例；接入点一律 proposed/unverified。
         self.assertFalse(result['hook_evidence_supported'])
-        # 明确 access 端点：method 明确 → hook_evidence_supported=True（仍只表示有候选接入点）
-        rec = dict(self.recipe, hook=dict(self.recipe['hook'], method='local-listening-port'))
-        self.assertTrue(validate(rec, self.root, target=self.TARGET)['hook_evidence_supported'])
+        # 任意 method（含虚构/明确端点）都不能得到 supported：没有可核对的映射。
+        for method in ('local-listening-port', 'magic-ld-preload', 'sitecustomize-v2', 'ld_preload-x'):
+            rec = dict(self.recipe, hook=dict(self.recipe['hook'], method=method))
+            out = validate(rec, self.root, target=self.TARGET)
+            self.assertEqual(out['evidence'], self.evidence)
+            self.assertFalse(out['hook_evidence_supported'])
 
     def test_validate_rejects_unbound_or_empty_evidence(self):
         # 无 result 内容 → 拒绝
@@ -185,6 +188,36 @@ class GooseStageTests(unittest.TestCase):
              patch('runtime.llm_proxy.requests.post', return_value=upstream) as post:
             handler.do_POST()
             self.assertEqual(post.call_args.args[0], 'https://example.invalid/model/v1/chat/completions')
+
+
+
+    def test_family_identity_shell_vs_native_and_shared_runtime(self):
+        # 同壳不同 app（同一 Electron 二进制，不同 .app 包）→ 不合并
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            exeA = root / 'ElectronA.app' / 'Contents' / 'MacOS' / 'Electron'
+            exeA.parent.mkdir(parents=True); exeA.write_bytes(b'BIN-A')
+            compatA = observe(str(exeA), [str(exeA)], str(root))
+            exeB = root / 'ElectronB.app' / 'Contents' / 'MacOS' / 'Electron'
+            exeB.parent.mkdir(parents=True); exeB.write_bytes(b'BIN-B')
+            compatB = observe(str(exeB), [str(exeB)], str(root))
+            self.assertFalse(matcher._family_identity_matches(compatB, compatA))
+            # 同 app 原生升级：exe digest 变，包名一致 → 同族演进允许
+            exeA2 = root / 'ElectronA.app' / 'Contents' / 'MacOS' / 'Electron'
+            exeA2.write_bytes(b'BIN-A-UPDATED')
+            compatA2 = observe(str(exeA2), [str(exeA2)], str(root))
+            self.assertTrue(matcher._family_identity_matches(compatA2, compatA))
+            # 共享 node/python：同解释器不同脚本入口 → 不合并
+            node = root / 'node'; node.write_bytes(b'NODE')
+            a = root / 'a.js'; a.write_text('AAA')
+            b = root / 'b.js'; b.write_text('BBB')
+            ca = observe(str(node), [str(node), str(a)], str(root))
+            cb = observe(str(node), [str(node), str(b)], str(root))
+            self.assertFalse(matcher._family_identity_matches(cb, ca))
+            # 同脚本升级（basename 一致，内容变）→ 同族
+            a2 = root / 'a.js'; a2.write_text('AAAv2')
+            ca2 = observe(str(node), [str(node), str(a2)], str(root))
+            self.assertTrue(matcher._family_identity_matches(ca2, ca))
 
 
 if __name__ == '__main__':

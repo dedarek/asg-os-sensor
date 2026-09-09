@@ -277,24 +277,48 @@ def classify(struct: dict) -> dict:
             'match_ms': int((time.monotonic()-start)*1000)}
 
 
-def _family_identity_matches(observed, prior) -> bool:
-    """同一家族证据：同一可执行内容（解释器/二进制）+ 入口身份一致。
+def _bundle_name(path):
+    """从 entry_path 提取可执行文件所在 .app/.exe 包的稳定的名字，无包则返回 basename 目录名。"""
+    if not path:
+        return None
+    p = Path(path)
+    parts = p.parts
+    for pi in range(len(parts) - 1, -1, -1):
+        if parts[pi].endswith('.app') or parts[pi].endswith('.exe'):
+            return parts[pi]
+    return p.name if p.suffix else None
 
-    仅凭 exe basename + runtime 相同不足（node/python 等共享运行时广泛存在）；相似命中
-    只是调查参考，升级/演进必须由本函数用 digest 证据裁断，禁止凭模型提供的旧 id 直接合并。
-    prior 取自目标库条目最近一次 revision 的 compatibility（含 digest）。
+
+def _family_identity_matches(observed, prior) -> bool:
+    """同家族判定：只用稳定入口/包身份，不用 entry='native' 常量或构建 digest。
+
+    - 脚本/解释器入口：entry digest 非 'native' 常量且一致（内容相同），或入口 basename
+      一致（允许升级换内容，如 a.js -> a.js 新版本）。
+    - 原生应用：入口都是 'native' 常量时，entry_path 完全相等 → 同族；否则比对
+      .app/.exe 包名（同一包不同二进制=升级演进，同壳不同 app=不同家族，不合并）。
+    - 显式区分"身份"与"构建兼容"：exact 仍由 classify 用 compatibility 整体比对判定；
+      本函数只回答"是否同属一族"以允许演进，不要求 exe digest 相同。
     """
     if not isinstance(observed, dict) or not isinstance(prior, dict):
         return False
-    o_exe = observed.get('executable'); p_exe = prior.get('executable')
-    if not o_exe or not p_exe or o_exe != p_exe:
-        return False  # 解释器/可执行文件内容不同 → 不是同一家族
     o_entry = observed.get('entry'); p_entry = prior.get('entry')
-    if o_entry and p_entry and o_entry == p_entry:
-        return True  # 入口文件内容一致
-    o_path = observed.get('entry_path'); p_path = prior.get('entry_path')
-    if o_path and p_path and o_path == p_path:
-        return True  # 入口路径一致（内容演进后仍同属一族）
+    o_path = observed.get('entry_path') or ''; p_path = prior.get('entry_path') or ''
+    if o_entry and p_entry:
+        if o_entry != 'native' and o_entry == p_entry:
+            return True  # 非 native 入口内容一致（脚本/包入口未变）
+        if o_entry == 'native' and p_entry == 'native':
+            # 原生二进制：同路径直接同族；同包名（升级演进）同族；否则不合并
+            if o_path and o_path == p_path:
+                return True
+            ob = _bundle_name(o_path); pb = _bundle_name(p_path)
+            if ob and pb and ob == pb:
+                return True
+            return False
+    # 入口 basename 一致（无 digest 或内容演进的脚本升级）
+    if o_path and p_path:
+        ob = Path(o_path).name; pb = Path(p_path).name
+        if ob and pb and ob == pb and o_entry != 'native':
+            return True
     return False
 
 
