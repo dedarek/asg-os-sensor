@@ -50,8 +50,9 @@ def load_manifest(ws: Path, expected_workspace=None):
         return None, 'manifest runid invalid (must be non-empty bare id)'
     if not isinstance(man.get('nonce'), str) or not man.get('nonce'):
         return None, 'manifest nonce empty/invalid'
-    if expected_workspace is not None and man.get('workspace') != str(expected_workspace):
-        return None, 'manifest workspace mismatch (expected %s)' % expected_workspace
+    expected = str(expected_workspace) if expected_workspace is not None else str(ws)
+    if man.get('workspace') != expected:
+        return None, 'manifest workspace mismatch (expected %s)' % expected
     return man, None
 
 
@@ -71,14 +72,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _verify_paths(self, ws, evf):
+        """读取端路径安全：state 目录与 events 文件全部组件拒绝 symlink。"""
+        import stat
+        for path in (ws / ".opencode" / "plugins" / ".asg-observe", evf):
+            cur = Path(path.anchor) if path.anchor else Path("/")
+            for part in path.parts[1:]:
+                cur = cur / part
+                try:
+                    st = cur.lstat()
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISLNK(st.st_mode):
+                    return "symlink in path: %s" % cur
+        return None
+
     def _verifier(self):
         """每请求动态重建：manifest 提供 runid/nonce/active，绑定用显式引擎快照。"""
         srv = self.server
-        man, err = load_manifest(srv.workspace)
+        man, err = load_manifest(srv.workspace, expected_workspace=srv.workspace)
         if err:
             return None, err
         runid = man["runid"]
         evf = resolve_events_file(srv.workspace, runid)
+        bad = self._verify_paths(srv.workspace, evf)
+        if bad:
+            return None, bad  # fail closed: 外部可写/symlink 工作区拒绝读取
         verifier = EventVerifier(man.get("nonce", ""), srv.engine_pid, srv.engine_ct,
                                  ttl_s=srv.ttl_s, active=True)
         return (verifier, evf, runid), None
