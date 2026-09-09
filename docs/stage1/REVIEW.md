@@ -10,12 +10,12 @@
 
 ## 全量测试（精确命令与数量）
 - 命令: ASG_TEST_NODE=<node> python3 -B -m unittest test_discovery test_matcher_stage1   test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration   test_opencode_plugin test_real_cli
-- 结果: Ran 62 tests, OK（8 discovery + 53 stage1）。其中 stage1 含：
-  * 真实子进程 CLI 3 项：install..server..uninstall 即时 revoked(503)..reinstall..HTTP 投影
+- 结果: Ran 63 tests, OK (60 无 node + 3 real_cli 需 node)（8 discovery + 53 stage1）。其中 stage1 含：
+  * 真实子进程 CLI 3 项：install..server..uninstall（需 ASG_TEST_NODE） 即时 revoked(503)..reinstall..HTTP 投影
     无 nonce；插件旧回调在重装后不写新 run（同一 node 进程内验证）。
   * 合成 SDK Hook 集成 2 项（test_synthetic_hook_integration.py）：HTTP 事件为手工写入
     合成事件；Node 回调测试非 OpenCode 真实加载——如实标注，不冒充真实验收。
-  * 未加 ASG_TEST_NODE 时 test_real_cli 跳过（skip=3, 明确上报）。
+  * 未加 ASG_TEST_NODE 时 test_real_cli 全类跳过（unittest 报 skip 1, 明确上报）；test_symlink_guard 正常。
 
 ## 已改实现（本分支全部提交）
 - 生命周期 instance_id 贯穿 running/retry/result/API；_record_investigation_result 不再

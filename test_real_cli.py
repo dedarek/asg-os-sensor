@@ -25,30 +25,22 @@ def active_manifest(sd):
 def start_server(ws, pid, ct):
     return subprocess.Popen([sys.executable, "-B", str(ROOT / "runtime" / "opencode" / "server.py"),
                              "--workspace", str(ws), "--pid", str(pid), "--create-time", str(ct)],
-                            cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                            cwd=str(ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def wait_port(proc, timeout=10.0):
-    import select, re
+def wait_port(ws, timeout=10.0):
+    # 有界轮询读取端口文件（不依赖子进程 stdout，无 ResourceWarning）
+    pf = state_dir(ws) / 'server.port'
     deadline = time.time() + timeout
-    buf = ""
     while time.time() < deadline:
-        if proc.stdout is None:
-            break
-        r, _, _ = select.select([proc.stdout], [], [], 0.1)
-        if r:
+        if pf.exists():
             try:
-                data = os.read(proc.stdout.fileno(), 4096).decode("utf-8", errors="replace")
-            except OSError:
-                break
-            buf += data
-            for line in buf.splitlines():
-                if '"port"' in line:
-                    try:
-                        return json.loads(line)["port"]
-                    except (ValueError, KeyError):
-                        continue
-    raise RuntimeError("server no port")
+                return int(pf.read_text().strip())
+            except (OSError, ValueError):
+                pass
+        time.sleep(0.1)
+    raise RuntimeError('server no port')
+
 
 
 class RealCliTests(unittest.TestCase):
@@ -70,7 +62,7 @@ class RealCliTests(unittest.TestCase):
                                         "nonce": "NR1", "pid": pid}) + chr(10))
             srv = start_server(ws, pid, ct)
             try:
-                port = wait_port(srv)
+                port = wait_port(ws)
                 base = "http://127.0.0.1:%d" % port
                 with urllib.request.urlopen(base + "/health") as r:
                     self.assertTrue(json.loads(r.read())["healthy"])
@@ -110,7 +102,7 @@ class RealCliTests(unittest.TestCase):
                                        "nonce": "NW", "pid": pid}) + chr(10))
             srv = start_server(ws, pid, ct)
             try:
-                port = wait_port(srv)
+                port = wait_port(ws)
                 base = "http://127.0.0.1:%d" % port
                 try:
                     urllib.request.urlopen(base + "/health")
@@ -146,7 +138,7 @@ const src=process.env.PLUGIN_PATH;
 '''
             p = subprocess.Popen([NODE, "-e", script],
                                  env={**os.environ, "PLUGIN_PATH": str(Path(d1["installed"]))},
-                                 cwd=str(ws), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                 cwd=str(ws), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             try:
                 deadline = time.time() + 12; n = 0
                 while time.time() < deadline and n < 3:

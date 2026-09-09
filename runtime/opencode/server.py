@@ -73,10 +73,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _verify_paths(self, ws, evf):
-        """读取端路径安全：state 目录与 events 文件全部组件拒绝 symlink。"""
+        """读取路径安全：state 目录、manifest 文件与 events 文件全部组件拒绝 symlink。"""
         import stat
-        for path in (ws / ".opencode" / "plugins" / ".asg-observe", evf):
-            cur = Path(path.anchor) if path.anchor else Path("/")
+        base = ws / '.opencode' / 'plugins' / '.asg-observe'
+        for path in (base, base / 'manifest.json', evf):
+            cur = Path(path.anchor) if path.anchor else Path('/')
             for part in path.parts[1:]:
                 cur = cur / part
                 try:
@@ -84,23 +85,29 @@ class Handler(BaseHTTPRequestHandler):
                 except FileNotFoundError:
                     continue
                 if stat.S_ISLNK(st.st_mode):
-                    return "symlink in path: %s" % cur
+                    return 'symlink in path: %s' % cur
         return None
 
+
     def _verifier(self):
-        """每请求动态重建：manifest 提供 runid/nonce/active，绑定用显式引擎快照。"""
+        """每请求动态重建：先校验路径（含 manifest 自身）再读取 manifest，避免先读外部文件。"""
         srv = self.server
+        evf = resolve_events_file(srv.workspace, 'x')
+        bad = self._verify_paths(srv.workspace, evf)
+        if bad:
+            return None, bad
         man, err = load_manifest(srv.workspace, expected_workspace=srv.workspace)
         if err:
             return None, err
-        runid = man["runid"]
+        runid = man['runid']
         evf = resolve_events_file(srv.workspace, runid)
-        bad = self._verify_paths(srv.workspace, evf)
-        if bad:
-            return None, bad  # fail closed: 外部可写/symlink 工作区拒绝读取
-        verifier = EventVerifier(man.get("nonce", ""), srv.engine_pid, srv.engine_ct,
+        bad2 = self._verify_paths(srv.workspace, evf)
+        if bad2:
+            return None, bad2
+        verifier = EventVerifier(man.get('nonce', ''), srv.engine_pid, srv.engine_ct,
                                  ttl_s=srv.ttl_s, active=True)
         return (verifier, evf, runid), None
+
 
     def do_GET(self):
         srv = self.server
@@ -165,6 +172,8 @@ def main() -> int:
         return 1
     ws = Path(a.workspace).resolve()
     srv = ObserveServer(ws, a.pid, a.create_time, ttl_s=a.ttl).start()
+    port_file = ws / '.opencode' / 'plugins' / '.asg-observe' / 'server.port'
+    port_file.write_text(str(srv.port))
     print(json.dumps(srv.api_status(), ensure_ascii=False), flush=True)
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
