@@ -26,24 +26,39 @@ from runtime.opencode.event_api import EventVerifier  # noqa: E402
 MAX_EVENTS = 500
 
 
-def load_manifest(ws: Path):
-    """返回 (manifest, err)。manifest 缺失/损坏/非 active 均视为不可信。"""
-    mp = ws / ".opencode" / "plugins" / ".asg-observe" / "manifest.json"
+
+def _runid_ok(runid):
+    # bare run id: reject path traversal and empty
+    if not isinstance(runid, str) or not runid:
+        return False
+    return not (runid.startswith('/') or '..' in runid or chr(92) in runid or '/' in runid)
+
+
+def load_manifest(ws: Path, expected_workspace=None):
+    """Strict validation: active must be True, runid bare-safe, nonce non-empty,
+    workspace must equal bound path; anything else fails (503)."""
+    mp = ws / '.opencode' / 'plugins' / '.asg-observe' / 'manifest.json'
     try:
         if not mp.exists():
-            return None, "no active manifest"
-        man = json.loads(mp.read_text(encoding="utf-8"))
-        if not man.get("active") or not man.get("runid"):
-            return None, "manifest not active or missing runid"
-        return man, None
+            return None, 'no active manifest'
+        man = json.loads(mp.read_text(encoding='utf-8'))
     except (OSError, ValueError) as exc:
-        return None, "manifest unreadable/corrupt: %s" % type(exc).__name__
+        return None, 'manifest unreadable/corrupt: %s' % type(exc).__name__
+    if not isinstance(man, dict) or man.get('active') is not True:
+        return None, 'manifest not active (active must be boolean true)'
+    if not _runid_ok(man.get('runid')):
+        return None, 'manifest runid invalid (must be non-empty bare id)'
+    if not isinstance(man.get('nonce'), str) or not man.get('nonce'):
+        return None, 'manifest nonce empty/invalid'
+    if expected_workspace is not None and man.get('workspace') != str(expected_workspace):
+        return None, 'manifest workspace mismatch (expected %s)' % expected_workspace
+    return man, None
 
 
 def resolve_events_file(ws: Path, runid: str) -> Path:
-    return ws / ".opencode" / "plugins" / ".asg-observe" / "runs" / runid / "events.jsonl"
-
-
+    if not _runid_ok(runid):
+        raise ValueError('invalid runid')
+    return ws / '.opencode' / 'plugins' / '.asg-observe' / 'runs' / runid / 'events.jsonl'
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -122,7 +137,7 @@ class ObserveServer:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", required=True)
-    ap.add_argument("--pid", type=int, default=os.getpid(), help="engine PID from trusted snapshot")
+    ap.add_argument("--pid", type=int, required=True, help="engine PID from trusted snapshot (explicit)")
     ap.add_argument("--create-time", type=float, default=None, help="engine create_time from trusted snapshot")
     ap.add_argument("--ttl", type=float, default=60.0)
     a = ap.parse_args()

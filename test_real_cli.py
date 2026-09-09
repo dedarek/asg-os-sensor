@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """真实子进程 CLI 全链路测试：install -> server -> uninstall(即时 revoked) -> reinstall -> HTTP 投影。"""
-import json, os, psutil, subprocess, sys, tempfile, time, unittest, urllib.request, urllib.error
+import json, os, psutil, shutil, subprocess, sys, tempfile, time, unittest, urllib.request, urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
+NODE = os.environ.get("ASG_TEST_NODE") or shutil.which("node") or ""
+REQUIRE_NODE = bool(NODE)
 ROOT = Path(__file__).resolve().parent
-NODE = "/Users/mac/.nvm/versions/node/v24.16.0/bin/node"
-
 
 def run(*a):
     return subprocess.run([sys.executable, '-B', str(ROOT/'runtime/opencode/ghost_install.py'), *a],
@@ -27,16 +27,36 @@ def start_server(ws, pid, ct):
                             cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
+import select, re
+
 def wait_port(proc, timeout=10.0):
     deadline = time.time() + timeout
+    buf = ''
     while time.time() < deadline:
-        line = proc.stdout.readline() if proc.stdout else ''
-        if 'port' in line:
-            return json.loads(line)['port']
+        if proc.stdout is None:
+            break
+        r, _, _ = select.select([proc.stdout], [], [], 0.1)
+        if r:
+            try:
+                data = os.read(proc.stdout.fileno(), 4096).decode('utf-8', errors='replace')
+            except OSError:
+                break
+            buf += data
+            for line in buf.splitlines():
+                if '"port"' in line:
+                    try:
+                        return json.loads(line)['port']
+                    except (ValueError, KeyError):
+                        continue
     raise RuntimeError('server no port')
 
 
 class RealCliTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not REQUIRE_NODE:
+            raise unittest.SkipTest("node not available (set ASG_TEST_NODE)")
+
     def test_full_chain_dynamic_revoke(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
