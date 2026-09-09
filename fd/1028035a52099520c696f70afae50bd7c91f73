@@ -1,0 +1,43 @@
+.gitignore
+  s_655532ed3c4512::t_9d62a7305f70a5 26-29
+PLAN.md
+  s_655532ed3c4512::t_5527110151e5b5 1-4
+REVIEW.md
+  s_655532ed3c4512::t_ec2dc8e2277494 1-39
+WORKLOG.md
+  s_655532ed3c4512::t_470cf3e3611c59 1-27
+monitor_dashboard.py
+  s_b0143c6f6e2ba8::t_eb14d0a2161697 4,29,119-120,149,217-218,254,374,385-392,397,404,440,719,737-738,758,780,786-790,793,860,879,921,930,936,938,945,953,991,993,996-997,1013,1015-1016,1031,1046,1052-1053,1073,1078,1087,1098,1102,1106,1110,1113-1114,1116-1117,1121,1149-1150,1189-1195,1198,1231-1232,1250
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_a4f1c8eac33eff 388-394
+runtime/status.py
+  s_655532ed3c4512::t_88d48c47277137 1-41
+test_matcher_stage1.py
+  s_b0143c6f6e2ba8::t_6643cae6a90720 73-75,97-98,106
+test_status_stage1.py
+  s_b0143c6f6e2ba8::t_edd699b6427398 1-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "fd1028035a52099520c696f70afae50bd7c91f73",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
