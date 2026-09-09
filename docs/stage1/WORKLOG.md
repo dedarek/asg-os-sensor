@@ -227,3 +227,24 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 待用户步骤（真实加载触发）：在桌面打开隔离工作区；若引擎未加载插件由用户
   重启该工作区引擎（非全局）。未打开 UI、未重启/终止现有 Agent、未改全局配置
   或现有项目、未部署到真实实例。
+
+## 2026-09-09 隔离验收准备第二轮修复（评审 6 点逐条落实）
+1) ghost_install ROOT 改为向上查找含 runtime/opencode/asg-observe.js 的仓库根
+   （任意 cwd 可用），已在 /tmp 实测真实 CLI install/preflight/uninstall。
+2) 插件由 .mjs 改为 .js（CJS）：引擎 glob"{plugin,plugins}/*.{ts,js}" 才会发现；
+   测试用与引擎一致的 glob（展开 ts/js）验证插件被扫描发现，不再用 node 直接
+   import 掩盖加载路径。
+3) 安装不再只打印 nonce：nonce 与事件文件写入插件同目录 .asg-observe/
+   （nonce、events.jsonl, 0600），用户打开工作区即可加载——不依赖启动脚本 env，
+   不要求全局重启。事件文件权限强制 0600。
+4) install/uninstall 加固：name 仅允许纯文件名（拒绝绝对路径/../ 穿越）；
+   workspace 必须存在且为目录；拒绝 symlink；插件文件用 O_CREAT|O_EXCL 原子
+   独占创建（已存在拒绝覆盖、幂等）；持久 manifest（name/sha256/nonce/
+   workspace/installed_at）记录；卸载校验 manifest+hash，修改后拒绝删除。
+5) 事件契约最小化：hook.loaded 不再输出 directory；事件仅 ts/event_type/
+   adapter_source/nonce/pid/call_id/tool/outcome；无参数内容与密钥。
+6) EventVerifier 区分 loaded_observed 与 current_health：health 要求新鲜
+   （ttl）、绑定有效、有关联事件；revoked/stale 不健康；api_status 明确
+   为库且未接线（HTTP/events not_wired）。
+- 测试：test_opencode_plugin.py 重构为引擎长驻 Popen + 真实 glob 发现 + 绑定
+  正反例 + 健康语义 + 卸载保留历史；全量 51 tests OK。
