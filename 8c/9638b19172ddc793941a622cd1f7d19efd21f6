@@ -1,0 +1,39 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_a34b47f9a54dde 1,72-121
+monitor_dashboard.py
+  s_655532ed3c4512::t_9af1ca26d9fcea 256
+runtime/matcher.py
+  s_655532ed3c4512::t_d9d13212eb3d2d 280-290,292-300,305-321
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_e28f056830c786 6-8,99-103
+runtime/status.py
+  s_b0143c6f6e2ba8::t_1822d641d0c7ab 28-32,35
+test_goose_stage1.py
+  s_655532ed3c4512::t_140e79df0951d5 84,86-91,193-222
+test_status_stage1.py
+  s_655532ed3c4512::t_9dc17f2685bd8a 142-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8c9638b19172ddc793941a622cd1f7d19efd21f6",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
