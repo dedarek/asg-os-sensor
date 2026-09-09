@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher
+from runtime.identity import identify, ownership, metadata_identity
 from runtime.stream_parser import redact
 from runtime.llm_config import analyst_key as load_analyst_key
 from runtime.llm_config import analyst_route as load_analyst_route
@@ -281,12 +282,16 @@ def scan_agents_once():
     
     # 遍历进程并收集初筛候选
     candidates = []
-    for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+    snapshot = {}
+    identities = {}
+    for proc in psutil.process_iter(["pid", "ppid", "exe", "name", "cmdline", "create_time"]):
         try:
             pinfo = proc.info
             pid = pinfo.get("pid")
             name = pinfo.get("name") or ""
             cmdline = pinfo.get("cmdline") or []
+            snapshot[pid] = pinfo
+            identities[pid] = identify(pinfo, sensor.identity_catalog)
 
             if not cmdline or pid == os.getpid() or name.lower() in ["system", "registry", "smss.exe"]:
                 continue
@@ -294,6 +299,7 @@ def scan_agents_once():
             w = sensor.wrap_pid(pid)
             score, reasons = sensor.agent_score(w)
             if score >= threshold:
+                identities[pid] = identities[pid] or metadata_identity(pinfo)
                 candidates.append((proc, pinfo, score, reasons))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -302,14 +308,8 @@ def scan_agents_once():
     # 若候选集合中存在 A 包含子进程 B (A 是 B 的父级且两者均在候选集合中)，
     # 优先由根节点/主编排进程 A 代表 Agent 实体进行纳管与逆向，避免一个 Agent 派生的子进程反复在看板盖楼
     candidate_pids = {pinfo["pid"] for _, pinfo, _, _ in candidates}
-    sub_worker_pids = set()
-    for proc, pinfo, _, _ in candidates:
-        try:
-            for child in proc.children(recursive=True):
-                if child.pid in candidate_pids:
-                    sub_worker_pids.add(child.pid)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+    process_groups = ownership(snapshot, identities, candidate_pids)
+    sub_worker_pids = candidate_pids - set(process_groups)
 
     for proc, pinfo, score, reasons in candidates:
         pid = pinfo["pid"]
@@ -339,7 +339,10 @@ def scan_agents_once():
             # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
             display_name = name
             is_matched = bool(matched_fp)
-            if matched_fp:
+            local_identity = identities.get(pid, {})
+            if local_identity:
+                display_name = local_identity['name']
+            elif matched_fp:
                 fp_name = matched_fp.get("name")
                 if fp_name and fp_name != "unknown-runtime":
                     display_name = f"{fp_name} ({name})"
@@ -380,6 +383,8 @@ def scan_agents_once():
             
             found_agents.append({
                 "pid": pid,
+                "identity": local_identity,
+                "process_pids": sorted(process_groups.get(pid, [pid])),
                 "name": display_name,
                 "raw_exe": name,
                 "score": score,
@@ -413,22 +418,24 @@ def scan_agents_once():
     for a in found_agents:
         # 聚类 Key：优先以命中的 harness_id 聚合；若未命中则以推导身份或执行入口聚合
         hid = a.get("adapter", {}).get("harness_id")
-        if hid and hid != "unregistered":
+        if a.get('identity'):
+            group_key = 'identity:' + a['identity']['id']
+        elif hid and hid != "unregistered":
             group_key = f"harness:{hid}"
         else:
-            group_key = f"raw:{a.get('name')}"
+            group_key = f"unidentified:{a['pid']}"
 
         if group_key not in grouped_agents:
             # 建立主卡片，记录实例集合
             a_copy = dict(a)
             a_copy["instances"] = [a["pid"]]
-            a_copy["all_pids"] = [a["pid"]]
+            a_copy["all_pids"] = list(a['process_pids'])
             grouped_agents[group_key] = a_copy
         else:
             # 聚合到已有同类卡片中
             main_card = grouped_agents[group_key]
             main_card["instances"].append(a["pid"])
-            main_card["all_pids"].append(a["pid"])
+            main_card["all_pids"] = sorted(set(main_card['all_pids']) | set(a['process_pids']))
             # 保留更高的画像分与最新的消息
             if a["score"] > main_card["score"]:
                 main_card["score"] = a["score"]
@@ -951,7 +958,7 @@ async function updateUI() {
     let matchedCount = 0;
     let totalPorts = 0;
     currentAgentsData.forEach(a => {
-      totalInstances += (a.instances ? a.instances.length : 1);
+      totalInstances += (a.all_pids ? a.all_pids.length : 1);
       if (a.adapter && a.adapter.matched) matchedCount++;
       if (a.adapter && a.adapter.network_surface) {
         const lp = a.adapter.network_surface.listening_ports || [];
@@ -961,7 +968,7 @@ async function updateUI() {
     });
     
     document.getElementById('kpi-agent-count').innerText = totalAgents;
-    document.getElementById('kpi-instance-count').innerText = `${totalInstances} 实例活跃`;
+    document.getElementById('kpi-instance-count').innerText = `${totalInstances} 关联进程`;
     const rate = totalAgents > 0 ? Math.round((matchedCount / totalAgents) * 100) : 100;
     document.getElementById('kpi-hook-rate').innerText = `${rate}%`;
     document.getElementById('kpi-hook-detail').innerText = `${matchedCount}/${totalAgents} 完成适配`;
@@ -998,7 +1005,7 @@ async function updateUI() {
       }
         
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
-      const pidsList = (a.instances && a.instances.length > 1) ? `PIDs: ${a.instances.join(', ')}` : `PID: ${a.pid}`;
+      const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
 
       const reasonTags = (a.reasons && a.reasons.length) 
         ? `<div class="score-tags">${a.reasons.map(r => `<span class="score-tag">${r}</span>`).join('')}</div>`
@@ -1045,7 +1052,7 @@ async function updateUI() {
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
             </div>
             <div style="text-align: right;">
-              <div class="score-badge ${scoreClass}">画像分: ${a.score}</div>
+              <div class="score-badge ${scoreClass}" title="身份/行为识别分，不代表安全风险或概率">识别分: ${a.score}</div>
               ${reasonTags}
             </div>
           </div>
@@ -1053,6 +1060,7 @@ async function updateUI() {
           <div>
             <div class="section-label">启动命令行与参数特征</div>
             <div class="cmdline">${a.cmdline}</div>
+            <details><summary>进程归属与身份依据</summary><div class="cmdline">PIDs: ${(a.all_pids || [a.pid]).join(', ')}<br>身份依据: ${escapeHtml(a.identity ? (a.identity.evidence || '行为推断') : '行为推断 / 指纹')}</div></details>
           </div>
 
           <div>

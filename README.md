@@ -5,8 +5,13 @@ OS-level non-invasive agent discovery, autonomous reverse-engineering & governan
 ## Overview
 Traditional AI Agent security relies either on proprietary SDK interception or manual proxy routing. When an unfamiliar Agent harness is deployed in enterprise environments, security teams are blind to its behavior.
 
-This project implements **Zero-Prior OS-Level Agent Governance**:
-1. **OS Sensor (Millisecond Detection)**: Monitors process trees, launch parameters, IPC/network patterns, and structured stream protocols. Accurately scores and identifies unknown active Agent runtimes without knowing executable names or vendor identities.
+Discovery combines configurable local identity hints (`identities.yaml`) with behavioral detection for unknown runtimes. Naming does not require Goose or an LLM credential. Entry names are evidence, not authenticated product identities; recognition scores are not risk scores or probabilities. Add missing entrypoint patterns to the catalog and restart the service.
+
+To audit generalization, set `ASG_IDENTITY_HINTS=0`: discovery still evaluates explicit orchestration flags, entry-package model SDK declarations combined with child execution, and independent CLI child roles. Names can come from bounded `package.json` / application `Info.plist` metadata beside the entrypoint. Metadata naming does not by itself make a process an Agent. These are heuristics; generic CLI hosts and SDK consumers can still be false positives. `python3 -m unittest test_discovery -v` includes random package/CLI names, negative controls and nested different-Agent ownership.
+
+Processes are assigned to their nearest Agent root. Same-family descendants merge; a different named Agent launched by a parent stays visible. Cards group roots by product and expose every associated PID, including helper processes. Identity recognition is separate from recipe generation and semantic attachment.
+
+1. **OS Sensor (Polling Detection)**: Monitors process trees and launch parameters, using local identity evidence and behavioral signals. Polling cannot guarantee detection of short-lived processes or processes hidden by OS permissions.
 2. **Autonomous Analyst (Agent Work)**: Triggers an isolated governance sub-agent (driven by mature harnesses like Goose + LLM) to perform non-interactive, read-only reverse-engineering on the target runtime. It determines process structures, CLI protocol declarations, and event envelopes to propose a formal governance Recipe.
 3. **Automated Hook & Event Ingestion**: Supervisor validates and commits the candidate Recipe, establishing streaming sinks to capture, redact, and govern high-level semantic events (`llm.session`, `llm.request`, `llm.response`, `tool.call`, `tool.result`).
 4. **Behavioral Memory & Instant Routing**: Successful recipes and structural features are fingerprinted. Subsequent encounters achieve millisecond-level routing, skipping autonomous exploration.
@@ -64,6 +69,6 @@ This project implements **Zero-Prior OS-Level Agent Governance**:
 
 
 ## Key Guarantees
-- **Zero-Prior Detection**: No hardcoded harness names, vendor domains, or pre-configured signatures.
+- **Discovery with evidence**: Generic capability and process signals work without a product catalog; optional identity hints cover known opaque/idle entrypoints. Neither path guarantees complete detection.
 - **Strict Safety Sandbox**: Analyst agents are strictly forbidden from executing arbitrary shell commands, modifying target configurations, or exfiltrating credentials.
 - **Fail-Open & Passive**: Does not disrupt target execution or steal OS focus.

@@ -1,0 +1,30 @@
+# Explicit local identity hints. Unknown programs still use behavioral discovery.
+identity_score: 70
+agents:
+  - id: codex
+    name: Codex
+    patterns: ['(^|/)codex(\.exe)?$', '(^|/)@openai/codex/']
+  - id: zcode
+    name: ZCode
+    patterns: ['(^|/)(zcode|zcode-cli|zcode-host-local-\d+)(\.exe)?$']
+  - id: opencode
+    name: OpenCode
+    patterns: ['(^|/)opencode(\.exe)?$', '(^|/)opencode-ai/']
+  - id: opencodex
+    name: OpenCodex
+    patterns: ['(^|/)opencodex/src/cli/index\.[jt]s$']
+  - id: claude-code
+    name: Claude Code
+    patterns: ['(^|/)claude(\.exe)?$', '(^|/)@anthropic-ai/claude-code/']
+  - id: goose
+    name: Goose
+    patterns: ['(^|/)goose(\.exe)?$']
+  - id: hermes
+    name: Hermes Agent
+    patterns: ['^hermes_cli(\.|$)', '(^|/)hermes(\.exe)?$']
+  - id: aider
+    name: Aider
+    patterns: ['(^|/)aider(\.exe)?$', '^aider\.']
+  - id: pi
+    name: Pi Coding Agent
+    patterns: ['(^|/)pi-coding-agent/', '(^|/)pi(\.exe)?$']

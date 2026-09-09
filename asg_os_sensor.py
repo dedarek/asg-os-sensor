@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+from runtime.identity import identify, load_catalog, metadata_identity, structural_score
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -74,6 +75,7 @@ def redact_text(value):
 class Sensor:
     def __init__(self, cfg):
         self.cfg = cfg
+        self.identity_catalog = load_catalog()
         self.self_pid = psutil.Process().pid
         self.events_path = BASE / cfg.get("events_file", "events.jsonl")
         self.sensitive_res = [re.compile(re.escape(p), re.I) for p in cfg.get("sensitive_patterns", [])]
@@ -193,38 +195,55 @@ class Sensor:
         if "mcp-server" in cmd or "@modelcontextprotocol" in cmd:
             return -1, ["排除MCP工具服务端(非主动Agent编排器)"]
 
+        identity = identify(info, self.identity_catalog)
+        metadata = metadata_identity(info)
+        child_infos = []
+        try:
+            for child in proc.children(recursive=True):
+                # Inspect at most two generations, excluding deeper tool trees.
+                if hasattr(child, 'parent'):
+                    parent = child.parent()
+                    if parent and parent.pid != info.get('pid'):
+                        grandparent = parent.parent()
+                        if not grandparent or grandparent.pid != info.get('pid'):
+                            continue
+                try:
+                    child_infos.append({'name': child.name(), 'cmdline': child.cmdline()})
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        structure_points, structure_reasons = structural_score(info, child_infos, metadata)
+        if structure_points >= self.threshold:
+            return structure_points, structure_reasons
+        if identity:
+            # Optional identity evidence covers idle or opaque native runtimes.
+            return int(self.identity_catalog.get('identity_score', 70)), [
+                "本地入口身份: " + identity['name'] + " (身份分，非风险分)"
+            ]
+
         # 严禁“参数+网络+子进程盲凑50分”误判：必须前置具备核心意图门禁 (Intent)
         # 严格检查：是真正的 Agent 模块/脚本/入口，而不是由于系统目录刚好在 AppData/Local/hermes 路径内被误匹配
         has_agent_intent = False
 
         # 1. 核心 Agent 入口标识：必须命中具体 Agent 的核心主程序、脚本或调度入口
         # 注意：排除宽泛的纯路径字符串（如 C:\Users\...\AppData\Local\hermes 仅是安装基目录，不能作为 agent_intent）
-        agent_entry_patterns = (
-            "pi-coding-agent", "piagent", "claude-code", "claude.exe",
-            "codex.exe", "codex.js", "sheetagent", "openclaw", "opencode",
-            "hermes_cli.main", "hermes_cli"
-        )
-        if any(p in cmd for p in agent_entry_patterns):
-            score += 30
-            reasons.append("Agent编排核心入口标识(+30)")
-            has_agent_intent = True
+        flags = {a.split('=', 1)[0] for a in cmdline[1:] if a.startswith('-')}
 
         # 2. 结构化任务与模型/编排参数
-        if any(x in cmd for x in ("--model", "--system-prompt", "--output-format", "--stream",
-                                  "--permission-mode", "--max-turns",
-                                  "anthropic", "openai", "deepseek")):
+        if flags & {'--model', '--system-prompt', '--permission-mode', '--max-turns'}:
             score += 30
             reasons.append("模型编排与治理参数(+30)")
             has_agent_intent = True
 
         # 3. 命令行携带自然语言 prompt / 任务指令
-        if any(x in cmd for x in ("prompt", "run ", "-p ", "say ", "analyze", "inspect", "list files", "count ")):
+        if flags & {'--prompt', '--system-prompt', '--task'}:
             score += 20
             reasons.append("自然语言任务驱动(+20)")
             has_agent_intent = True
 
         # 4. 结构化流协议
-        if any(x in cmd for x in ("stream-json", "--jsonl", "json-stream")):
+        if '--jsonl' in flags or any(a in {'stream-json', 'json-stream'} for a in cmdline[1:]):
             score += 20
             reasons.append("结构化流协议(+20)")
             has_agent_intent = True
@@ -261,6 +280,8 @@ class Sensor:
                 reasons.append("声明外部模型端点(+15)")
                 break
 
+        if structure_points > score:
+            return structure_points, structure_reasons
         return min(score, 100), reasons
 
     # ---------- L2: 文件 ----------
@@ -379,7 +400,7 @@ class Sensor:
     def wrap_pid(self, pid):
         """把单个 pid 包装成 classify 可用的 proc 对象 (新进程/存量复查共用)."""
         real = psutil.Process(pid)
-        info = {"pid": pid, "name": real.name(), "cmdline": real.cmdline()}
+        info = {"pid": pid, "name": real.name(), "cmdline": real.cmdline(), 'exe': real.exe()}
 
         class W:
             def __init__(self, real, info):
