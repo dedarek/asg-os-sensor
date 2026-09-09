@@ -1,7 +1,7 @@
 """ASG Agent Live Monitor & Autonomous Runtime Governance Engine
 功能：
 1. 周期实时扫描操作系统进程，通过零先验行为特征画像打分（识别 Agent，间隔 ASG_SCAN_INTERVAL）
-2. 特征指纹比对：已沉淀的 Agent 实现毫秒级命中路由与 Adapter 挂接
+2. 特征指纹比对：指纹匹配只提供历史配方参考
 3. 陌生 Agent 自动逆向接管：自动异步调度 Goose 执行 Agent Work 受控调查（LLM 路由见 llm.yaml）
 4. 自主推导 Agent 真实业务名称、通信协议与观测 Recipe，并自动沉淀至指纹库
 5. 实时拦截/挂接语义事件流，展示最新脱敏消息
@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher
+from runtime.status import presentation, DISABLED_REASON
 from runtime.identity import identify, ownership, metadata_identity
 from runtime.stream_parser import redact
 from runtime.llm_config import analyst_key as load_analyst_key
@@ -115,6 +116,8 @@ def analyst_route() -> dict:
 
 def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool = False):
     """由 Goose 执行后台非交互式受控逆向接管（模型路由见 llm.yaml）"""
+    if not AUTONOMOUS_ANALYSIS_ENABLED:
+        return
     with INVESTIGATION_LOCK:
         if pid in INVESTIGATING_PIDS:
             return
@@ -143,7 +146,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
         return
 
     try:
-        run_dir = ROOT / "e2e" / "artifacts" / "autonomous-governance" / f"pid_{pid}_{int(time.time())}"
+        run_dir = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard"))) / f"pid_{pid}_{int(time.time())}"
         run_dir.mkdir(parents=True, exist_ok=True)
         recipes_dir = run_dir / "recipes"
         recipes_dir.mkdir(parents=True, exist_ok=True)
@@ -211,8 +214,8 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 ):
                     # 写入指纹库
                     entry = matcher.remember(struct, recipe, elapsed_ms)
-                    _record_investigation_result(pid, "succeeded", f"已生成并挂接 {entry.get('id')}", run_dir)
-                    print(f"[Analyst] 接管成功并写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
+                    _record_investigation_result(pid, "succeeded", f"已保存候选配方 {entry.get('id')}，未安装／未验证", run_dir)
+                    print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
                     _record_investigation_result(pid, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
@@ -248,7 +251,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
 def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
     """获取该 Agent 进程真实关联的语义消息，绝不把其他进程或历史残留瞎挂上去"""
     # 查找专属绑定到该 PID 的会话流
-    pid_stream = ROOT / "e2e" / "artifacts" / f"stream_{pid}.jsonl"
+    pid_stream = Path(os.environ.get("ASG_EVENT_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard" / "events"))) / f"stream_{pid}.jsonl"
     if pid_stream.exists():
         try:
             lines = [l.strip() for l in pid_stream.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip()]
@@ -368,7 +371,7 @@ def scan_agents_once():
                 "observation": (recipe_obj.get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
                 "hook": (recipe_obj.get("hook")) if matched_fp else "未挂接",
                 # Goose 深度逆向推导的治理全景档案
-                "host_platform": recipe_obj.get("host_platform") or "独立CLI / 未标注",
+                "host_platform": recipe_obj.get("host_platform") or "未知",
                 "workspace_cwd": recipe_obj.get("workspace_cwd") or struct.get("cwd", ""),
                 "parsed_config": recipe_obj.get("parsed_config") or {},
                 "model_routing": recipe_obj.get("model_routing") or {},
@@ -379,17 +382,26 @@ def scan_agents_once():
                 "memory_context": recipe_obj.get("memory_context") or {},
             }
             
+            adapter_info.update(presentation(AUTONOMOUS_ANALYSIS_ENABLED,
+                is_investigating, investigation_result, metadata_identity(pinfo) or local_identity))
+            adapter_info['investigating'] = adapter_info['investigation']['status'] == 'running'
+            adapter_info['historical_recipe'] = recipe_obj
+            for field in adapter_info['assets']:
+                adapter_info[field] = None
+            adapter_info['hook'] = '未安装'
+            adapter_info['observation'] = '未接入／未验证'
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             
             found_agents.append({
                 "pid": pid,
+                "instance_id": f"{pid}:{pinfo.get('create_time')}",
                 "identity": local_identity,
                 "process_pids": sorted(process_groups.get(pid, [pid])),
                 "name": display_name,
                 "raw_exe": name,
                 "score": score,
                 "reasons": reasons,
-                "cmdline": redact(" ".join(cmdline))[:250] + ("..." if len(" ".join(cmdline)) > 250 else ""),
+                "cmdline": name + " · 参数内容未展示",
                 "adapter": adapter_info,
                 "last_message": last_msg,
                 "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
@@ -425,6 +437,7 @@ def scan_agents_once():
         else:
             group_key = f"unidentified:{a['pid']}"
 
+        group_key = a['instance_id']  # Do not borrow another instance's investigation state.
         if group_key not in grouped_agents:
             # 建立主卡片，记录实例集合
             a_copy = dict(a)
@@ -703,7 +716,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="header">
   <div class="title">
     <div class="pulse"></div>
-    ASG 运行时治理 · 实时 Agent 监控与自主接管
+    ASG · 进程发现与调查状态（未安装 Hook）
   </div>
   <div class="meta-bar">
     <div class="meta-item">扫描周期: <b id="scan-interval">-</b></div>
@@ -721,8 +734,8 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="kpi-val"><span id="kpi-agent-count">0</span><span class="kpi-sub" id="kpi-instance-count">0 实例活跃</span></div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">配方接管与挂接率</div>
-    <div class="kpi-val"><span id="kpi-hook-rate" style="color: var(--green);">100%</span><span class="kpi-sub" id="kpi-hook-detail">已完成适配</span></div>
+    <div class="kpi-label">指纹匹配比例</div>
+    <div class="kpi-val"><span id="kpi-hook-rate" style="color: var(--green);">100%</span><span class="kpi-sub" id="kpi-hook-detail">指纹匹配</span></div>
   </div>
   <div class="kpi-card">
     <div class="kpi-label">活跃外联与通信暴露面</div>
@@ -742,7 +755,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="drawer-overlay" id="drawer-overlay" onclick="closeAllDrawers()"></div>
 <div class="drawer" id="fp-drawer">
   <div class="drawer-header">
-    <div class="drawer-title">📁 零先验 Agent 指纹与接管配方库 (fingerprints.json)</div>
+    <div class="drawer-title">📁 零先验 Agent 指纹与候选配方库（未安装／未验证） (fingerprints.json)</div>
     <button class="drawer-close" onclick="closeAllDrawers()">✕</button>
   </div>
   <div class="drawer-body" id="fp-drawer-body">
@@ -764,15 +777,20 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="footer">
   <div>OS-Level Zero-Prior Agent Governance</div>
   <div>·</div>
-  <div>自动识别与 Goose 自主逆向适配闭环</div>
+  <div>进程发现与调查状态 · Stage1 尚未闭环</div>
   <div>·</div>
   <div>每 5 秒刷新</div>
 </div>
 
 <script>
+function assetText(adapter, key) {
+  const item = (adapter.assets || {})[key] || {label: '尚未采集'};
+  return escapeHtml(item.label + (item.message ? '：' + item.message : '') +
+    (item.value ? ' · ' + JSON.stringify(item.value) : ''));
+}
 function renderTools(tools) {
   if (!Array.isArray(tools) || tools.length === 0) {
-    return '<span style="color: #64748b;">标准 Agent 工具集 (未声明外部扩展)</span>';
+    return '<span style="color: #64748b;">尚未采集</span>';
   }
   return '<div class="tool-list">' + tools.map(t => {
     if (typeof t !== 'string') t = JSON.stringify(t);
@@ -839,6 +857,7 @@ async function loadFingerprints() {
   try {
     const res = await fetch('/api/fingerprints');
     const data = await res.json();
+    if (!res.ok) throw new Error(data.message || '指纹库读取失败');
     const fps = data.fingerprints || [];
     if (fps.length === 0) {
       container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">指纹库暂无条目</div>';
@@ -857,7 +876,7 @@ async function loadFingerprints() {
             <span style="color: var(--text-muted); font-size: 11px;">命中: ${fp.match_count || 1} 次 · ${fp.first_seen || ''}</span>
           </div>
           <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
-            <div><b>原生宿主:</b> <span style="color: #38bdf8; font-family: monospace;">${fp.features ? fp.features.exe : ''} (${recipe.host_platform || 'CLI'})</span></div>
+            <div><b>原生宿主:</b> <span style="color: #38bdf8; font-family: monospace;">${fp.features ? fp.features.exe : ''} (${recipe.host_platform || '未知'})</span></div>
             <div><b>演进来源:</b> <span style="color: #fbbf24; font-family: monospace;">${matchFeat.evolves_prior_harness || '零先验初次推导'}</span></div>
             <div><b>模型判定:</b> <span style="color: #34d399; font-family: monospace;">${recipe.model_routing ? (recipe.model_routing.model || '未暴露') : '未暴露'}</span></div>
           </div>
@@ -899,7 +918,7 @@ async function openInspector(pid) {
         <div><b>原生可执行文件:</b> <span style="color: #fff; font-family: monospace;">${agent.raw_exe}</span></div>
         <div><b>进程存活时长:</b> <span style="color: #fff;">${formatUptime(agent.uptime_sec)}</span></div>
         <div><b>工作区路径 (CWD):</b> <span style="color: #38bdf8; font-family: monospace;">${adapter.workspace_cwd || '未知'}</span></div>
-        <div><b>宿主治理层级:</b> <span style="color: #cbd5e1;">${adapter.host_platform || 'CLI'}</span></div>
+        <div><b>宿主治理层级:</b> <span style="color: #cbd5e1;">${adapter.host_platform || '未知'}</span></div>
       </div>
     </div>
 
@@ -908,22 +927,22 @@ async function openInspector(pid) {
         <b style="color: #34d399;">🧠 模型调用与通信路由</b>
         <span class="fp-badge">${adapter.harness_id || 'unregistered'}</span>
       </div>
-      <div class="fp-code">${escapeHtml(JSON.stringify(adapter.model_routing || {}, null, 2))}</div>
+      <div class="fp-code">${assetText(adapter, 'model_routing')}</div>
     </div>
 
     <div class="fp-item">
       <div class="fp-header">
         <b style="color: #818cf8;">⚙️ 提取与脱敏配置文件 (Parsed Config)</b>
-        <span style="font-size: 10px; color: var(--green);">已安全脱敏</span>
+        <span style="font-size: 10px; color: var(--green);">采集状态见下方</span>
       </div>
-      <div class="fp-code">${escapeHtml(JSON.stringify(parsedCfg, null, 2))}</div>
+      <div class="fp-code">${assetText(adapter, 'parsed_config')}</div>
     </div>
 
     <div class="fp-item">
       <div class="fp-header">
         <b style="color: #f59e0b;">🌐 网络与通信表面 (Network Surface)</b>
       </div>
-      <div class="fp-code">${escapeHtml(JSON.stringify(net, null, 2))}</div>
+      <div class="fp-code">${assetText(adapter, 'network_surface')} · 当前观测未完成时不能判断连接情况或安全性</div>
     </div>
 
     <div class="fp-item">
@@ -931,7 +950,7 @@ async function openInspector(pid) {
         <b style="color: #cbd5e1;">📋 挂载规则与提示词 (System Prompt Rules)</b>
       </div>
       <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
-        ${Array.isArray(adapter.system_prompt_rules) && adapter.system_prompt_rules.length ? adapter.system_prompt_rules.map(r => `<div>• ${escapeHtml(r)}</div>`).join('') : '<span style="color: var(--text-muted);">未挂载本地规则文件</span>'}
+        ${assetText(adapter, 'system_prompt_rules')}
       </div>
     </div>
   `;
@@ -969,13 +988,13 @@ async function updateUI() {
     
     document.getElementById('kpi-agent-count').innerText = totalAgents;
     document.getElementById('kpi-instance-count').innerText = `${totalInstances} 关联进程`;
-    const rate = totalAgents > 0 ? Math.round((matchedCount / totalAgents) * 100) : 100;
+    const rate = totalAgents > 0 ? Math.round((matchedCount / totalAgents) * 100) : 0;
     document.getElementById('kpi-hook-rate').innerText = `${rate}%`;
-    document.getElementById('kpi-hook-detail').innerText = `${matchedCount}/${totalAgents} 完成适配`;
+    document.getElementById('kpi-hook-detail').innerText = `${matchedCount}/${totalAgents} 指纹匹配`;
     const netColor = totalPorts > 0 ? 'var(--amber)' : 'var(--green)';
     document.getElementById('kpi-net-count').style.color = netColor;
-    document.getElementById('kpi-net-count').innerText = totalPorts;
-    document.getElementById('kpi-net-detail').innerText = totalPorts > 0 ? `${totalPorts} 端点受纳管` : '全链路收敛安全';
+    document.getElementById('kpi-net-count').innerText = '未知';
+    document.getElementById('kpi-net-detail').innerText = totalPorts > 0 ? `${totalPorts} 历史端点（未验证）` : '尚未采集，不能判断安全性';
     
     const grid = document.getElementById('agents-grid');
     if (!data.agents || data.agents.length === 0) {
@@ -991,19 +1010,10 @@ async function updateUI() {
       if (!backendInvestigating && investigation.status && reinvestigatingPids.has(a.pid)) {
         reinvestigatingPids.delete(a.pid);
       }
-      const isInvestigating = backendInvestigating || reinvestigatingPids.has(a.pid);
+      const isInvestigating = backendInvestigating;
       
-      let statusHtml = '';
-      if (isInvestigating) {
-        statusHtml = `<span class="adapter-status adapter-working">⚡ 正在自主逆向接管中 (Goose Agent Work)...</span>`;
-      } else if (isMatched) {
-        statusHtml = `<span class="adapter-status">✓ 已适配挂接 (${a.adapter.harness_id} · ${a.adapter.match_ms}ms)</span>`;
-      } else if (['unavailable', 'failed', 'busy', 'blocked', 'disabled'].includes(investigation.status)) {
-        statusHtml = `<span class="adapter-status adapter-unmatched" title="${investigation.message || ''}">⚠ 逆向未完成：${investigation.message || '请查看服务日志'}</span>`;
-      } else {
-        statusHtml = `<span class="adapter-status adapter-unmatched">⚡ 陌生 Runtime (等待调度逆向)</span>`;
-      }
-        
+      const statusHtml = escapeHtml(investigation.label + ' · ' + (investigation.message || '') +
+        ' | ' + (isMatched ? '指纹匹配（兼容性待验证）' : '未命中指纹') + ' | Hook: ' + a.adapter.hook_state.label);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
 
@@ -1018,7 +1028,7 @@ async function updateUI() {
         if (typeof msgDetail === 'object') msgDetail = JSON.stringify(msgDetail, null, 2);
         semanticHtml = `
           <div>
-            <div class="section-label">实时拦截语义消息</div>
+            <div class="section-label">导入事件（不证明当前 Hook 生效）</div>
             <div class="msg-box">
               <div class="msg-header">
                 <span>事件: ${a.last_message.event_type}</span>
@@ -1033,14 +1043,14 @@ async function updateUI() {
           <div>
             <div class="stream-badge">
               <span>🛡️ 语义拦截 Sink:</span>
-              <span style="color: #64748b;">被动探测中 · 待流量流入自动激活</span>
+              <span style="color: #64748b;">未接入／未验证</span>
             </div>
           </div>
         `;
       }
 
-      const btnText = isInvestigating ? '⚡ 正在重推导...' : '⚡ Goose 深度重测';
-      const btnDisabled = isInvestigating ? 'disabled' : '';
+      const btnText = investigation.status === 'disabled' ? investigation.message : (isInvestigating ? '调查执行中' : 'Goose 深度重测');
+      const btnDisabled = investigation.can_request ? '' : 'disabled';
 
       const scoreClass = a.score >= 80 ? 'score-high' : (a.score >= 50 ? 'score-mid' : 'score-low');
 
@@ -1060,12 +1070,12 @@ async function updateUI() {
           <div>
             <div class="section-label">启动命令行与参数特征</div>
             <div class="cmdline">${a.cmdline}</div>
-            <details><summary>进程归属与身份依据</summary><div class="cmdline">PIDs: ${(a.all_pids || [a.pid]).join(', ')}<br>身份依据: ${escapeHtml(a.identity ? (a.identity.evidence || '行为推断') : '行为推断 / 指纹')}</div></details>
+            <details><summary>进程归属与身份依据</summary><div class="cmdline">关联进程（扫描快照）: ${(a.process_pids || [a.pid]).join(', ')}<br>实例: ${escapeHtml(a.instance_id)}<br>身份依据: ${escapeHtml(a.identity ? (a.identity.evidence || '行为推断') : '行为推断 / 指纹')}</div></details>
           </div>
 
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-              <div class="section-label" style="margin-bottom: 0;">Agent 深度治理全景档案 (Goose 自主逆向推导)</div>
+              <div class="section-label" style="margin-bottom: 0;">Agent 调查资料（状态与来源）</div>
               <div style="display: flex; gap: 6px;">
                 <button onclick="openInspector(${a.pid})" class="btn-reinvestigate" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">🔍 深度透视</button>
                 <button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="btn-reinvestigate" ${btnDisabled}>${btnText}</button>
@@ -1074,7 +1084,7 @@ async function updateUI() {
             <div class="adapter-box">
               <div class="adapter-group-title">🏢 身份与运行环境</div>
               <div class="adapter-row">
-                <span class="adapter-label">适配状态:</span>
+                <span class="adapter-label">调查 / 指纹 / Hook:</span>
                 <span class="adapter-val">${statusHtml}</span>
               </div>
               <div class="adapter-row">
@@ -1085,29 +1095,30 @@ async function updateUI() {
               <div class="adapter-group-title">🧠 模型与治理策略</div>
               <div class="adapter-row">
                 <span class="adapter-label">模型与网关端点:</span>
-                <span class="adapter-val" style="color: #34d399; font-family: monospace;">${a.adapter.model_routing && a.adapter.model_routing.model ? (a.adapter.model_routing.model + ' (' + (a.adapter.model_routing.provider || 'default') + ')') : '自动解析中...'}</span>
+                <span class="adapter-val" style="color: #34d399; font-family: monospace;">${assetText(a.adapter, 'model_routing')}</span>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">可用 Tools / MCP:</span>
-                <div class="adapter-val">${renderTools(a.adapter.registered_tools_and_mcp)}</div>
+                <div class="adapter-val">${assetText(a.adapter, 'registered_tools_and_mcp')}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">行规/Prompt 约束:</span>
-                <span class="adapter-val" style="color: #cbd5e1;">${Array.isArray(a.adapter.system_prompt_rules) && a.adapter.system_prompt_rules.length ? a.adapter.system_prompt_rules.join(', ') : '未挂载本地规则'}</span>
+                <span class="adapter-val" style="color: #cbd5e1;">${assetText(a.adapter, 'system_prompt_rules')}</span>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">配置解析提取:</span>
-                <span class="adapter-val inspect-trigger" onclick="openInspector(${a.pid})" style="color: #cbd5e1;" title="点击展开完整配置">${a.adapter.parsed_config && Object.keys(a.adapter.parsed_config).length ? Object.entries(a.adapter.parsed_config).map(([k,v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' | ') : '由 Goose 自动读取解析中...'}</span>
+                <span class="adapter-val inspect-trigger" onclick="openInspector(${a.pid})" style="color: #cbd5e1;" title="点击展开完整配置">${assetText(a.adapter, 'parsed_config')}</span>
               </div>
 
-              <div class="adapter-group-title">🌐 执行与通信画像</div>
+              <div class="adapter-row"><span class="adapter-label">Skill:</span><span class="adapter-val">${assetText(a.adapter, 'skills')}</span></div>
+              <div class="adapter-group-title">🌐 执行与通信画像（无数据不能判断安全性）</div>
               <div class="adapter-row">
-                <span class="adapter-label">衍生子进程轨迹:</span>
-                <span class="adapter-val" style="color: #f59e0b; font-family: monospace;">${Array.isArray(a.adapter.child_executions) && a.adapter.child_executions.length ? a.adapter.child_executions.join(', ') : '无活跃子执行 / 瞬态无残留'}</span>
+                <span class="adapter-label">执行事件（未接入采集）:</span>
+                <span class="adapter-val" style="color: #f59e0b; font-family: monospace;">${assetText(a.adapter, 'child_executions')}</span>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">网络与监听端点:</span>
-                <span class="adapter-val" style="color: #38bdf8; font-family: monospace;">${a.adapter.network_surface ? ((a.adapter.network_surface.listening_ports && a.adapter.network_surface.listening_ports.length ? '监听: ' + a.adapter.network_surface.listening_ports.join(', ') : '无本地监听') + ' · ' + (a.adapter.network_surface.remote_peers && a.adapter.network_surface.remote_peers.length ? '外联: ' + a.adapter.network_surface.remote_peers.join(', ') : '无活跃外联')) : '检测中...'}</span>
+                <span class="adapter-val" style="color: #38bdf8; font-family: monospace;">${assetText(a.adapter, 'network_surface')}</span>
               </div>
             </div>
           </div>
@@ -1135,7 +1146,8 @@ async function triggerReinvestigate(pid) {
   }
   reinvestigatingPids.add(pid);
   try {
-    await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
+    const response = await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
+    if (!response.ok) reinvestigatingPids.delete(pid);
   } catch(e) {}
   await updateUI();
 }
@@ -1174,18 +1186,16 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode("utf-8"))
         elif self.path == "/api/fingerprints":
-            fp_path = matcher.db_path()
-            fps = []
-            if fp_path.exists():
-                try:
-                    fp_data = json.loads(fp_path.read_text(encoding="utf-8"))
-                    fps = fp_data.get("fingerprints", [])
-                except Exception:
-                    pass
-            self.send_response(200)
+            try:
+                payload = {"fingerprints": matcher.load().get("fingerprints", [])}
+                code = 200
+            except (OSError, ValueError) as exc:
+                payload = {"status": "failed", "message": "指纹库读取失败", "error_type": type(exc).__name__}
+                code = 500
+            self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"fingerprints": fps}, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -1218,7 +1228,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.send_response(200 if AUTONOMOUS_ANALYSIS_ENABLED else 503)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            status = b'{"status": "reinvestigating"}' if AUTONOMOUS_ANALYSIS_ENABLED else b'{"status": "disabled", "message": "ASG_AUTONOMOUS_ANALYSIS=0"}'
+            status = json.dumps({'status': 'reinvestigating'} if AUTONOMOUS_ANALYSIS_ENABLED else
+                                presentation(False)['investigation'], ensure_ascii=False).encode('utf-8')
             self.wfile.write(status)
         else:
             self.send_response(404)
@@ -1236,7 +1247,7 @@ def main():
     
     t = threading.Thread(target=background_scanner_loop, name="scanner-thread", daemon=True)
     t.start()
-    print(f"[Monitor] {SCAN_INTERVAL_S}s 扫描与自动接管引擎已启动")
+    print(f"[Monitor] {SCAN_INTERVAL_S}s 扫描与调查引擎已启动")
     if not AUTONOMOUS_ANALYSIS_ENABLED:
         print("[Monitor] 自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)")
     

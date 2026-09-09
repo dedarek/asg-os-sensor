@@ -70,6 +70,9 @@ def _mcp_get_prior(env: dict):
     content[0].text 解析后的 dict (含 path/value)。
     """
     root = Path(__file__).resolve().parent
+    isolated = tempfile.TemporaryDirectory()
+    env = dict(env, ASG_AUDIT_DIR=str(Path(isolated.name) / 'audit'),
+               ASG_RECIPE_DIR=str(Path(isolated.name) / 'recipes'))
     proc = subprocess.Popen(
         [sys.executable, "-B", "runtime/analyst_tools.py"],
         cwd=str(root), env=env,
@@ -91,6 +94,8 @@ def _mcp_get_prior(env: dict):
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if msg.get("id") == 2 and "error" in msg:
+            result["error"] = msg["error"]
         if msg.get("id") == 2 and "result" in msg:
             content = (msg["result"].get("content") or [])
             if content:
@@ -98,6 +103,7 @@ def _mcp_get_prior(env: dict):
                     result["result"] = json.loads(content[0].get("text", ""))
                 except (json.JSONDecodeError, TypeError):
                     result["result"] = content[0].get("text")
+    isolated.cleanup()
     return result
 
 

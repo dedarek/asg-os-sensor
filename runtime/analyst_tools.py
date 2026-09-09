@@ -385,11 +385,13 @@ def _prior_db() -> Path:
 def load_prior() -> dict[str, Any]:
     candidates = [RECIPE_DIR / "committed.json", _prior_db()]
     for path in candidates:
-        if path.exists():
-            try:
-                return {"path": str(path), "value": json.loads(path.read_text(encoding="utf-8"))}
-            except (OSError, json.JSONDecodeError):
-                continue
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        if not isinstance(value, dict):
+            raise ValueError("Invalid prior: expected object")
+        return {"path": str(path), "value": value}
     return {"empty": True}
 
 

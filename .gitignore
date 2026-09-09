@@ -23,3 +23,7 @@ e2e/artifacts/autonomous-governance/
 artifacts/stage1/
 # e2e per-run isolation dirs (timestamp run-ids); keep prior tracked evidence
 e2e/artifacts/unknown-runtime/[0-9]*
+
+# Existing local MCP audit evidence (preserved)
+e2e/artifacts/analyst_tool_calls.jsonl
+e2e/artifacts/evidence/
