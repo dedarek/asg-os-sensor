@@ -1,0 +1,35 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_86fdd5a025b3bd 230-250
+runtime/opencode/asg-observe.js
+  s_b0143c6f6e2ba8::t_04747065b03ffb 1-67
+runtime/opencode/event_api.py
+  s_655532ed3c4512::t_92e9abbdabd72b 5-15,19-20,27-28,32,34,49-50,64-83,92-126
+runtime/opencode/ghost_install.py
+  s_655532ed3c4512::t_82397913afc2b3 4-14,21,24,26-40,47-80,83-95,97-100,102,104-114,117,120-133,137-158,163-165,167-168,172-181,183-188,199,202-224
+test_opencode_plugin.py
+  s_655532ed3c4512::t_31c9a1d60cf2c8 2-3,10-35,38-44,47-51,55,58-65,67-74,76,82,85-89,93-97,99,101,103-112,119-134,138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "caa28355e9547a2783b63f593e919f91857bece5",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
