@@ -1,0 +1,21 @@
+monitor_dashboard.py
+  s_1512a994888af5::t_ca71e5e3ce06cf 1896-1897,1903,1927,1941-1944,1946,1949-1950,1954,2347,2355-2359
+test_activity_ui.py
+  s_1512a994888af5::t_cb4b296fc1cda2 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0ea47cd87a8a223a027ffae1c5f8c663f1bf2262",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
