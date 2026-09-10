@@ -1,0 +1,29 @@
+runtime/opencode/asg-observe.js
+  s_655532ed3c4512::t_0717f1e4335d07 87-89,91
+test_opencode_plugin.py
+  s_655532ed3c4512::t_a83a0fffeca895 114-124
+tools/stage1_engine_hook_smoke.py
+  s_655532ed3c4512::t_986d350abe426c 1-26,28-86,90,92-137,158-186,188,195-226,228-258,260-266,268-278,280,286-347,351-363
+  s_655532ed3c4512::t_85e1ae998faef2 187,227
+  s_655532ed3c4512::t_3a4bdebdcc7ad3 189-194
+  s_655532ed3c4512::t_e95afffc2aafbd 348-350
+  s_655532ed3c4512::t_75d9d7be2e8d20 150-154
+  s_655532ed3c4512::t_1b966f310cfedb 138-149,155-157,259,267,279,281-285
+  s_655532ed3c4512::t_de2917eceec9a9 27,87-89,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "e251fc1c778da03c20ad5dafc1e7d630f7c4f2c3",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
