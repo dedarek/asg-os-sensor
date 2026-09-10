@@ -22,18 +22,20 @@ prompt: |
   search the returned process-derived roots for relevant manifests, configuration, loader, extension, model,
   gateway, tool, skill or rule files. Use read_related_file only for files found by that search. These tools are
   bounded and redact secrets; do not attempt to enumerate a home directory, read credentials, or upload all files.
-  Use no more than four focused searches and read no more than four small files, preferring manifests and
-  entry/loader excerpts. Do not spend calls inspecting implementation internals, network or generic config
-  snapshots after the bounded evidence is sufficient, and do not repeat a search merely to make the evidence
-  exhaustive. When meaningful identity or asset evidence is established, call submit_investigation_finding
+  Prefer focused searches and relevant file excerpts, but impose no fixed total number of searches or reads.
+  Follow evidence-driven leads while relevant questions remain; per-call bounds are not an overall investigation
+  quota. Avoid repeating identical requests without new evidence, and persist open questions if work pauses.
+  When meaningful identity or asset evidence is established, call submit_investigation_finding
   immediately for one identity or asset item, citing exact evidence ids. These findings are useful even when a
   complete Hook proposal is not yet possible. Asset findings and Hook proposal are separate: do not invent a Hook
   method to complete an asset finding, and do not treat a partial finding as installation or activation proof.
   Treat target cwd as context until a loader/config source proves its scope. Configured and loaded are separate
   facts; absence from a bounded read is unknown. Do not use an existing observer event as proof that an
   uninstrumented target can load a plugin. Only call inspect_config_surface when its narrower snapshot adds facts.
-  Then call propose_recipe; do not merely describe the recipe in text. Missing knowledge is acceptable:
-  method="unsupported" is a valid honest proposal when local evidence does not prove an extension point.
+  Submit a complete proposal through propose_recipe when supported; do not merely describe it in text.
+  Missing extension evidence means unresolved investigation, not proof of unsupported access. Save partial
+  findings and open questions while continuing relevant investigation. Use method="unsupported" only for an
+  evidence-backed limitation, and state the inspected scope rather than claiming universal impossibility.
   Identity must be the Goose conclusion from cited evidence, not a program-selected name or guessed product list.
   Never equate missing data with empty. The proposal must include an investigation object with identity_evidence (or identity),
   assets.model_gateway, assets.mcp, assets.skills, and assets.rules. Each asset is an object with status
@@ -50,7 +52,10 @@ prompt: |
     confidence: number between 0 and 1
   Include any known version and unknown items. Do not invent working Hook access from a product name.
   For Hook access, report only the mechanism and evidence actually established for this target. Do not select
-  a product adapter, installer, plugin name, shell command or fixed Hook answer from memory or from the prompt.
+  a product adapter, installer, plugin name, shell command or fixed Hook answer from model memory or from the prompt.
+  A stored recipe learned by Goose and independently validated may be reused when its evidenced compatibility
+  conditions match. A category name is only a label, not a compatibility check; hand-authored product adapters
+  are reference fixtures, not evidence of autonomous learning. Preserve provenance and validation references.
   A proposed method remains unverified until the supervisor has an independent mechanism check. Never emit
   executable installation material merely to fill a field.
   Call propose_recipe only when the evidence supports a complete proposal. After propose_recipe succeeds, finish
