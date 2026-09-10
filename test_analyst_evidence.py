@@ -233,6 +233,11 @@ class AnalystEvidenceTests(unittest.TestCase):
                         at.search_target_image({'query': 'needle', 'offset': offset})
                 with self.assertRaises(ValueError):
                     at.search_target_image({'query': '中' * 86})
+                with self.assertRaises(ValueError):
+                    at.search_target_image({'query': 'needle', 'context_bytes': 2049})
+                expanded = at.search_target_image({'query': 'needle', 'context_bytes': 2048})
+                self.assertEqual(len(expanded['hits']), 1)
+                self.assertIsNotNone(expanded['next_offset'])
                 path.write_bytes(b'')
                 self.assertEqual(at.search_target_image({'query': 'needle'})['searched_range'], [0, 0])
 

@@ -14,8 +14,12 @@ def hook_state(target: dict[str, Any], install_result: dict[str, Any] | None,
     pid, ct = target.get('pid'), target.get('create_time')
     base = {'status': 'not_installed', 'label': '未安装', 'verified': False,
             'blocking': 'not_implemented', 'source': None,
+            'limitations': ['blocking is not implemented in Stage1',
+                            'observations are instance-bound; reuse requires fresh verification'],
             'target': {'pid': pid, 'create_time': ct}}
     if not isinstance(install_result, dict) or install_result.get('status') not in ('installed', 'already_installed'):
+        return base
+    if install_result.get('target') is not None and install_result['target'] != base['target']:
         return base
     base['status'] = 'installed_pending_activation'
     base['label'] = '已安装，待激活'

@@ -618,6 +618,10 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("offset must be an integer")
     if offset < 0:
         raise ValueError("offset must be >= 0")
+    context_bytes = args.get('context_bytes', SEARCH_IMAGE_CONTEXT)
+    if not isinstance(context_bytes, int) or isinstance(context_bytes, bool) or not 0 <= context_bytes <= 2048:
+        raise ValueError('context_bytes must be an integer from 0 to 2048')
+    max_hits = min(SEARCH_IMAGE_MAX_HITS, max(1, 8192 // (2 * context_bytes + len(query.encode('utf-8')))))
 
     p = target_process()
     try:
@@ -642,7 +646,7 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
             image.seek(position)
             carry = b''
             next_match = position
-            while len(hits) < SEARCH_IMAGE_MAX_HITS:
+            while len(hits) < max_hits:
                 chunk = image.read(SEARCH_IMAGE_CHUNK_BYTES)
                 if not chunk:
                     position = size
@@ -651,22 +655,22 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
                 base = position - len(carry)
                 cursor = max(0, next_match - base)
                 position += len(chunk)
-                while len(hits) < SEARCH_IMAGE_MAX_HITS:
+                while len(hits) < max_hits:
                     found = data.find(needle, cursor)
                     if found < 0:
                         break
                     absolute = base + found
-                    start = max(0, absolute - SEARCH_IMAGE_CONTEXT)
-                    end = min(size, absolute + len(needle) + SEARCH_IMAGE_CONTEXT)
+                    start = max(0, absolute - context_bytes)
+                    end = min(size, absolute + len(needle) + context_bytes)
                     excerpts.seek(start)
                     hits.append({"offset": absolute, "context": _printable_context(excerpts.read(end - start))})
                     cursor = found + len(needle)
                     next_match = base + cursor
                 carry = data[-(len(needle) - 1):] if len(needle) > 1 else b''
-            if len(hits) == SEARCH_IMAGE_MAX_HITS:
+            if len(hits) == max_hits:
                 position = next_match
     next_offset = None
-    if hits and position < size and len(hits) == SEARCH_IMAGE_MAX_HITS:
+    if hits and position < size and len(hits) == max_hits:
         next_offset = position
     return {
         "status": "collected",
@@ -871,7 +875,7 @@ TOOLS = [
     {"name": "inspect_stream", "description": "Inspect a supervisor-exposed output stream and return structure samples after redaction.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_loader_surface", "description": "Read bounded target app-loader, config-resolution and plugin-scan evidence; target cwd is never treated as install scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_observation", "description": "Read the configured loopback observation receiver health and event types, bound to the target PID+create_time.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "search_target_image", "description": "Literal (case-sensitive, non-regex) search inside the bound process's actual executable file. Returns bounded printable context, hit offsets, next_offset for paging, size/mtime and target identity. Never reads process memory, executes the file, or returns the whole binary.", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "maxLength": 256}, "offset": {"type": "integer", "minimum": 0}}}},
+    {"name": "search_target_image", "description": "Literal (case-sensitive, non-regex) search inside the bound process's actual executable file. Use context_bytes up to 2048 to inspect surrounding loader code, not just a short hit. Returns bounded printable context, hit offsets, next_offset for paging, size/mtime and target identity. Never reads process memory, executes the file, or returns the whole binary.", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "maxLength": 256}, "offset": {"type": "integer", "minimum": 0}, "context_bytes": {"type": "integer", "minimum": 0, "maximum": 2048}}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_experience", "description": "Read bounded prior lifecycle outcomes for this compatible runtime; corrupt history is an explicit error and private paths are omitted.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "propose_recipe", "description": "Write a typed candidate recipe for Supervisor verification; cannot activate hooks or execute commands.", "inputSchema": {"type": "object", "required": ["recipe"], "properties": {"recipe": {"type": "object"}}}},

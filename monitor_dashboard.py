@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher, onboarding, investigation_findings
 from runtime.status import presentation, DISABLED_REASON
+from runtime.learned_presentation import hook_state as learned_hook_state
 from runtime.recipe_validation import validate as validate_recipe
 from runtime.identity import identify, ownership, metadata_identity
 from runtime.stream_parser import redact
@@ -1421,6 +1422,24 @@ def scan_agents_once():
                     adapter_info['assets'][field] = presentation(True, collections={field: record})['assets'][field]
             adapter_info['hook'] = '未安装' 
             adapter_info['observation'] = '未接入／未验证'
+            learned_installation = onboarding_view.get('install') or {}
+            if learned_installation.get('source') == 'supervisor_approved_candidate':
+                learned_verification = onboarding_view.get('verification') or {}
+                adapter_info['hook_state'] = learned_hook_state(
+                    {'pid': pid, 'create_time': pinfo.get('create_time')},
+                    learned_installation, learned_verification)
+                adapter_info['hook'] = adapter_info['hook_state']['label']
+                # This is a bounded acceptance snapshot, not a live health or
+                # blocking claim. No raw generated payloads/nonces are exposed.
+                adapter_info['learned_observation'] = {
+                    'status': adapter_info['hook_state']['status'],
+                    'events': (learned_verification.get('events', [])[-30:]
+                               if learned_verification.get('target') == {'pid': pid, 'create_time': pinfo.get('create_time')}
+                               else []),
+                    'paired_calls': adapter_info['hook_state'].get('paired_calls', []),
+                    'label': '当前实例的独立验收记录（非持续健康保证）',
+                    'blocking': 'not_implemented',
+                }
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             
             found_agents.append({
@@ -2200,7 +2219,14 @@ async function updateUI() {
       const plan = onboarding.plan || {};
       const install = onboarding.install || {};
       const verification = onboarding.verification || {};
-      const onboardingText = verification.status === 'events_verified'
+      const learnedHook = (a.adapter && a.adapter.hook_state) || {};
+      const onboardingText = learnedHook.status === 'observing'
+        ? '接入链: Goose生成方案已安装，真实工具前后事件已验收（仅观测）'
+        : learnedHook.status === 'loaded'
+          ? '接入链: 生成Hook已加载，等待工具事件'
+        : learnedHook.status === 'installed_pending_activation'
+          ? '接入链: 生成方案已安装，待目标加载'
+        : verification.status === 'events_verified'
         ? '接入链: 加载与工具事件已验证（仅观测，阻断未支持）'
         : verification.status === 'loaded_verified'
           ? '接入链: 插件已加载，尚无工具事件（未完成观测验证）'
