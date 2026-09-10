@@ -1,0 +1,22 @@
+test_stage1_call_chain.py
+  s_655532ed3c4512::t_909982d4ec93af 39-41,54-61
+  s_655532ed3c4512::t_f9d78e3dece8c2 42-53
+tools/stage1_call_chain.py
+  s_655532ed3c4512::t_909982d4ec93af 544-571,584-586,593-596,598-628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0007a6085365cab179b17aea408d390cffc34e8b",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
