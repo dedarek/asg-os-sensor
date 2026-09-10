@@ -1,0 +1,25 @@
+test_matcher_stage1.py
+  s_655532ed3c4512::t_f8e959fe0069ff 404-418
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_d0cc2fa434e725 491-502
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_d0cc2fa434e725 175-185
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_f8e959fe0069ff 84-94,98-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b6bf7671ad8b7d1582299b4358eec43ae5dbac4d",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
