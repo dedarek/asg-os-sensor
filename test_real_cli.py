@@ -121,10 +121,12 @@ class RealCliTests(unittest.TestCase):
             man1 = active_manifest(sd)
             evf1 = sd / "runs" / man1["runid"] / "events.jsonl"
             script = r'''
-const fs=require('node:fs'); const path=require('node:path');
 const src=process.env.PLUGIN_PATH;
 (async () => {
-  const plug = await require(src)({directory:'/'});
+  const mod = await import('file://' + src);
+  const exported = mod.default;
+  const factory = typeof exported === 'function' ? exported : exported.server;
+  const plug = await factory({directory:'/'});
   const inp={tool:'bash',callID:'c1'};
   await plug['tool.execute.before'](inp,{});
   await plug['tool.execute.after'](inp);

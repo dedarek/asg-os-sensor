@@ -126,8 +126,10 @@ class OnboardingPipelineTests(unittest.TestCase):
 const fs = require('node:fs');
 (async () => {
   while (!fs.existsSync(process.env.READY)) await new Promise(r => setTimeout(r, 20));
-  const plugin = require(process.env.PLUGIN_PATH);
-  const hooks = await plugin({ directory: process.cwd() });
+  const mod = await import('file://' + process.env.PLUGIN_PATH);
+  const exported = mod.default;
+  const factory = typeof exported === 'function' ? exported : exported.server;
+  const hooks = await factory({ directory: process.cwd() });
   fs.writeFileSync(process.env.LOADED, 'loaded');
   while (!fs.existsSync(process.env.TOOLS_READY)) await new Promise(r => setTimeout(r, 20));
   const input = { tool: 'read', callID: 'onboarding-call' };
@@ -331,8 +333,10 @@ const fs = require('node:fs');
 const fs = require('node:fs');
 (async () => {
   while (!fs.existsSync(process.env.READY)) await new Promise(r => setTimeout(r, 20));
-  const plugin = require(process.env.PLUGIN_PATH);
-  const hooks = await plugin({ directory: process.cwd() });
+  const mod = await import('file://' + process.env.PLUGIN_PATH);
+  const exported = mod.default;
+  const factory = typeof exported === 'function' ? exported : exported.server;
+  const hooks = await factory({ directory: process.cwd() });
   fs.writeFileSync(process.env.LOADED, 'loaded');
   while (!fs.existsSync(process.env.TOOLS_READY)) await new Promise(r => setTimeout(r, 20));
   const input = { tool: 'read', callID: process.env.CALL_ID };

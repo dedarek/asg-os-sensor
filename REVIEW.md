@@ -188,3 +188,41 @@ echo $!
 保护核对：8081 仍为 `http://127.0.0.1:8081/`、PID `48028`；8080 无监听；生产指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。本轮没有重启或修改现用 Agent、全局配置、旧 active manifest 或 8080。
 
 本轮完整回归为 `87` 项通过；原有测试、模拟 Node 机制测试、真实 Goose 盲调查和真实终端已有事件分别记录，未混为一个“全部真实通过”。本轮是状态真实性与隔离验收准备，不是 Stage1 闭环完成；停在 review，不进入 Hook 安装或防控。
+
+## 2026-09-10 review continuation：已准备当前隔离验收工作区
+
+本轮在 `dac0a8f` 基础上收紧了自定义 LLM 的 route-driven TLS 兼容实现，并修正 Node 测试夹具以覆盖当前 OpenCode V1 插件导出合同。TLS 例外只由当前 `llm.yaml` route 显式配置启用；默认仍校验证书，loopback proxy 只接受该 route 的 origin，拒绝重定向和跨 origin 重配置。代码没有硬编码供应商、route 名或上游地址，也没有设置系统/Python 全局 TLS 绕过。
+
+### 状态与证据映射
+
+| 维度 | 当前真实状态 | 证据 | 缺失含义 |
+| --- | --- | --- | --- |
+| 真实路由烟测 | `passed` | `verify-llm-route.log` 中 chat/responses 均 200 | 只证明配置 route 可达，不证明 Goose 产出配方 |
+| 真实 Goose | `tools_executed_no_candidate` | `goose-clean5/derived-summary.json` 及 5 个 evidence | 没有 candidate 就不显示调查成功或接入方案 |
+| 用户验收插件 | `prepared_awaiting_user_open` | 当前 workspace active manifest、插件 SHA、0 行 events | 未打开引擎前不声称 hook.loaded |
+| 历史接收器 | `stale` | `opencode-observe` 的 3 条有效事件 | 只代表历史接收，不代表当前 Hook 生效 |
+| headless CLI 插件 | `blocked_during_external_plugin_initialization` | 无插件基线成功；带插件对照 `/path` 超时 | 不把 serve 健康或静态部署当作插件已加载 |
+
+### 当前可打开的绝对路径
+
+- 页面：`http://127.0.0.1:8081/`；看板 PID `48028`。
+- 隔离 workspace：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`。
+- 当前插件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/asg-observe.js`。
+- 当前 manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/manifest.json`，runid `d40626064e384a68`，active=true。
+- 待接收事件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/runs/d40626064e384a68/events.jsonl`，打开前 0 行。
+- 准备摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/readiness.json`。
+- 历史接收器：`http://127.0.0.1:52708`，PID `24804`；workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；其历史 events 文件为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。
+
+### 分类验收
+
+- 单元/本地回归：原有 `87` 项保持通过；新增 3 项 route TLS 回归；当前三组完整回归共 `90` 项通过。
+- 模拟集成：Node 子进程加载仓库真实插件并验证 `hook.loaded`、`tool.execute.before/after`，来源为 `goose-simulated`，不代表真实 OpenCode。
+- 真实路由运行：`verify_llm.py` 通过，日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-cli-chain-20260910/verify-llm-route.log`；凭据只从明确指定的主仓库 `.env` 内存读取，没有写回任何配置。
+- 真实 Goose：真实 MCP 证据已写入 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-cli-chain-20260910/goose-clean5/`，但没有 candidate recipe，按未完成处理。
+- 真实终端扫描：8081 仍展示真实本机扫描和调查 disabled；MCP/Skill/规则/网络等未采集字段保持 `not_collected`，Hook 保持 `not_installed`。
+
+### 安全与 review 结论
+
+隔离 workspace 在用户打开前没有启动引擎或 receiver，不会触碰现用 Agent。8080 无监听，生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。headless CLI 插件初始化阻塞已保留为未完成证据，不能用旧桌面实例的历史事件替代新实例验证。
+
+本轮是状态真实性、route TLS 配置和隔离验收准备，不是 Stage1 闭环完成。尚不具备进入真实 Hook 安装与防控的条件；待用户打开 workspace 后，下一步只应绑定新 PID+create_time、启动独立 receiver 并验证新 run 的事件，再进入后续 review。

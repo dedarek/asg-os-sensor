@@ -133,3 +133,11 @@
 隔离工作区：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`；插件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/asg-observe.js`；manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/manifest.json`；事件文件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/runs/b5fd699f4d755aa7/events.jsonl`，用户打开前为 0 行。准备摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/readiness.json`。
 
 已有真实接收器仍为 `http://127.0.0.1:52708`，PID `24804`，旧隔离工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`，历史事件 `3/0` 有效/无效，当前 `stale/healthy=false`。本轮加入 loader scope 只读证据和独立 `opencode serve` 启动探测；全量 `87` 项通过，8080、全局配置和现用 Agent 未动。本轮是隔离验收准备与状态真实性补强，不是 Stage1 闭环完成。
+
+## 2026-09-10 review continuation：当前隔离验收工作区
+
+当前可打开页面为 `http://127.0.0.1:8081/`。隔离 workspace 为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`，插件为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/asg-observe.js`，manifest 为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/manifest.json`，当前 runid=`d40626064e384a68`；事件文件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/runs/d40626064e384a68/events.jsonl` 在用户打开前为 0 行，准备摘要为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/readiness.json`。
+
+原有 `87` 项回归保持通过，新增 route TLS 回归后当前完整回归 `90` 项通过。真实路由烟测 chat/responses 均 200；真实 Goose 只产生 5 条 MCP evidence，没有 candidate recipe，因此标为未完成。历史接收器 `http://127.0.0.1:52708` 的 3 条事件当前 stale，不当作新 workspace 已加载。headless CLI 无插件基线可用，带插件实例初始化超时，未产生 CLI 事件 claim。
+
+本轮是 route TLS 配置收紧、插件合同测试修复和隔离验收准备，不是 Stage1 闭环完成；未修改全局配置、未重启现用 Agent、未操作 8080，停在 review。

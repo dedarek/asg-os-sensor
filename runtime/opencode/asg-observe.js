@@ -1,14 +1,15 @@
 // ASG 纯观测插件（OpenCode 引擎扩展点 tool.execute.before/after）。
-// CJS .js：引擎 glob"{plugin,plugins}/*.{ts,js}" 才扫描 .ts/.js（.mjs 不在范围）。
+// .js：引擎 glob"{plugin,plugins}/*.{ts,js}" 扫描 .ts/.js（.mjs 不在范围）。
 // 加载时冻结 runid；每次 emit 核对 manifest 仍 active 且同 run。卸载(active 变 false/改名)或
 // 重装(新 runid)后，旧已加载回调立即停止写——旧回调不复活，必须重新加载插件握手。
 // nonce/事件路径不依赖 env：从 .asg-observe/manifest.json + runs/<runid>/{nonce,events.jsonl} 读取。
 // 事件文件 0600；只记录 ts/event_type/adapter_source/nonce/pid/call_id/tool/outcome；fail-open。
 "use strict";
-const fs = require("node:fs");
-const path = require("node:path");
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const DIR = __dirname;
+const DIR = path.dirname(fileURLToPath(import.meta.url));
 const STATEDIR = path.join(DIR, ".asg-observe");
 const MANIFEST = path.join(STATEDIR, "manifest.json");
 
@@ -70,7 +71,7 @@ function emit(ev) {
   }
 }
 
-module.exports = async ({ directory }) => {
+const AsgObserve = async ({ directory }) => {
   // 握手：插件被引擎真实加载时立即落盘一条（只在新加载时产生）
   emit({ event_type: "hook.loaded" });
   return {
@@ -82,3 +83,9 @@ module.exports = async ({ directory }) => {
     },
   };
 };
+
+// OpenCode 1.18.x loads the V1 object shape; newer releases also accept the
+// named function export. Keep both entry shapes while the adapter is tested
+// across engine versions.
+export { AsgObserve };
+export default { id: "asg-observe", server: AsgObserve };

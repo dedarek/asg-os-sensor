@@ -29,7 +29,9 @@ def node_fixture(plugin: str) -> str:
     return chr(10).join([
         "const init = async () => {",
         "  const mod = await import('file://" + plugin + "');",
-        "  const plug = await mod.default({ directory: '/tmp' });",
+        "  const exported = mod.default;",
+        "  const factory = typeof exported === 'function' ? exported : exported.server;",
+        "  const plug = await factory({ directory: '/tmp' });",
         "  const input = { tool: 'bash', callID: 'c1' };",
         "  await plug['tool.execute.before'](input, {});",
         "  await plug['tool.execute.after'](input);",

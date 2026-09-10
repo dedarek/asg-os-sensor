@@ -11,3 +11,9 @@ routes:
     responses_path: /responses
     extra_headers: {}
     timeout_s: 30
+    # This selected endpoint currently presents an expired certificate.  The
+    # exception is route-scoped and uses the process-local loopback proxy.
+    # Other routes default to certificate verification.
+    tls:
+      verify: false
+      transport: loopback-proxy

@@ -423,3 +423,11 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 新增 `inspect_loader_surface` 及 Goose 提示门禁；真实盲 MCP 证据为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/loader-blind-gpozbzy/verification.json`，真实 Goose 盲调查为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-blind-oDNlaY9r/real_goose_result.json`，候选接入方式为 `unsupported`，没有把旧 observer 事件当作新目标加载证明。
 
 已准备隔离工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`，插件、manifest 和本次 run 事件文件均在其 `.opencode/plugins/` 下；事件文件在用户打开前为 0 行。独立 `opencode serve` 在端口 52709 启动探测成功，随后停止；摘要在该工作区的 `readiness.json` 和 `engine-startup/startup.json`。完整回归 `87` 项通过（原有/模拟/真实 Goose/真实终端分开记录）。本轮不是 Stage1 闭环完成。
+
+## 2026-09-10 review continuation：路由级 TLS 与当前隔离验收工作区
+
+- 原有回归 `87` 项保持通过；新增 3 项 route TLS 回归，当前三组完整回归为 `55 + 12 + 23 = 90` 项通过。Node 插件事件仍是 `goose-simulated` 机制测试。
+- 当前 route 的 TLS 例外只由 `llm.yaml` 显式 `tls.verify=false` + `loopback-proxy` 启用；代理限制 origin、拒绝重定向，不使用系统/Python 全局 TLS 绕过。`ASG_ANALYST_ENV_FILE` 只读取明确选中的环境文件。
+- 用户 workspace：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`；manifest runid=`d40626064e384a68`，插件 SHA256=`866504bbc7f25c811e25f1d989909342b056c5445061f85fad6cbbde1b1e3825`，待接收 events 文件打开前为 0 行。历史 receiver `http://127.0.0.1:52708` 的 3 条事件当前 stale，不代表新 workspace 已加载。
+- 真实 route 烟测 chat/responses 均 200；真实 Goose 工具链有 5 条 MCP evidence 但没有 candidate recipe，因此不宣称调查成功。headless CLI 无插件基线通过，带插件对照在实例初始化阶段超时，证据在 `artifacts/stage1/`，不与用户 workspace 混用。
+- 8081/PID `48028` 保持隔离，8080 无监听，生产库哈希未变；未修改全局配置、未重启或触碰现用 Agent。本轮不是 Stage1 闭环完成，停在 review。

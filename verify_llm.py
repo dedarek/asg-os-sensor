@@ -10,12 +10,12 @@ from runtime.llm_config import analyst_key
 from runtime.llm_config import analyst_route
 from runtime.llm_config import goose_env
 from runtime.llm_config import mask_key
+from runtime.llm_config import tls_exception_enabled
 def _ctx() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if os.environ.get('ASG_INSECURE_SSL', '').strip() == '1':
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+    route = analyst_route()
+    tls = route.get('tls') if isinstance(route.get('tls'), dict) else {}
+    ca_bundle = str(tls.get('ca_bundle', '') or '').strip()
+    return ssl.create_default_context(cafile=ca_bundle or None)
 def post(base: str, path: str, payload: dict, key: str, timeout: int):
     url = base.rstrip('/') + path
     req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key}, method='POST')
@@ -52,6 +52,7 @@ def main() -> int:
     route = analyst_route()
     key = analyst_key(route)
     print('route=' + str(route.get('route')) + ' model=' + str(route.get('model')) + ' base=' + str(route.get('base_url')) + ' key=' + mask_key(key) + ' (' + str(route.get('key_env')) + ')', flush=True)
+    print('tls_transport=' + ('loopback-proxy (route-scoped)' if tls_exception_enabled(route) else 'direct-verified'), flush=True)
     check('llm.yaml exists', (ROOT / 'llm.yaml').exists())
     check('route has base_url', bool(route.get('base_url')))
     check('route has model', bool(route.get('model')))
@@ -62,9 +63,10 @@ def main() -> int:
         return 1
     timeout = int(route.get('timeout_s') or 30)
     model = str(route.get('model'))
+    effective_base = goose_env(route, key).get('OPENAI_BASE_URL', str(route.get('base_url')))
     ok_chat = False
     try:
-        status, body = post(str(route.get('base_url')), str(route.get('chat_path') or '/chat/completions'), {'model': model, 'messages': [{'role': 'user', 'content': 'say ok'}], 'max_tokens': 32}, key, timeout)
+        status, body = post(str(effective_base), str(route.get('chat_path') or '/chat/completions'), {'model': model, 'messages': [{'role': 'user', 'content': 'say ok'}], 'max_tokens': 32}, key, timeout)
         print('chat status=' + str(status) + ' text=' + extract_text(body).replace(chr(10), ' ')[:200], flush=True)
         ok_chat = status == 200
     except Exception as e:
@@ -72,22 +74,15 @@ def main() -> int:
     check('chat/completions 200', ok_chat)
     ok_resp = False
     try:
-        status, body = post(str(route.get('base_url')), str(route.get('responses_path') or '/responses'), {'model': model, 'input': [{'role': 'user', 'content': 'say ok'}]}, key, timeout)
+        status, body = post(str(effective_base), str(route.get('responses_path') or '/responses'), {'model': model, 'input': [{'role': 'user', 'content': 'say ok'}]}, key, timeout)
         print('responses status=' + str(status) + ' text=' + extract_text(body).replace(chr(10), ' ')[:200], flush=True)
         ok_resp = status == 200
     except Exception as e:
         print('responses error: ' + type(e).__name__ + ': ' + str(e)[:300], flush=True)
     check('responses 200', ok_resp)
-    if os.environ.get('ASG_INSECURE_SSL', '').strip() == '1':
-        ok_proxy = False
-        try:
-            effective = goose_env(route, key).get('OPENAI_BASE_URL', '')
-            status, body = post(str(effective), str(route.get('responses_path') or '/responses'), {'model': model, 'input': [{'role': 'user', 'content': 'say ok'}]}, key, timeout)
-            print('goose proxy status=' + str(status) + ' base=' + str(effective) + ' text=' + extract_text(body).replace(chr(10), ' ')[:200], flush=True)
-            ok_proxy = status == 200
-        except Exception as e:
-            print('goose proxy error: ' + type(e).__name__ + ': ' + str(e)[:300], flush=True)
-        check('goose TLS proxy 200', ok_proxy)
+    if tls_exception_enabled(route):
+        print('goose proxy route=' + str(route.get('route')) + ' transport=loopback-proxy', flush=True)
+        check('goose TLS proxy 200', ok_chat and ok_resp)
     if fails:
         print('verify failed: ' + str(fails), flush=True)
         return 1

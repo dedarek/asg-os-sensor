@@ -11,6 +11,7 @@ from runtime.compatibility import observe
 from runtime.collection import collect
 from runtime.recipe_validation import validate
 from runtime.llm_config import mask_key
+from runtime.llm_config import analyst_route, goose_env, tls_exception_enabled
 
 
 class GooseStageTests(unittest.TestCase):
@@ -190,10 +191,38 @@ class GooseStageTests(unittest.TestCase):
         handler.rfile = BytesIO(b'{}'); handler.wfile = BytesIO()
         handler.send_response = Mock(); handler.send_header = Mock(); handler.end_headers = Mock()
         upstream = Mock(status_code=200, headers={}); upstream.iter_content.return_value = []
-        with patch.dict(_STATE, base_url='https://example.invalid/model/v1', key='test-only'), \
+        with patch.dict(_STATE, base_url='https://example.invalid/model/v1', origin='https://example.invalid', key='test-only'), \
              patch('runtime.llm_proxy.requests.post', return_value=upstream) as post:
             handler.do_POST()
             self.assertEqual(post.call_args.args[0], 'https://example.invalid/model/v1/chat/completions')
+            self.assertFalse(post.call_args.kwargs['allow_redirects'])
+
+    def test_tls_exception_is_config_driven_for_any_custom_route(self):
+        route = {'route': 'any-provider', 'provider': 'openai', 'model': 'model-a',
+                 'base_url': 'https://llm.example.test/v1', 'tls': {'verify': False}}
+        self.assertTrue(tls_exception_enabled(route))
+        with patch('runtime.llm_proxy.ensure_proxy', return_value='http://127.0.0.1:43111'):
+            self.assertEqual(goose_env(route, 'test-only')['OPENAI_BASE_URL'], 'http://127.0.0.1:43111')
+
+        verified = dict(route, base_url='https://other.example/v1', tls={'verify': True})
+        self.assertFalse(tls_exception_enabled(verified))
+        self.assertEqual(goose_env(verified, 'test-only')['OPENAI_BASE_URL'], 'https://other.example/v1')
+
+    def test_legacy_flag_is_only_fallback_and_does_not_override_explicit_verify(self):
+        with patch.dict(os.environ, {'ASG_INSECURE_SSL': '1'}):
+            legacy = {'route': 'legacy-provider', 'base_url': 'https://legacy.example/v1'}
+            self.assertTrue(tls_exception_enabled(legacy))
+            verified = {'route': 'verified-provider', 'base_url': 'https://verified.example/v1',
+                        'tls': {'verify': True}}
+            self.assertFalse(tls_exception_enabled(verified))
+
+    def test_proxy_rejects_cross_origin_reconfiguration(self):
+        import runtime.llm_proxy as proxy
+        with patch.object(proxy, '_SERVER', object()), patch.dict(proxy._STATE, origin='https://first.example'):
+            route = {'route': 'second', 'base_url': 'https://second.example/v1',
+                     'tls': {'verify': False}}
+            with self.assertRaises(ValueError):
+                proxy.ensure_proxy(route, 'test-only')
 
 
 

@@ -1,7 +1,8 @@
 """Loopback-only reverse proxy for OpenAI-compatible endpoints with broken TLS.
 
-This is an emergency compatibility path. It is started only when
-ASG_INSECURE_SSL=1, binds to loopback, and never logs request bodies or keys.
+This is a route-scoped compatibility path. It binds to loopback, forwards
+only the origin selected by the active route, never follows redirects, and
+never logs request bodies or keys.
 """
 from __future__ import annotations
 
@@ -11,6 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import requests
+
+from urllib.parse import urlsplit
 
 
 _LOCK = threading.Lock()
@@ -41,6 +44,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if suffix not in ('/chat/completions', '/responses'):
             self.send_error(404); return
         target = base + suffix
+        parsed = urlsplit(target)
+        if f"{parsed.scheme}://{parsed.netloc}" != _STATE.get("origin"):
+            self.send_error(502); return
         headers = {
             "Authorization": "Bearer " + str(_STATE["key"]),
             "Content-Type": self.headers.get("Content-Type", "application/json"),
@@ -55,6 +61,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 stream=True,
                 timeout=float(_STATE.get("timeout_s", 30)),
                 verify=False,
+                allow_redirects=False,
             )
             self.send_response(upstream.status_code)
             for name in ("Content-Type", "Cache-Control", "X-Request-Id"):
@@ -85,9 +92,17 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 def ensure_proxy(route: dict[str, Any], key: str) -> str:
     """Start/update the process-local proxy and return its OpenAI base URL."""
     global _SERVER
+    base = str(route.get('base_url', '')).rstrip('/')
+    parsed = urlsplit(base)
+    if parsed.scheme.lower() != 'https' or not parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError('TLS loopback proxy requires an https base_url without query or fragment')
     with _LOCK:
+        origin = f'{parsed.scheme}://{parsed.netloc}'
+        if _SERVER is not None and _STATE.get('origin') not in (None, origin):
+            raise ValueError('TLS loopback proxy is already bound to another route origin')
         _STATE.update(
-            base_url=str(route.get("base_url", "")).rstrip("/"),
+            base_url=base,
+            origin=origin,
             key=key,
             extra_headers=dict(route.get("extra_headers") or {}),
             timeout_s=float(route.get("timeout_s") or 30),

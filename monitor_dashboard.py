@@ -40,6 +40,7 @@ from runtime.llm_config import analyst_route as load_analyst_route
 from runtime.llm_config import goose_env as build_goose_env
 from runtime.llm_config import load_environment
 from runtime.llm_config import mask_key as mask_analyst_key
+from runtime.llm_config import tls_exception_enabled
 
 load_environment()
 
@@ -423,8 +424,8 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 _record_onboarding_outcome(instance_id, pid, create_time, "failed", message, run_dir, struct.get("compatibility"))
                 print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
                 return
-            if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
-                message = "上游 TLS 证书无效；已阻止深度数据外发。修复证书，或明确设置 ASG_ALLOW_INSECURE_ANALYST=1"
+            if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and not tls_exception_enabled(route):
+                message = "ASG_INSECURE_SSL 仅允许当前路由的显式 TLS 配置使用"
                 _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir)
                 _record_onboarding_outcome(instance_id, pid, create_time, "blocked", message, run_dir, struct.get("compatibility"))
                 print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)

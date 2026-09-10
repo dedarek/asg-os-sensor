@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import threading
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,6 +9,30 @@ LLM_YAML = ROOT / 'llm.yaml'
 DOTENV = ROOT / '.env'
 _DOTENV_LOADED = False
 _DOTENV_LOCK = threading.Lock()
+
+def _dotenv_paths() -> list[Path]:
+    """Return only the explicitly selected or local project env file."""
+    configured = os.environ.get('ASG_ANALYST_ENV_FILE', '').strip()
+    if configured:
+        return [Path(configured).expanduser()]
+    return [DOTENV]
+
+
+def tls_exception_enabled(route: dict[str, Any]) -> bool:
+    """Whether the selected route may use the local TLS proxy.
+
+    Explicit route configuration wins.  ASG_INSECURE_SSL remains a
+    compatibility fallback only when the route has no explicit ``tls.verify``
+    setting; it never changes Python/system TLS defaults or another process.
+    """
+    base = str(route.get('base_url', '')).rstrip('/')
+    parsed = urlparse(base)
+    if parsed.scheme.lower() != 'https' or not parsed.netloc or parsed.query or parsed.fragment:
+        return False
+    tls = route.get('tls') if isinstance(route.get('tls'), dict) else {}
+    if 'verify' in tls:
+        return tls.get('verify') is False and tls.get('transport', 'loopback-proxy') == 'loopback-proxy'
+    return os.environ.get('ASG_INSECURE_SSL', '').strip() == '1'
 def _load_dotenv() -> None:
     global _DOTENV_LOADED
     if _DOTENV_LOADED:
@@ -20,9 +45,11 @@ def _load_dotenv() -> None:
             load_dotenv(DOTENV, override=False)
         except Exception:
             pass
-        if DOTENV.exists():
+        for dotenv in _dotenv_paths():
+            if not dotenv.exists():
+                continue
             try:
-                for line in DOTENV.read_text(encoding='utf-8', errors='ignore').splitlines():
+                for line in dotenv.read_text(encoding='utf-8', errors='ignore').splitlines():
                     s = line.strip()
                     if not s or s.startswith('#') or '=' not in s:
                         continue
@@ -32,7 +59,9 @@ def _load_dotenv() -> None:
                     if k and k not in os.environ:
                         os.environ[k] = v
             except Exception:
-                pass
+                # A selected env file must fail closed for its credential
+                # lookup; callers already report a missing active credential.
+                continue
         _DOTENV_LOADED = True
 def _yaml() -> dict:
     try:
@@ -118,14 +147,17 @@ def goose_env(route: dict, key: str, pid: int = 0) -> dict:
     env['GOOSE_MODE'] = 'auto'
     env['OPENAI_BASE_URL'] = base
     env['OPENAI_API_KEY'] = key
-    if os.environ.get('ASG_INSECURE_SSL', '').strip() == '1':
+    tls = route.get('tls') if isinstance(route.get('tls'), dict) else {}
+    ca_bundle = str(tls.get('ca_bundle', '') or '').strip()
+    if ca_bundle:
+        env['SSL_CERT_FILE'] = ca_bundle
+        env['REQUESTS_CA_BUNDLE'] = ca_bundle
+    if tls_exception_enabled(route):
         # Goose uses a Rust HTTP client and does not honor PYTHONHTTPSVERIFY.
         # Keep its traffic local, then let the loopback proxy handle broken
         # upstream certificates without weakening TLS for unrelated traffic.
         from runtime.llm_proxy import ensure_proxy
         env['OPENAI_BASE_URL'] = ensure_proxy(route, key)
-        env['ASG_INSECURE_SSL'] = '1'
-        env['PYTHONHTTPSVERIFY'] = '0'
     headers = route.get('extra_headers') or {}
     if isinstance(headers, dict) and headers:
         flat = ','.join([str(k) + '=' + str(v) for k, v in headers.items()])

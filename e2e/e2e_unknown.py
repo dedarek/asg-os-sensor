@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -54,6 +55,7 @@ from runtime.llm_config import analyst_key as load_analyst_key
 from runtime.llm_config import analyst_route as load_analyst_route
 from runtime.llm_config import goose_env as build_goose_env
 from runtime.llm_config import mask_key as mask_analyst_key
+from runtime.llm_config import tls_exception_enabled
 
 
 def now() -> float:
@@ -170,9 +172,16 @@ def run_analyst(run_dir: Path, pid: int, stream: Path) -> tuple[int, list[str]]:
     key = load_analyst_key(route)
     if not key:
         raise RuntimeError("missing active credential: " + str(route.get("key_env")) + " route=" + str(route.get("route")) + " key=" + mask_analyst_key(key))
-    if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
-        raise RuntimeError("upstream TLS is insecure; fix the certificate or explicitly set ASG_ALLOW_INSECURE_ANALYST=1")
-    extension = "asg-runtime-tools:ASG_TARGET_PID={pid} ASG_AUDIT_DIR={audit} ASG_RECIPE_DIR={recipes} ASG_TARGET_STREAM_FILE={stream} python runtime/analyst_tools.py".format(pid=pid, audit=run_dir, recipes=run_dir / "recipes", stream=stream)
+    if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and not tls_exception_enabled(route):
+        raise RuntimeError("ASG_INSECURE_SSL is restricted to the active route's explicit TLS configuration")
+    extension = "asg-runtime-tools:" + shlex.join([
+        "env",
+        "ASG_TARGET_PID=" + str(pid),
+        "ASG_AUDIT_DIR=" + str(run_dir),
+        "ASG_RECIPE_DIR=" + str(run_dir / "recipes"),
+        "ASG_TARGET_STREAM_FILE=" + str(stream),
+        sys.executable, "-B", str(ROOT / "runtime" / "analyst_tools.py")
+    ])
     # Goose remains the mature loop; provider is OpenAI-compatible per llm.yaml. Secrets stay in child env.
     max_turns = os.environ.get("ASG_GOOSE_MAX_TURNS", "12").strip() or "12"
     cmd_timeout = int(os.environ.get("ASG_GOOSE_TIMEOUT", "180").strip() or "180")
@@ -181,7 +190,7 @@ def run_analyst(run_dir: Path, pid: int, stream: Path) -> tuple[int, list[str]]:
     env.update(build_goose_env(route, key, pid))
     out_path, err_path = run_dir / "analyst_stdout.jsonl", run_dir / "analyst_stderr.log"
     completed = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=cmd_timeout)
-    write_json(run_dir / "analyst_command.json", {"argv": cmd, "environment": {"GOOSE_PROVIDER": route["provider"], "GOOSE_MODEL": route["model"], "OPENAI_BASE_URL": route["base_url"], "credential_env": route["key_env"], "GOOSE_MODE": "auto"}, "returncode": completed.returncode})
+    write_json(run_dir / "analyst_command.json", {"argv": cmd, "environment": {"GOOSE_PROVIDER": route["provider"], "GOOSE_MODEL": route["model"], "OPENAI_BASE_URL": "loopback://route-scoped" if tls_exception_enabled(route) else route["base_url"], "credential_env": route["key_env"], "GOOSE_MODE": "auto", "tls_exception": "active-route loopback proxy" if tls_exception_enabled(route) else "none"}, "returncode": completed.returncode})
     return completed.returncode, cmd
 
 
