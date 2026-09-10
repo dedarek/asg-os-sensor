@@ -1,0 +1,34 @@
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_d8e28cb473913c 495-505
+  s_655532ed3c4512::t_bc35ba19363346 492-494
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_ff4536ba50e5cf 885-894
+  s_655532ed3c4512::t_e6deaadb116dcf 952-955
+REVIEW.md
+  s_655532ed3c4512::t_d1de7d1cfe3900 479-489
+  s_655532ed3c4512::t_f4156c1576eca8 476-478
+WORKLOG.md
+  s_655532ed3c4512::t_7c51dd20096129 734-743
+  s_655532ed3c4512::t_2222e828559952 801-804
+docs/stage1/REPRODUCE.md
+  s_655532ed3c4512::t_e7ac49f4d26159 39
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_270f2075a69d1b 338-342
+  s_655532ed3c4512::t_870878358f6e60 297-303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "2cefa37b32ce3d34b59188e81f324cd71d73c009",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
