@@ -457,7 +457,7 @@ _FINDING_EVIDENCE_TOOLS = {
     "get_target_context", "inspect_entry_surface", "find_related_files", "read_related_file",
     "inspect_config_surface", "inspect_loader_surface", "inspect_network_peers",
     "inspect_execution_trace", "inspect_stream", "inspect_observation", "observe_tree",
-    "observe_runtime_surface",
+    "observe_runtime_surface", "search_target_image",
 }
 _EVIDENCE_REF = re.compile(r"ev-[0-9]+-[a-f0-9]{10}")
 
@@ -498,17 +498,21 @@ def _submit_investigation_finding(args: dict[str, Any]) -> dict[str, Any]:
     open_questions = args.get("open_questions", [])
     if kind == "identity":
         status = args.get("status", "unknown")
+        # The advertised schema and prompt allow identity.value. Preserve its
+        # role conclusion instead of silently dropping it in the flattened API.
+        supplied = args.get("value") if isinstance(args.get("value"), dict) else {}
         value = {
-            "name": str(args.get("name") or "unidentified-agent")[:240],
-            "runtime": str(args.get("runtime") or "unknown")[:160],
-            "entry": str(args.get("entry") or "unknown")[:400],
-            "version": str(args.get("version") or "unknown")[:160],
+            "name": str(args.get("name") or supplied.get("name") or "unidentified-agent")[:240],
+            "runtime": str(args.get("runtime") or supplied.get("runtime") or "unknown")[:160],
+            "entry": str(args.get("entry") or supplied.get("entry") or "unknown")[:400],
+            "version": str(args.get("version") or supplied.get("version") or "unknown")[:160],
         }
-        roles = args.get("roles")
+        roles = args.get("roles", supplied.get("roles"))
         if roles is not None:
             value["roles"] = roles  # enum/bound validation happens in save_finding
-        if args.get("role_reasoning") is not None:
-            value["role_reasoning"] = args.get("role_reasoning")
+        reasoning = args.get("role_reasoning", supplied.get("role_reasoning"))
+        if reasoning is not None:
+            value["role_reasoning"] = reasoning
         if isinstance(args.get("details"), dict):
             value["details"] = args["details"]
         finding = {"kind": kind, "status": status, "value": redact(value),

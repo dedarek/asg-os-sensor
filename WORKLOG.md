@@ -439,3 +439,5 @@ test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三�
 - 本次本机回归 12 项通过（test_analyst_evidence + test_learned_onboarding），不是自主接入成功。
 - 对既有隔离真实 CLI PID44187/create_time1789043968.57205 启动真实 Goose；可复现启动和派生通用遥测契约在 artifacts/stage1/learned-demo/current.json 指向目录。无预置 Hook，无总调查时限；用显式主仓库 env 获取已授权模型凭据，不输出值。
 - 执行者并行只读查真实会话 API，顾问负责此次真实调查和生成计划的独立执行验收；不重启现用桌面 Agent。
+- 后续直接核对资产保存入口，发现还有独立的 finding evidence allowlist 漏掉二进制检索，以及工具 schema 允许 identity.value 但实现只取顶层字段会吞掉角色结论；已兼容两种形式、补回归。当前正在运行的 MCP 进程不会热加载补丁，若本轮遇到该错误以保存的证据继续，不掩盖失败。
+- 新增独立通用事件验收器 learned_events：只读取生成 Hook 的事件文件，核对目标PID+create_time、当轮nonce、时间与真实before/after配对；不调用Hook制造事件。尚未宣称真实目标已接入。

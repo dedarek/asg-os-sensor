@@ -186,6 +186,22 @@ class AnalystEvidenceTests(unittest.TestCase):
                 path.write_bytes(b'')
                 self.assertEqual(at.search_target_image({'query': 'needle'})['searched_range'], [0, 0])
 
+    def test_identity_value_preserves_roles_and_accepts_image_evidence(self):
+        from runtime import analyst_tools as at
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = 'ev-123456789-0123456789'
+            target = {'pid': os.getpid(), 'create_time': psutil.Process().create_time()}
+            (root / (ref + '.json')).write_text(json.dumps({'target': target, 'tool': 'search_target_image',
+                'result': {'status': 'collected', 'hits': [{'context': 'test role evidence'}]}}))
+            with patch.object(at, 'EVIDENCE_DIR', root), patch.object(at, 'FINDINGS_PATH', root / 'findings.json'), \
+                 patch.object(at, 'TARGET_PID', target['pid']), patch.object(at, 'TARGET_CREATE_TIME', target['create_time']):
+                saved = at._submit_investigation_finding({'kind': 'identity', 'status': 'identified',
+                    'value': {'name': 'neutral-fixture', 'roles': ['model_gateway'], 'role_reasoning': 'fixture forwards requests'},
+                    'evidence_refs': [ref]})
+            self.assertEqual(saved['finding']['value']['roles'], ['model_gateway'])
+            self.assertEqual(saved['finding']['value']['name'], 'neutral-fixture')
+
 
 if __name__ == "__main__":
     unittest.main()
