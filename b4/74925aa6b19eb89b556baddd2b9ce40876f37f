@@ -1,0 +1,22 @@
+runtime/llm_config.py
+  s_655532ed3c4512::t_3d54aabb07a924 43,46-47,50
+test_commandcode_route.py
+  s_655532ed3c4512::t_3d54aabb07a924 2,4,7,30-50
+  s_655532ed3c4512::t_7fd4bff050aef8 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b474925aa6b19eb89b556baddd2b9ce40876f37f",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
