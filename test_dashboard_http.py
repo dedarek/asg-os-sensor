@@ -1,0 +1,120 @@
+# -*- coding: utf-8 -*-
+"""原多 Agent 看板 HTTP 与观测适配回归。
+
+这些测试通过真实 ThreadingHTTPServer + urllib 访问，不以直接调用 handler
+替代 HTTP；观测端使用随机回环端口的最小本地契约服务，不触碰 8080、全局配置
+或真实 Agent。
+"""
+import json
+import threading
+import unittest
+from copy import deepcopy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.request import Request, urlopen
+from unittest.mock import patch
+
+import monitor_dashboard as dashboard
+
+
+class _ObservationFixture(BaseHTTPRequestHandler):
+    health = {
+        "status": "stale",
+        "healthy": False,
+        "reason": "latest event older than ttl",
+        "loaded_observed": True,
+        "instance_pid": 5297,
+        "instance_create_time": 1789006943.640438,
+        "capabilities": {
+            "observation": {"status": "supported", "label": "事件观测"},
+            "blocking": {"status": "unsupported", "label": "未支持"},
+        },
+    }
+    events = {"valid": 3, "invalid": 0, "events": [{"event_type": "hook.loaded"}]}
+
+    def do_GET(self):
+        payload = self.health if self.path == "/health" else self.events
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(503 if self.path == "/health" else 200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        pass
+
+
+class DashboardHttpRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.old_state = deepcopy(dashboard.SCAN_STATE)
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard.MonitorHandler)
+        self.worker = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.worker.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.worker.join(timeout=3)
+        dashboard.SCAN_STATE.clear()
+        dashboard.SCAN_STATE.update(self.old_state)
+
+    def _get(self, path):
+        with urlopen("http://127.0.0.1:%d%s" % (self.server.server_port, path), timeout=3) as response:
+            return response.status, response.headers.get("Content-Type", ""), response.read().decode("utf-8")
+
+    def test_real_dashboard_root_and_api_state_keep_multi_agent_contract(self):
+        dashboard.SCAN_STATE.update({
+            "last_scan_time": "2026-09-10 00:00:00",
+            "scan_interval": 30,
+            "scan_count": 1,
+            "autonomous_analysis": False,
+            "fingerprints_count": 2,
+            "active_investigations": {},
+            "observation_adapter": {"status": "not_configured", "source": None},
+            "agents": [
+                {"pid": 101, "instance_id": "101:1.0", "adapter": {}},
+                {"pid": 202, "instance_id": "202:2.0", "adapter": {}},
+            ],
+        })
+        root_status, root_type, root_body = self._get("/")
+        self.assertEqual(root_status, 200)
+        self.assertIn("text/html", root_type)
+        self.assertIn("实时 Agent 监控看板", root_body)
+
+        with patch.object(dashboard, "AUTONOMOUS_ANALYSIS_ENABLED", False):
+            state_status, state_type, state_body = self._get("/api/state")
+        self.assertEqual(state_status, 200)
+        self.assertIn("application/json", state_type)
+        state = json.loads(state_body)
+        self.assertEqual([agent["pid"] for agent in state["agents"]], [101, 202])
+        self.assertEqual(state["fingerprints_count"], 2)
+        self.assertEqual(state["agents"][0]["adapter"]["investigation"]["status"], "disabled")
+
+    def test_observation_adapter_reads_local_health_and_events_but_binds_one_instance(self):
+        obs_server = ThreadingHTTPServer(("127.0.0.1", 0), _ObservationFixture)
+        obs_worker = threading.Thread(target=obs_server.serve_forever, daemon=True)
+        obs_worker.start()
+        base = "http://127.0.0.1:%d" % obs_server.server_port
+        try:
+            with patch.object(dashboard, "OBSERVE_URL", base):
+                snapshot = dashboard.read_observation_snapshot()
+                self.assertEqual(snapshot["status"], "connected")
+                self.assertEqual(snapshot["health"]["status"], "stale")
+                self.assertEqual(snapshot["events"]["valid"], 3)
+                bound = dashboard.observation_for_instance(snapshot, 5297, 1789006943.640438)
+                self.assertEqual(bound["status"], "observed")
+                self.assertEqual(bound["health_status"], "stale")
+                self.assertEqual(bound["blocking"]["status"], "unsupported")
+                parent = dashboard.observation_for_instance(snapshot, 4970, 1789006940.319704)
+                self.assertEqual(parent["status"], "not_bound")
+                self.assertIn("5297", parent["reason"])
+                reused = dashboard.observation_for_instance(snapshot, 5297, 9999.0)
+                self.assertEqual(reused["status"], "not_bound")
+        finally:
+            obs_server.shutdown()
+            obs_server.server_close()
+            obs_worker.join(timeout=3)
+
+
+if __name__ == "__main__":
+    unittest.main()

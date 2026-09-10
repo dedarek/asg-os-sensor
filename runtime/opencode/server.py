@@ -283,6 +283,12 @@ class Handler(BaseHTTPRequestHandler):
             h = verifier.current_health(rows)
             return self._json(200 if h["healthy"] else 503, {**h, "runid": runid,
                                                                "loaded_observed": verifier.loaded_observed(rows),
+                                                               "instance_pid": verifier.expected_pid,
+                                                               "instance_create_time": verifier.expected_ct,
+                                                               "capabilities": {
+                                                                   "observation": {"status": "supported", "label": "事件观测"},
+                                                                   "blocking": {"status": "unsupported", "label": "未支持"},
+                                                               },
                                                                "wired": True})
         if self.path == "/events":
             rows = verifier.read_raw(evf)[-MAX_EVENTS:]

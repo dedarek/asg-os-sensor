@@ -294,3 +294,34 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 需用户再次做一次只读调用证明：调用成功 + 旧 run 无新事件 + 接口显示已撤销；
   无事件本身不是卸载成功证据。等待顾问协调后执行。
 
+## 2026-09-10 看板功能回归修复：主看板与观测接收器分离
+
+- 顾问复核发现上一轮把 `runtime/opencode/server.py` 单实例观测服务错误放到了
+  8081，导致原 `monitor_dashboard.py` 的根页面与 `/api/state` 不可用；本轮没有卸载
+  active 插件，也没有重启 OpenCode。
+- `runtime/opencode/server.py` 保持核心观测契约，新增健康响应中的 `instance_pid`、
+  `instance_create_time` 与 observation/blocking 能力声明；观测服务单独运行在
+  `127.0.0.1:64680`，提供 `/page`、`/health`、`/events`。
+- `monitor_dashboard.py` 恢复为 8081 主入口，保留原 `/`、`/api/state`、
+  `/api/fingerprints`、`/api/scan` 与 `/api/reinvestigate`；新增可选
+  `ASG_OBSERVE_URL` 受控适配，仅允许本机 HTTP 回环地址，并在每次扫描读取观测健康
+  与事件计数。
+- 适配仅给主 PID 与 create_time 同时匹配的卡片写入 `observation_evidence.status=observed`。
+  5297 是真实 NodeService 子进程，当前看板的 OpenCode 主卡片 PID 是 4970，因此父卡片
+  保持 `not_bound`；其他 Agent、同族实例和关联子进程不继承成功状态。
+- 本轮新增 `test_dashboard_http.py`：真实 ThreadingHTTPServer + urllib 验证原看板根页
+  是 HTML、`/api/state` 保留多 Agent 列表，并验证本机观测服务读取、503 stale 保留、
+  5297 绑定通过、4970 父进程与 create_time 改变拒绝绑定。
+- 完整回归实际命令（本轮只执行并记录一次）：
+  `ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest
+  test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1
+  test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli
+  test_observe_page test_dashboard_http`；结果 `Ran 71 tests in 15.065s`，`OK`。
+  输出中有现有的 LibreSSL/urllib3 与 ResourceWarning，未影响退出码。
+- 服务切换后实测：`http://127.0.0.1:8081/` 返回原多 Agent HTML，
+  `http://127.0.0.1:8081/api/state` 返回 3 个独立 Agent；
+  `http://127.0.0.1:64680/page` 为单实例观测页，随机端口服务 `/health` 返回真实
+  绑定 PID 5297 的 `stale`，`/events` 返回 `valid=3, invalid=0`。8080 未监听。
+- 8081 看板启动使用 `ASG_AUTONOMOUS_ANALYSIS=0`、隔离 `ASG_FINGERPRINT_DB`、
+  `ASG_RUN_DIR`、`ASG_EVENT_DIR` 和 `ASG_OBSERVE_URL=http://127.0.0.1:64680`；
+  本轮只停止/启动了本任务自己的 8081 看板进程，未停止真实 Agent。

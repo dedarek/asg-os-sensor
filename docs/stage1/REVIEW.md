@@ -4,27 +4,32 @@
 一律以本目录为准。
 
 ## 当前提交与工作树
-- HEAD: 7291263（分支 work/discovery-goose-fingerprint，基线 f4194d3）。
-- 工作树干净（docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md 未跟踪，保留顾问交接）。
-- 8081 接收服务运行中（PID 见下文/ps），隔离指纹库，真实事件已验证 3 条（见 WORKLOG）。
+- 当前改动待提交（分支 work/discovery-goose-fingerprint，基线 f4194d3）；
+  `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 仍是未跟踪的顾问交接文件，不能声明工作树干净。
+- 原多 Agent 看板运行在 `127.0.0.1:8081`；单实例观测接收器独立运行在
+  `127.0.0.1:64680`（随机回环端口示例）。8080 未触碰。
+- 真实事件已验证 3 条（见 WORKLOG），active 插件保持不动。
 
 ## 真实验收（2026-09-10，非模拟）
 - 用户已打开隔离工作区并执行一次目录列举任务；hook.loaded 与 tool.execute
   before/after（tool=read，同 call_id）均被接收端校验通过（PID 5297 绑定）。
 - 证据归档：artifacts/stage1/evidence/real-hook-2026-09-10/（脱敏，不含 nonce）。
-- 8081 状态页已接通（commit 7291263）：区分历史加载/当前新鲜度/观测 vs 阻断；
-  页面与 JSON 均不公开 nonce；只描述绑定实例，不把其他实例/Agent 标成功。
+- 观测接收器 `/page` 位于独立回环随机端口；它区分历史加载/当前新鲜度/观测 vs 阻断，
+  页面与 JSON 均不公开 nonce，只描述绑定实例。
+- 8081 的根页面恢复为原 `monitor_dashboard.py` 多 Agent 看板；`/api/state` 保留
+  多 Agent 列表和扫描状态。看板通过 `ASG_OBSERVE_URL` 读取观测契约；当前证据绑定
+  5297，而扫描卡片主 PID 4970，因此 4970 及其他 Agent 不显示已观测成功。
 
 ## 待办（受控卸载验收）
 - 未执行卸载；步骤已写入 WORKLOG。等待顾问协调用户再次只读调用后执行。
-## 全量测试（精确命令与数量）
-- 命令: ASG_TEST_NODE=<node> python3 -B -m unittest test_discovery test_matcher_stage1
-  test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration
-  test_opencode_plugin test_real_cli test_observe_page
-- 结果: Ran 69 tests, OK。按文件（grep def test_ 统计）：discovery 8、matcher 17、status 11、
-  goose 11、adapter 2、synthetic 1、opencode_plugin 9、real_cli 3、observe_page 7。
-- 节点依赖：test_real_cli 3 项需 ASG_TEST_NODE；其余 66 项无需 node。
-- observe_page 7 项为本轮新增（页面/健康/事件语义、nonce 不泄露、fail-closed）。
+## 全量测试（本轮实际执行一次）
+- 命令: `ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest
+  test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1
+  test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli
+  test_observe_page test_dashboard_http`
+- 结果: `Ran 71 tests in 15.065s`，`OK`。其中 `test_real_cli` 3 项需 node，其余 68 项
+  无需 node；本轮新增 `test_dashboard_http.py` 2 项。输出含现有 LibreSSL/urllib3
+  与 ResourceWarning，未影响测试结果。
 
 ## 已改实现（本分支全部提交）
 - 生命周期 instance_id 贯穿 running/retry/result/API；_record_investigation_result 不再
@@ -48,12 +53,12 @@
   与 OPENCODE_CONFIG= 为官方隔离入口。CLAUDE.md 存在(379B)但未观测到打开，不推断已加载/未加载。
 - 插件机制: engine bundle 含 tool.execute.before/after、plugin 加载 Glob.scan(
   开启 plugin/plugins 目录)；桌面实例是否加载插件需在 UI 打开工作区后实测。
-- 部署目录 artifacts/stage1/opencode-observe 当前仅含 ghost_install.py——尚未安装已审查的
-  插件/manifest，nonce 尚未写入（待部署路径未就绪，不视为已部署）。
+- 部署目录 `artifacts/stage1/opencode-observe` 已安装并由用户真实打开过观测插件；
+  当前 active manifest 与历史事件保留。nonce 不进入页面、API 或脱敏证据。
 
 ## 已知限制与未完成项
-- 真实 OpenCode Hook 尚未安装/未加载；真实引擎/插件验收待用户在桌面打开隔离工作区后
-  进行（此步需审阅批准后告知用户，不预先宣称必然成功）。
+- 真实 OpenCode 观测插件已在隔离工作区加载并捕获一次工具调用；未执行受控卸载验收，
+  active manifest、插件和引擎保持不动，等待顾问协调用户再次做无敏感目录调用。
 - 插件文件删除不等于模块已从引擎内存卸载：未验证运行中卸载后不再产事件即不得宣称
   完全回滚已被证明；回滚应使用已校验 manifest+hash 的 uninstall 命令并保留 runs 历史，
   不得要求用户手动删除 .asg-observe 状态目录。
@@ -62,6 +67,8 @@
 - Windows msvcrt 锁分支未本机实测（macOS）；真实跨版本目标复用未复跑。
 - 接入点证据映射、Hook 安装器真实生效验证与回滚为下一阶段；本阶段未完成 Hook 安装。
 
-## 进入下一阶段（Hook 安装与生效验证）的条件
-- 条件未齐：接入点证据映射、真实插件安装/握手/事件验证、安全回滚证明。当前完成
-  发现..调查..落库..复用闭环，并已准备好隔离测试工作区方案（待批准后执行）。
+## 当前 review 点
+- 本轮是看板功能回归与状态分层修复，不是 Stage1 闭环完成。
+- 受控卸载验收仍未执行；下一步需顾问协调用户再次做无敏感目录调用，之后验证调用成功、
+  旧 run 无新增事件、接收器即时 revoked 三项同时成立。
+- Hook 安装、生效验证、阻断算法、完整资产采集和其他 Agent 支持仍未完成，不能进入下一阶段。

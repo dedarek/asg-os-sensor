@@ -17,6 +17,9 @@ import shlex
 from copy import deepcopy
 import threading
 import subprocess
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -66,6 +69,11 @@ GOOSE_MAX_TURNS = _env_int("ASG_GOOSE_MAX_TURNS", 12)
 GOOSE_TIMEOUT_S = _env_int("ASG_GOOSE_TIMEOUT", 180)
 GOOSE_RETRY_COOLDOWN_S = _env_int("ASG_GOOSE_RETRY_COOLDOWN", 300)
 AUTONOMOUS_ANALYSIS_ENABLED = os.environ.get("ASG_AUTONOMOUS_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
+OBSERVE_URL = os.environ.get("ASG_OBSERVE_URL", "").strip().rstrip("/")
+try:
+    OBSERVE_TIMEOUT_S = float(os.environ.get("ASG_OBSERVE_TIMEOUT", "1.0") or "1.0")
+except ValueError:
+    OBSERVE_TIMEOUT_S = 1.0
 STATE_LOCK = threading.Lock()
 SCAN_STATE = {
     "last_scan_time": None,
@@ -74,6 +82,10 @@ SCAN_STATE = {
     "autonomous_analysis": AUTONOMOUS_ANALYSIS_ENABLED,
     "agents": [],
     "fingerprints_count": 0,
+    "observation_adapter": {
+        "status": "not_configured" if not OBSERVE_URL else "pending",
+        "source": OBSERVE_URL or None,
+    },
     "active_investigations": {}  # pid -> {status, started_at, turns}
 }
 
@@ -122,6 +134,119 @@ def now() -> float:
 
 def iso(ts: float | None = None) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts or now()))
+
+
+def _observe_request(path: str) -> tuple[int | None, dict[str, Any] | None, str | None]:
+    """读取本机观测接收器的 JSON；HTTP 503 仍可能带有合法状态正文。"""
+    if not OBSERVE_URL:
+        return None, None, "ASG_OBSERVE_URL 未配置"
+    try:
+        parsed = urllib.parse.urlsplit(OBSERVE_URL)
+        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
+            return None, None, "观测服务地址必须是本机 HTTP 回环地址"
+    except ValueError:
+        return None, None, "观测服务地址无效"
+    try:
+        request = urllib.request.Request(OBSERVE_URL + path, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=OBSERVE_TIMEOUT_S) as response:
+            status = response.status
+            body = response.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        try:
+            body = exc.read().decode("utf-8", "replace")
+        except OSError:
+            body = ""
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        return None, None, "%s: %s" % (type(exc).__name__, exc)
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return status, None, "观测服务返回非 JSON"
+    if not isinstance(payload, dict):
+        return status, None, "观测服务返回结构无效"
+    return status, payload, None
+
+
+def read_observation_snapshot() -> dict[str, Any]:
+    """受控读取观测契约；该适配层不改变扫描器的 Agent 列表。"""
+    if not OBSERVE_URL:
+        return {"status": "not_configured", "source": None,
+                "message": "未配置隔离观测接收器；扫描结果仍来自本机进程扫描"}
+    health_status, health, health_error = _observe_request("/health")
+    events_status, events, events_error = _observe_request("/events")
+    if health is None or events is None:
+        return {"status": "unavailable", "source": OBSERVE_URL,
+                "message": health_error or events_error or "观测服务不可用",
+                "health_http": health_status, "events_http": events_status}
+    try:
+        instance_pid = int(health["instance_pid"])
+        instance_create_time = float(health["instance_create_time"])
+    except (KeyError, TypeError, ValueError):
+        return {"status": "invalid", "source": OBSERVE_URL,
+                "message": "观测服务未返回可绑定的 pid/create_time",
+                "health_http": health_status, "events_http": events_status}
+    return {
+        "status": "connected",
+        "source": OBSERVE_URL,
+        "health_http": health_status,
+        "events_http": events_status,
+        "instance_pid": instance_pid,
+        "instance_create_time": instance_create_time,
+        "health": {
+            "status": health.get("status", "unknown"),
+            "healthy": bool(health.get("healthy", False)),
+            "reason": health.get("reason", ""),
+            "loaded_observed": bool(health.get("loaded_observed", False)),
+        },
+        "events": {
+            "valid": int(events.get("valid", 0) or 0),
+            "invalid": int(events.get("invalid", 0) or 0),
+        },
+        "capabilities": health.get("capabilities") or {
+            "observation": {"status": "supported", "label": "事件观测"},
+            "blocking": {"status": "unsupported", "label": "未支持"},
+        },
+    }
+
+
+def observation_for_instance(snapshot: dict[str, Any], pid: int,
+                             create_time: float | None) -> dict[str, Any]:
+    """只为 pid+create_time 均匹配的主实例授予观测证据。"""
+    base = {"source": snapshot.get("source"), "status": "not_bound",
+            "label": "未绑定观测证据", "loaded_observed": False,
+            "recent_events": 0, "invalid_events": 0,
+            "blocking": {"status": "unsupported", "label": "未支持"}}
+    if snapshot.get("status") == "not_configured":
+        base.update(status="not_configured", label="尚未接入观测接收器",
+                    reason=snapshot.get("message", ""))
+        return base
+    if snapshot.get("status") != "connected":
+        base.update(status="unavailable", label="观测服务不可用",
+                    reason=snapshot.get("message", "观测服务未返回有效状态"))
+        return base
+    observed_pid = snapshot.get("instance_pid")
+    observed_ct = snapshot.get("instance_create_time")
+    if pid != observed_pid:
+        base["reason"] = "观测证据绑定 PID %s；当前主 PID %s" % (observed_pid, pid)
+        return base
+    if create_time is None or observed_ct is None or abs(float(create_time) - float(observed_ct)) > 1e-3:
+        base["reason"] = "观测证据的 create_time 与当前实例不匹配"
+        return base
+    health = snapshot.get("health", {})
+    events = snapshot.get("events", {})
+    base.update(
+        status="observed",
+        label="已绑定观测证据（仅记录，不支持阻断）",
+        instance_id="%s:%s" % (observed_pid, observed_ct),
+        health_status=health.get("status", "unknown"),
+        health_reason=health.get("reason", ""),
+        loaded_observed=bool(health.get("loaded_observed", False)),
+        recent_events=int(events.get("valid", 0) or 0),
+        invalid_events=int(events.get("invalid", 0) or 0),
+        capabilities=snapshot.get("capabilities", {}),
+    )
+    return base
 
 
 def analyst_route() -> dict:
@@ -331,6 +456,7 @@ def scan_agents_once():
     policies = load_policies()
     sensor = Sensor(policies)
     threshold = int(policies.get("agent_score_threshold", 50))
+    observation_snapshot = read_observation_snapshot()
     
     found_agents = []
     
@@ -456,6 +582,8 @@ def scan_agents_once():
             adapter_info['fingerprint_revision'] = matched_fp.get('revision') if matched_fp else None
             adapter_info['recipe_status'] = 'structure_validated_hook_unverified' if matched_fp else 'not_available'
             adapter_info['historical_recipe'] = recipe_obj
+            adapter_info['observation_evidence'] = observation_for_instance(
+                observation_snapshot, pid, pinfo.get('create_time'))
             for field in adapter_info['assets']:
                 adapter_info[field] = None
             with STATE_LOCK:
@@ -562,6 +690,10 @@ def scan_agents_once():
         SCAN_STATE["scan_count"] += 1
         SCAN_STATE["agents"] = final_agents
         SCAN_STATE["fingerprints_count"] = fp_count
+        SCAN_STATE["observation_adapter"] = {
+            key: value for key, value in observation_snapshot.items()
+            if key != "capabilities"
+        }
 
 
 def background_scanner_loop():
@@ -811,6 +943,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="meta-item">已存指纹: <b id="fp-count" style="cursor: pointer; text-decoration: underline;" onclick="openFpDrawer()">-</b></div>
     <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
     <div class="meta-item">上次更新: <b id="last-time">-</b></div>
+    <div class="meta-item">观测适配: <b id="observe-status">-</b></div>
     <button class="refresh-btn" onclick="triggerScan()">立即扫描</button>
   </div>
 </div>
@@ -1056,6 +1189,10 @@ async function updateUI() {
     document.getElementById('scan-interval').innerText = `${data.scan_interval || 30}s`;
     document.getElementById('fp-count').innerText = data.fingerprints_count;
     document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
+    const observe = data.observation_adapter || {};
+    const observeHealth = observe.health ? ` · ${observe.health.status}` : '';
+    const observePid = observe.instance_pid ? ` · 绑定 PID ${observe.instance_pid}` : '';
+    document.getElementById('observe-status').innerText = (observe.status || '未知') + observeHealth + observePid;
     
     currentAgentsData = data.agents || [];
     
@@ -1099,9 +1236,13 @@ async function updateUI() {
         reinvestigatingPids.delete(a.pid);
       }
       const isInvestigating = backendInvestigating;
+      const observationEvidence = (a.adapter && a.adapter.observation_evidence) || {};
+      const observationText = observationEvidence.status === 'observed'
+        ? `观测证据: ${observationEvidence.label} · 当前=${observationEvidence.health_status || 'unknown'} · 有效事件=${observationEvidence.recent_events || 0} · 阻断=${(observationEvidence.blocking || {}).label || '未支持'}`
+        : `观测证据: ${observationEvidence.label || '未绑定观测证据'}${observationEvidence.reason ? ' · ' + observationEvidence.reason : ''}`;
       
       const statusHtml = escapeHtml(investigation.label + ' · ' + (investigation.message || '') +
-        ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label);
+        ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
 
