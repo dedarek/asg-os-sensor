@@ -1,0 +1,52 @@
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_d45838b7992526 120-129
+REVIEW.md
+  s_655532ed3c4512::t_60970a7186f309 139
+  s_655532ed3c4512::t_d45838b7992526 136-138,140-159
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_daf6dddcc2729a 44
+  s_655532ed3c4512::t_38496d5595c926 15-17,42,45-51,235-245,250-262,264-284,292,296-301,337-338,385
+  s_655532ed3c4512::t_b92ade5d17311f 263,358-364
+  s_655532ed3c4512::t_348e689256a2eb 43,246-249,387
+WORKLOG.md
+  s_655532ed3c4512::t_60970a7186f309 188
+  s_655532ed3c4512::t_8b3486b66ce8e3 148-187,189-190
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_b92ade5d17311f 14-17
+PLAN.md
+  s_655532ed3c4512::t_4f694f060b5d1a 23-28
+test_onboarding.py
+  s_655532ed3c4512::t_eeafac89f6f936 272-303
+  s_655532ed3c4512::t_dee749053c9eef 271
+  s_655532ed3c4512::t_4d94962d0c6b9f 221-223
+  s_655532ed3c4512::t_e89f822c22c623 208
+  s_655532ed3c4512::t_e4a2e2901a9204 209-211
+  s_655532ed3c4512::t_9fb3ab22fd5dbb 213-220,224-266,268-270
+runtime/onboarding.py
+  s_655532ed3c4512::t_38496d5595c926 133,173-179,182-198,202-206,210-211,215,571
+monitor_dashboard.py
+  s_655532ed3c4512::t_38496d5595c926 147-148,159-160,383,397,423,429,505,519,525,530
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_8b3486b66ce8e3 408-417
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_4f694f060b5d1a 125-130
+test_matcher_stage1.py
+  s_655532ed3c4512::t_670f5a5419036b 21,375-389
+  s_655532ed3c4512::t_50774035b54584 390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b00bf103c49bbcebff69c6ca9753451689256f83",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": null
+    }
+  }
+}
