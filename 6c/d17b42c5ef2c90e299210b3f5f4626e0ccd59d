@@ -1,0 +1,21 @@
+test_status_stage1.py
+  s_655532ed3c4512::t_d522b387b6796e 3-4,189-234
+  s_655532ed3c4512::t_8dbf03d2d0775d 8
+  s_655532ed3c4512::t_bae5790c4f1ccc 235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "6cd17b42c5ef2c90e299210b3f5f4626e0ccd59d",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
