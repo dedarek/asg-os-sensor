@@ -1,0 +1,21 @@
+AGENTS.md
+  s_1512a994888af5::t_db63b48ff5b422 1-7
+docs/stage1/PRODUCT_AND_COLLABORATION.md
+  s_1512a994888af5::t_b1d051010be470 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "75fdfa680319b22d19efaff5bbb9f1fc0db0840c",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
