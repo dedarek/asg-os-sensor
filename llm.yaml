@@ -11,6 +11,9 @@ routes:
     responses_path: /responses
     extra_headers: {}
     timeout_s: 30
+    # Confirmed by this gateway's context-length error; set independently per model.
+    context_limit: 32768
+    max_output_tokens: 4096
     # This selected endpoint currently presents an expired certificate.  The
     # exception is route-scoped and uses the process-local loopback proxy.
     # Other routes default to certificate verification.

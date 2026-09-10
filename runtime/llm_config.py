@@ -147,6 +147,16 @@ def goose_env(route: dict, key: str, pid: int = 0) -> dict:
     env['GOOSE_MODE'] = 'auto'
     env['OPENAI_BASE_URL'] = base
     env['OPENAI_API_KEY'] = key
+    # A compatible API does not imply the provider's default context capacity.
+    # Tell Goose the selected model's real limit so native compaction happens
+    # before the gateway rejects a long investigation. This is not a time limit.
+    for field, variable in [('context_limit', 'GOOSE_CONTEXT_LIMIT'),
+                            ('max_output_tokens', 'GOOSE_MAX_TOKENS')]:
+        value = route.get(field)
+        if value is not None:
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(field + ' must be a positive integer')
+            env[variable] = str(value)
     tls = route.get('tls') if isinstance(route.get('tls'), dict) else {}
     ca_bundle = str(tls.get('ca_bundle', '') or '').strip()
     if ca_bundle:

@@ -441,3 +441,8 @@ test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三�
 - 执行者并行只读查真实会话 API，顾问负责此次真实调查和生成计划的独立执行验收；不重启现用桌面 Agent。
 - 后续直接核对资产保存入口，发现还有独立的 finding evidence allowlist 漏掉二进制检索，以及工具 schema 允许 identity.value 但实现只取顶层字段会吞掉角色结论；已兼容两种形式、补回归。当前正在运行的 MCP 进程不会热加载补丁，若本轮遇到该错误以保存的证据继续，不掩盖失败。
 - 新增独立通用事件验收器 learned_events：只读取生成 Hook 的事件文件，核对目标PID+create_time、当轮nonce、时间与真实before/after配对；不调用Hook制造事件。尚未宣称真实目标已接入。
+
+## 顾问定位真实调查重复的根因（2026-09-10）
+- 第一轮真实 Goose 原生日志明确返回 ContextLengthExceeded：网关最大32768 tokens，输入至少32769。原路由没声明容量，随后调查重复初始步骤；不是HTTP200即可证明多轮工具调查兼容。
+- 已将 context_limit / max_output_tokens 做成通用路由选项传入 GOOSE_CONTEXT_LIMIT / GOOSE_MAX_TOKENS；此路由按实际错误设32768/4096，不是调查总时间限制。
+- 停止的仅本轮自建 investigator 55015，保留全部证据，实际目标44187及现用8081/桌面Agent未动。修复后用保存证据继续，复现入口仍为 learned-demo/current.json 对应的 run_investigation.py。
