@@ -1,0 +1,38 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_698b8571c19e69 506-507,515
+  s_655532ed3c4512::t_18231bd5cc0a19 508-514
+  s_655532ed3c4512::t_1309f1bb63912f 503-505,516
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_7ef5527f8b7a27 106-107,118-121,123,955,970,972-974,981-984
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_4600c983c1a51a 186-189,191-192,194,196,198
+  s_655532ed3c4512::t_698b8571c19e69 190,193,195,197
+monitor_dashboard.py
+  s_655532ed3c4512::t_7ef5527f8b7a27 1990
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_8c766d0554f4fe 104-106,111,113,115
+  s_655532ed3c4512::t_2cce8f1ef0db4e 107-110
+  s_655532ed3c4512::t_18231bd5cc0a19 112,114
+test_analyst_evidence.py
+  s_655532ed3c4512::t_891a9b1f9d323a 163-170
+runtime/investigation_activity.py
+  s_655532ed3c4512::t_7ef5527f8b7a27 52-58,93,119-120
+test_investigation_activity.py
+  s_655532ed3c4512::t_7ef5527f8b7a27 17,20-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8c3b60341d7cd0a5c5e40d16c083cdc0b4b3f784",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
