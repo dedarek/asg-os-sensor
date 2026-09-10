@@ -1,0 +1,27 @@
+WORKLOG.md
+  s_655532ed3c4512::t_bf278c3410dedf 898-911
+REVIEW.md
+  s_655532ed3c4512::t_bf278c3410dedf 571-578
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_bf278c3410dedf 1015-1021
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_bf278c3410dedf 575-581
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_bf278c3410dedf 374-381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b3aa5720a79f69404e8edec87a9b1f2e17ebecd8",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
