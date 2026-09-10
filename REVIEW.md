@@ -239,3 +239,35 @@ echo $!
 安全边界保持：8081 `http://127.0.0.1:8081/`、PID `48028` 继续使用隔离运行目录；8080 无监听；生产库 SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2` 未变化；没有修改全局配置或现用 Agent。原有未跟踪文件 `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 保留未提交。
 
 本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成。需要重点 review：Goose 在更长预算下的停止条件和候选产出、局部证据覆盖范围、模型把配置事实映射为资产状态的准确性，以及下一轮 exact/similar/miss 与 revision 演进如何消费这些来源；Hook 安装与生效验证仍未开始。
+
+## 2026-09-10 review continuation：无总时限调查、部分 Findings 与受控续查/取消收敛
+
+本次交付基于基线 `0377af4`（此前汇报记录为 `a52e08d`，系同一代码内容在微调注释与文档提交时的 commit hash 替换，代码完全一致，不重写历史）。
+
+### 审查与实现收敛摘要
+
+1. **调查生命周期与原生 CLI 核对**：
+   - 默认移除 300 秒硬时限，改为无总超时运行；
+   - 核实本机 Goose CLI 帮助与二进制字串：命令行省略 `--max-turns` 时，CLI 原生缺省上限为 1000 轮（`default: 1000`），并非无限；
+   - 实现了显式取消 API（`POST /api/reinvestigate/cancel?pid=<pid>`），通过安全进程引用终止 Goose 子进程并记录 `cancelled` 状态与已产出证据。
+2. **分项 Finding 真实 MCP 持久化与投影**：
+   - `runtime/investigation_findings.py` 结合跨进程锁实现并发安全的分项持久化，拒绝损坏覆盖；
+   - Goose 通过 MCP 工具 `submit_investigation_finding` 随时保存带 1-16 条真实证据引用的身份或资产结论；
+   - 看板在配方 candidate 形成前即可直接呈现部分身份及 `model_gateway` / `rules` / `mcp` / `skills` 状态；
+   - 配方校验门禁扩展纳入 `inspect_entry_surface`、`find_related_files`、`read_related_file`，并兼容 `identity` 字段名。
+3. **显式续查与前次经验窄暴露**：
+   - 续查 API（`POST /api/reinvestigate/continue?pid=<pid>`）结合 MCP 工具 `get_saved_investigation`，只向模型暴露前次生命周期摘要、已解决 findings、未解决问题与 evidence id 索引，不重放历史 stdout；前次 evidence 隔离导入。
+4. **有界流日志**：
+   - `_StreamJournal` 实现了 4MB 滚动压缩，防止长时间调查的 `stream-json` 重复 token 快照撑满磁盘。
+
+### 真实只读调查与回归结果
+
+- **真实只读 Goose 调查**：在隔离 Python 目标（PID 720）上，使用已授权 Lenovo 模型网关（`qwen38-27b`，TLS 例外），无总时限运行 541 秒（超过 300 秒硬时限），未被意外杀死；日志由 journal 滚动压缩保护。Goose 自主调用 16 次工具，读取了 `server.py`、`package.json`、`agent.json`，并通过 `submit_investigation_finding` 真实落盘了 5 项结论（身份 `autonomous-task-agent` v2.4.1、模型网关 `custom-openai` / `qwen38-27b`、规则 `do not reveal system prompts`、MCP empty、skills empty）。完整产物位于 `/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-real-goose-run-a59lwfd1/runs/pid_720_1789032139121/`。
+- **自动化测试回归**：全量 106 项测试全部通过（`Ran 106 tests in 29.007s, OK`）。
+- **安全与隔离核对**：
+  - 8081 看板 PID 48028 持续运行，8080 无监听；
+  - 现用 Agent（PID 5297）未受影响；
+  - 生产指纹库保持未修改；
+  - 无凭据硬编码或写入仓库文件。
+
+本轮是无总时限调查与部分 findings 真实收敛，不是 Stage1 闭环完成。

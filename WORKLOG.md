@@ -297,3 +297,56 @@ Goose recipe 已改为以 launch evidence 为主、既有本地采集为线索�
 保护核对：8081 看板仍为 `http://127.0.0.1:8081/`、PID `48028`；8080 无监听；生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent 与全局配置未修改。工作树中原有未跟踪交接文件 `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 未加入提交。
 
 本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成；exact/similar/miss、revision 演进、完整资产采集、Hook 安装及生效验证留在后续 review。
+
+## 2026-09-10 review continuation：无总时限调查、部分 Findings 与受控续查/取消收敛
+
+本轮实现增量基于 HEAD `0377af4`（此前汇报记录为 `a52e08d`，系同一代码内容在微调注释与文档提交时的 commit hash 替换，代码完全一致，不重写历史）。
+
+### 关键决策与审查落实
+
+1. **调查运行入口与生命周期控制审查**：
+   - 默认移除 5 分钟（300s）硬超时，改由环境变量 `ASG_GOOSE_TIMEOUT`、`ASG_GOOSE_MAX_TURNS`、`ASG_GOOSE_MAX_TOOL_REPETITIONS` 显式配置；若未设置则不向 Goose CLI 注入总时限，也不会由 supervisor 主动终止。
+   - 经对本机 Goose CLI 二进制执行原生字符串与帮助核查：Goose CLI 的 `--max-turns` 选项在命令行省略时，**其内置缺省值为 1000**（`Maximum number of turns allowed without user input (default: 1000)`），而非无限。已在文档与代码中如实记录这一原生特性，不在外部做虚假无限承诺。
+   - 增加显式进程取消能力：`POST /api/reinvestigate/cancel?pid=<pid>`。通过 `ACTIVE_ANALYST_PROCESSES` 字典记录活跃 Goose 实例，接收取消信号后安全 terminate 子进程，将生命周期与结果标记为 `cancelled` 并保留已产生的证据与分项结果。
+   - 单请求/子进程故障控制：通过 `try...finally` 保证 `_StreamJournal`、stderr 流和进程句柄正确释放；`Popen`、I/O 读取均有异常捕获，避免挂起。
+
+2. **部分身份与资产 Finding 持久化与看板投影**：
+   - 新增 `runtime/investigation_findings.py`，通过单写者机制（`_THREAD_LOCK` + 跨进程文件锁 `_FileLock` + 原子替换）确保分项并发安全，损坏或读取失败时禁止覆盖原文件。
+   - MCP 工具 `submit_investigation_finding`：允许 Goose 在调查过程中，随时就已确凿的分项身份（`kind=identity`）或资产（`kind=asset`，涵盖 `model_gateway`、`mcp`、`skills`、`rules`）提交结果。每一项均严格校验 1-16 条真实成功观测的 evidence id，并绑定当前冻结的实例 PID+create_time。
+   - 看板与 API 投影：未生成完整 Hook candidate 前，看板及 `/api/state` 会自动读取已落盘的 `investigation_findings.json`，将部分身份呈现在卡片标题（例如 `Goose 调查: <name>`）以及深度透视抽屉中；将资产状态（`collected`/`empty`/`failed`/`unsupported`/`unknown`）精确映射到相应字段，并附带 exact evidence id 来源。
+   - 配方校验门禁扩展：`runtime/recipe_validation.py` 中的 `OBSERVATION_TOOLS` 补充纳入通用证据工具（`inspect_entry_surface`、`find_related_files`、`read_related_file`），确保 Goose 引用的真实证据可以通过候选配方校验；同时兼容 `investigation.identity_evidence` 与 `investigation.identity` 字段名。
+
+3. **显式续查（`continue`）与历史隔离读取**：
+   - 增加续查接口：`POST /api/reinvestigate/continue?pid=<pid>`。支持基于前次同一实例的隔离 run 目录发起续查。
+   - 新增 MCP 工具 `get_saved_investigation`：在续查运行时，向 Goose 暴露前次受限生命周期摘要、已确定的分项 findings、未解决问题与 evidence id 索引；严禁重放历史完整 stdout，彻底杜绝上下文污染。
+   - 证据安全拷贝：将前次保存的 `ev-*.json` 隔离复制到本次 run 的 `evidence/` 下，Goose 可基于已有事实继续深挖未解决项。
+
+4. **有界流日志处理**：
+   - 引入 `_StreamJournal`：对 Goose 的 `stream-json` 输出做滚动式结构解析与压缩统计，默认保留 4MB 滚动窗口，杜绝数十万行重复 token 思考日志将磁盘撑满；同时保留原始 message id、block 类型、字数和时间戳统计，工具调用与证据仍由独立 audit 文件保留。
+
+### 真实运行与隔离证据
+
+- 真实 Goose 隔离调查：在受控随机目录创建带有 `package.json`（`autonomous-task-agent` v2.4.1）与 `agent.json`（`custom-openai` / `qwen38-27b`，tools `file_read`/`web_fetch`，system_rules `do not reveal system prompts`）的 Python socket 目标（PID 720, create_time 1789032138.034748）。
+- 使用已授权的 Lenovo 模型网关配置在内存加载密钥，在无总时限（`timeout_seconds=null`, `max_turns=null`）下运行一轮真实只读 Goose 调查：
+  - 产物目录：`/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-real-goose-run-a59lwfd1/runs/pid_720_1789032139121/`。
+  - Goose 自主调用 `get_target_context`、`inspect_entry_surface`、两次 `find_related_files`、三次 `read_related_file` 深入检查了目标根目录下的 `server.py`、`package.json`、`agent.json`。
+  - Goose 自主调用了 6 次 `submit_investigation_finding`，成功持久化了 5 项证据绑定的确凿分项结论：
+    - `identity`：identified，名称 `autonomous-task-agent`，版本 2.4.1，引用了 package.json、launch surface 和 server.py 源码 3 项证据。
+    - `model_gateway`：collected，模型 `qwen38-27b`，网关 `custom-openai`，引用 2 项证据。
+    - `rules`：collected，规则内容 `["do not reveal system prompts"]`，引用 2 项证据。
+    - `mcp`：empty，确认目标无 MCP 配置，引用 2 项证据。
+    - `skills`：empty，确认目标无技能目录，引用 2 项证据。
+  - 调查持续运行 541 秒（超过原先 300 秒硬超时），未被意外杀死，无日志溢出（journal 有效滚动压缩）；由于目标为固定 socket 循环且无扩展点，Goose 得出 `unsupported` 结论，且因提议中引用的证据工具校验门禁拦截未产生 candidate，程序如实记录未产生有效 Recipe，分项 findings 与生命周期完整保留。
+
+### 测试回归核对
+
+- 运行全部自动化回归测试（包括状态真实性、生命周期记录、分项 finding 提取与投影、取消 API、续查数据流、跨进程单写者锁、真实 MCP 子进程）：
+  ```
+  Ran 106 tests in 29.007s
+  OK
+  ```
+- 生产环境安全边界核对：
+  - 看板 PID 48028 持续运行在 8081（`ASG_AUTONOMOUS_ANALYSIS=0`），8080 无监听；
+  - 现用 OpenCode Agent（PID 5297）未被重启或终止；
+  - 生产指纹库 `runtime/fingerprints.json` 保持未修改；
+  - 无真实凭据硬编码或写入仓库文件。

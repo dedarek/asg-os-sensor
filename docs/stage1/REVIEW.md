@@ -150,3 +150,9 @@
 全量 `98` 项通过，其中既有回归 `90` 项，新增 `8` 项。真实 Goose 隔离运行保存了 `8` 次工具调用和 `8` 份 evidence 后于 `299998ms` 超时，未生成候选配方；证据目录为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/goose-generic-assets-v4-20260910T083028Z/pid_1052_1789029028/`。本机 Goose CLI 未发现可确认的 native subagent 参数，未宣称支持。
 
 本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成；exact/similar/miss、revision、完整资产采集和 Hook 生效验证留待后续 review。
+
+## 2026-09-10 review continuation：无总时限调查、部分 Findings 与受控续查/取消收敛
+
+增量基于基线 `0377af4`（此前汇报记录为 `a52e08d`，系同一代码内容在微调注释与文档提交时的 commit hash 替换，代码完全一致，不重写历史）。
+
+详细交付内容、Goose CLI 原生 1000 turns 缺省核对、分项 findings 投影、续查与取消机制、541s 真实 Goose 隔离运行产物（`/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-real-goose-run-a59lwfd1/runs/pid_720_1789032139121/`）及 106 项自动化回归详见根目录 `REVIEW.md`。本轮不是 Stage1 闭环完成。

@@ -15,7 +15,8 @@ OBSERVATION_TOOLS = ('get_target_context', 'inspect_config_surface',
                      'observe_tree', 'observe_runtime_surface',
                      'inspect_network_peers', 'inspect_execution_trace',
                      'inspect_stream', 'inspect_loader_surface',
-                     'inspect_observation')
+                     'inspect_observation', 'inspect_entry_surface',
+                     'find_related_files', 'read_related_file')
 
 
 def _real_success(item) -> bool:

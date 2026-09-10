@@ -47,3 +47,14 @@
 基线为 `246078c`，本轮只把目标进程的原始/解析入口、进程树、近旁元数据和有界配置文件证据交给 Goose，并把调查生命周期与配方调查摘要门禁接上。证据工具不选择产品身份、不生成产品适配器；Goose 必须引用证据形成身份结论，并分别报告 `model_gateway`、`mcp`、`skills`、`rules` 的状态、来源和不确定性。Hook 只允许报告目标机制，仍不安装、不执行、不验证。
 
 运行状态只看生命周期文件：`running`、`completed`、`failed`、`timeout`；超时保留 `analyst_stdout.jsonl`、`analyst_tool_calls.jsonl` 和 `evidence/`，不会降级成 `unsupported`。已检查本机 Goose CLI，没有发现可确认的原生 subagent 参数，因此不启用或宣称该能力。完成后停在 review，不推进 exact/similar/miss、revision 演进或 Hook 安装。
+
+## 2026-09-10 review continuation：无总时限调查、部分 Findings 与受控续查/取消收敛
+
+基线提交为 `0377af4`（此前汇报记录为 `a52e08d`，系同一代码内容在微调注释与文档提交时的 commit hash 替换，代码完全一致，不重写历史）。
+
+本次增量工作范围严格收敛为：
+1. 调查运行入口与生命周期控制审查：默认移除 5 分钟硬超时，由环境变量可选正数配置控制（未设置时不强加超时）；核实本机 Goose CLI 自身原生存在 `--max-turns`（缺省 1000），避免盲目认为省略参数即无限；提供单请求故障处理与显式取消（`cancel`）能力。
+2. 部分身份与资产 Finding 持久化与投影：引入 `runtime/investigation_findings.py`，通过真实 MCP 工具 `submit_investigation_finding` 写入经证据引用的分项身份或资产结果（`model_gateway`、`mcp`、`skills`、`rules`），在配方 candidate 形成前即可直接在 API / 看板透出，且与实例 PID+create_time 严格绑定。
+3. 显式续查（`continue`）与历史隔离读取：`get_saved_investigation` 工具仅读取前次调查的受限生命周期摘要、已解决分项 findings、未解决问题与 evidence id 索引，不重放历史 stdout；支持带隔离前次证据的断点接续。
+4. 有界流输出处理：引入 `_StreamJournal` 对 Goose 的 `stream-json` 逐 token 重复快照做滚动压缩记录（默认 4MB 滚动），防止进程日志无界膨胀，同时在独立文件保留工具审计与证据。
+5. 保持已有安全边界：自动安装保持关闭，不重启现用 Agent（PID 5297），不触碰 8080 与生产指纹库，所有测试产物放隔离目录。

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+import hashlib
 import time
 import shutil
 import shlex
@@ -30,7 +31,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
-from runtime import analyzer, matcher, onboarding
+from runtime import analyzer, matcher, onboarding, investigation_findings
 from runtime.status import presentation, DISABLED_REASON
 from runtime.recipe_validation import validate as validate_recipe
 from runtime.identity import identify, ownership, metadata_identity
@@ -64,11 +65,41 @@ def _env_int(name: str, default: int) -> int:
         return int(str(os.environ.get(name, default)))
     except Exception:
         return default
+
+
+def _env_optional_positive_int(name: str) -> int | None:
+    value = os.environ.get(name, "").strip()
+    if not value or value.lower() in {"none", "disabled", "off"}:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    if parsed < 1:
+        raise ValueError(f"{name} must be a positive integer or omitted")
+    return parsed
+
+
+def _env_optional_positive_float(name: str) -> float | None:
+    value = os.environ.get(name, "").strip()
+    if not value or value.lower() in {"none", "disabled", "off"}:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    if parsed <= 0:
+        raise ValueError(f"{name} must be positive or omitted")
+    return parsed
+
+
 SCAN_INTERVAL_S = _env_int("ASG_SCAN_INTERVAL", 30)
 MAX_ANALYSTS = _env_int("ASG_MAX_ANALYSTS", 2)
-GOOSE_MAX_TURNS = _env_int("ASG_GOOSE_MAX_TURNS", 18)
-GOOSE_MAX_TOOL_REPETITIONS = _env_int("ASG_GOOSE_MAX_TOOL_REPETITIONS", 4)
-GOOSE_TIMEOUT_S = _env_int("ASG_GOOSE_TIMEOUT", 300)
+GOOSE_MAX_TURNS = _env_optional_positive_int("ASG_GOOSE_MAX_TURNS")
+GOOSE_MAX_TOOL_REPETITIONS = _env_optional_positive_int("ASG_GOOSE_MAX_TOOL_REPETITIONS")
+GOOSE_TIMEOUT_S = _env_optional_positive_float("ASG_GOOSE_TIMEOUT")
+GOOSE_IDLE_DIAGNOSTIC_S = _env_optional_positive_float("ASG_GOOSE_IDLE_DIAGNOSTIC") or 300.0
+GOOSE_STDOUT_MAX_BYTES = _env_int("ASG_GOOSE_STDOUT_MAX_BYTES", 4 * 1024 * 1024)
 GOOSE_RETRY_COOLDOWN_S = _env_int("ASG_GOOSE_RETRY_COOLDOWN", 300)
 AUTONOMOUS_ANALYSIS_ENABLED = os.environ.get("ASG_AUTONOMOUS_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
 ONBOARDING_AUTO_INSTALL_ENABLED = os.environ.get("ASG_ONBOARDING_AUTO_INSTALL", "0").strip() == "1"
@@ -109,6 +140,8 @@ INVESTIGATION_LOCK = threading.Lock()
 INVESTIGATION_SEMAPHORE = threading.Semaphore(MAX_ANALYSTS)  # 最多同时允许 N 个 Goose 并发，防止跑满 API 与进程雪崩
 INVESTIGATION_RESULTS: dict[str, dict[str, Any]] = {}  # instance_id -> result
 INVESTIGATION_RETRY_AT: dict[str, float] = {}  # instance_id -> retry_at
+ACTIVE_ANALYST_PROCESSES: dict[str, subprocess.Popen] = {}
+INVESTIGATION_CANCEL_REQUESTS: set[str] = set()
 
 
 def _goose_executable() -> str | None:
@@ -197,6 +230,253 @@ def _write_investigation_lifecycle(run_dir: Path, lifecycle: dict[str, Any]) -> 
     temporary.write_text(json.dumps(redact(deepcopy(lifecycle)), ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(temporary, path)
     return path
+
+
+class _StreamJournal:
+    """Keep bounded stream metadata; tool evidence files retain the useful payloads.
+
+    Goose's stream-json output repeats the current message snapshot for every token.
+    Persisting those snapshots verbatim grows without bound and mostly duplicates
+    thinking text. The journal keeps message/block types, sizes and timestamps,
+    while the MCP audit/evidence files remain the source for request results.
+    """
+
+    def __init__(self, path: Path, max_bytes: int) -> None:
+        self.path = path
+        self.rotated_path = path.with_name(path.name + ".1")
+        self.max_bytes = max(64 * 1024, int(max_bytes))
+        self.stream = path.open("w", encoding="utf-8")
+        self.kept_bytes = 0
+        self.input_bytes = 0
+        self.input_lines = 0
+        self.json_lines = 0
+        self.rotations = 0
+        self.message_ids: set[str] = set()
+        self.block_counts: dict[str, int] = {}
+        self.content_bytes: dict[str, int] = {}
+        self.first_created: int | None = None
+        self.last_created: int | None = None
+        self.last_activity_at = time.time()
+
+    @staticmethod
+    def _summary(line: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(line)
+        except (TypeError, ValueError):
+            return {"type": "non_json", "input_bytes": len(line.encode("utf-8", "replace"))}
+        message = payload.get("message") if isinstance(payload, dict) else None
+        if not isinstance(message, dict):
+            return {"type": payload.get("type", "unknown") if isinstance(payload, dict) else "unknown"}
+        blocks = message.get("content") if isinstance(message.get("content"), list) else []
+        compact_blocks = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            kind = str(block.get("type", "unknown"))
+            item: dict[str, Any] = {"type": kind}
+            for field in ("thinking", "text"):
+                if isinstance(block.get(field), str):
+                    item[field + "_bytes"] = len(block[field].encode("utf-8"))
+            if kind == "toolRequest":
+                call = block.get("toolCall")
+                value = call.get("value") if isinstance(call, dict) else None
+                if isinstance(value, dict) and isinstance(value.get("name"), str):
+                    item["tool"] = value["name"]
+            compact_blocks.append(item)
+        message_id = message.get("id")
+        return {
+            "type": payload.get("type", "unknown"),
+            "message_id_hash": hashlib.sha256(str(message_id).encode("utf-8")).hexdigest()[:12],
+            "created": message.get("created"),
+            "role": message.get("role"),
+            "blocks": compact_blocks,
+        }
+
+    def consume(self, line: str) -> None:
+        raw_size = len(line.encode("utf-8", "replace"))
+        self.input_bytes += raw_size
+        self.input_lines += 1
+        self.last_activity_at = time.time()
+        summary = self._summary(line)
+        if summary.get("type") != "non_json":
+            self.json_lines += 1
+        if summary.get("message_id_hash"):
+            self.message_ids.add(summary["message_id_hash"])
+        created = summary.get("created")
+        if isinstance(created, int):
+            self.first_created = created if self.first_created is None else min(self.first_created, created)
+            self.last_created = created if self.last_created is None else max(self.last_created, created)
+        for block in summary.get("blocks", []):
+            kind = block.get("type", "unknown")
+            self.block_counts[kind] = self.block_counts.get(kind, 0) + 1
+            for field in ("thinking_bytes", "text_bytes"):
+                if field in block:
+                    key = field[:-6]
+                    self.content_bytes[key] = self.content_bytes.get(key, 0) + int(block[field])
+        encoded = (json.dumps(summary, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+        if self.kept_bytes + len(encoded) > self.max_bytes:
+            self.stream.flush()
+            self.stream.close()
+            try:
+                os.replace(self.path, self.rotated_path)
+            except FileNotFoundError:
+                pass
+            self.stream = self.path.open("w", encoding="utf-8")
+            self.kept_bytes = 0
+            self.rotations += 1
+        self.stream.write(encoded.decode("utf-8"))
+        self.stream.flush()
+        self.kept_bytes += len(encoded)
+
+    def stats(self) -> dict[str, Any]:
+        return {
+            "input_bytes": self.input_bytes,
+            "input_lines": self.input_lines,
+            "json_lines": self.json_lines,
+            "journal_bytes": self.kept_bytes,
+            "max_bytes": self.max_bytes,
+            "rotations": self.rotations,
+            "unique_message_ids": len(self.message_ids),
+            "block_counts": dict(self.block_counts),
+            "content_bytes": dict(self.content_bytes),
+            "first_created": self.first_created,
+            "last_created": self.last_created,
+            "last_activity_at": self.last_activity_at,
+        }
+
+    def close(self) -> dict[str, Any]:
+        self.stream.flush()
+        self.stream.close()
+        return self.stats()
+
+
+def _drain_goose_stdout(process: subprocess.Popen, journal: _StreamJournal) -> None:
+    stream = process.stdout
+    if stream is None:
+        return
+    try:
+        for line in stream:
+            journal.consume(line)
+    finally:
+        stream.close()
+
+
+def _target_matches(value: dict[str, Any], pid: int, create_time: float | None) -> bool:
+    target = value.get("target") if isinstance(value, dict) else None
+    if not isinstance(target, dict) or target.get("pid") != pid or create_time is None:
+        return False
+    try:
+        return abs(float(target.get("create_time")) - float(create_time)) <= 1e-3
+    except (TypeError, ValueError):
+        return False
+
+
+def _latest_investigation_run(pid: int, create_time: float | None) -> Path | None:
+    """Find the newest saved run for this exact process instance."""
+    root = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard")))
+    candidates = sorted(root.glob(f"pid_{pid}_*"), key=lambda item: item.stat().st_mtime, reverse=True)
+    for candidate in candidates[:64]:
+        for name in ("investigation_lifecycle.json", "result.json", "investigation_findings.json"):
+            path = candidate / name
+            if not path.is_file():
+                continue
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if _target_matches(value, pid, create_time):
+                return candidate
+    return None
+
+
+def _prepare_resume_evidence(previous: Path, current: Path, pid: int, create_time: float | None) -> dict[str, Any]:
+    """Import only bounded evidence JSON; stdout is intentionally never copied."""
+    lifecycle_path = previous / "investigation_lifecycle.json"
+    if lifecycle_path.is_file():
+        try:
+            lifecycle = json.loads(lifecycle_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise ValueError(f"previous lifecycle unreadable: {type(exc).__name__}") from exc
+        if not _target_matches(lifecycle, pid, create_time):
+            raise ValueError("previous investigation belongs to another target instance")
+    findings_path = previous / "investigation_findings.json"
+    if findings_path.is_file():
+        # A corrupt prior is an explicit continuation failure; it must never be
+        # silently interpreted as an empty history or overwritten.
+        investigation_findings.load(findings_path, target={"pid": pid, "create_time": create_time})
+    source = previous / "evidence"
+    destination = current / "evidence"
+    destination.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    copied_bytes = 0
+    for item in sorted(source.glob("ev-*.json"), key=lambda path: path.name)[-128:]:
+        try:
+            size = item.stat().st_size
+            if size > 256 * 1024 or copied_bytes + size > 8 * 1024 * 1024:
+                continue
+            shutil.copyfile(item, destination / item.name)
+        except OSError:
+            continue
+        copied += 1
+        copied_bytes += size
+    return {"source": str(previous), "evidence_files_copied": copied, "evidence_bytes_copied": copied_bytes}
+
+
+def _load_partial_findings(run_dir: Path | None, target: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    if run_dir is None:
+        return None
+    path = run_dir / "investigation_findings.json"
+    if not path.exists():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        return {"status": "failed", "reason": f"分项调查结果读取失败: {type(exc).__name__}", "path": str(path)}
+    if not isinstance(value, dict):
+        return {"status": "failed", "reason": "分项调查结果结构无效", "path": str(path)}
+    if target is not None and not _target_matches(value, int(target["pid"]), target.get("create_time")):
+        return {"status": "failed", "reason": "分项调查结果绑定了其他实例", "path": str(path)}
+    value["path"] = str(path)
+    return value
+
+
+def _partial_result_details(run_dir: Path, target: dict[str, Any]) -> dict[str, Any]:
+    partial = _load_partial_findings(run_dir, target)
+    return {"partial_findings": partial} if partial is not None else {}
+
+
+_PARTIAL_ASSET_FIELDS = {
+    "model_gateway": "model_routing",
+    "mcp": "registered_tools_and_mcp",
+    "skills": "skills",
+    "rules": "system_prompt_rules",
+}
+
+
+def _partial_asset_collections(partial: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """Project Goose's evidence-backed partial findings into the shared status API."""
+    if not isinstance(partial, dict):
+        return {}
+    findings = partial.get("findings")
+    assets = findings.get("assets") if isinstance(findings, dict) else None
+    if not isinstance(assets, dict):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for name, field in _PARTIAL_ASSET_FIELDS.items():
+        finding = assets.get(name)
+        if not isinstance(finding, dict):
+            continue
+        refs = finding.get("evidence_refs", [])
+        result[field] = {
+            "status": finding.get("status", "unknown"),
+            "value": finding.get("value"),
+            "source": "goose finding",
+            "sources": refs if isinstance(refs, list) else [],
+            "evidence_refs": refs if isinstance(refs, list) else [],
+            "uncertainty": finding.get("uncertainty", []),
+            "message": "Goose 部分调查结果",
+        }
+    return result
 
 
 def _observe_request(path: str) -> tuple[int | None, dict[str, Any] | None, str | None]:
@@ -386,7 +666,8 @@ def _freeze_instance(pid: int, struct: dict[str, Any]) -> tuple[str, float | Non
     return f"{pid}:{create_time}", create_time
 
 
-def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool = False):
+def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool = False,
+                                 resume_from: Path | None = None):
     """由 Goose 执行后台非交互式受控逆向接管（模型路由见 llm.yaml）"""
     if not AUTONOMOUS_ANALYSIS_ENABLED:
         return
@@ -422,10 +703,13 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
 
     lifecycle: dict[str, Any] = {}
     try:
-        run_dir = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard"))) / f"pid_{pid}_{int(time.time())}"
+        run_dir = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard"))) / f"pid_{pid}_{int(time.time() * 1000)}"
         run_dir.mkdir(parents=True, exist_ok=True)
         recipes_dir = run_dir / "recipes"
         recipes_dir.mkdir(parents=True, exist_ok=True)
+        resume_details = None
+        if resume_from is not None:
+            resume_details = _prepare_resume_evidence(resume_from, run_dir, pid, create_time)
 
         stream_file = run_dir / "target_stream.jsonl"
         stream_file.touch()
@@ -439,13 +723,19 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             "timed_out": False,
             "end_reason": "running",
             "timeout_seconds": GOOSE_TIMEOUT_S,
+            "timeout_enabled": GOOSE_TIMEOUT_S is not None,
             "max_turns": GOOSE_MAX_TURNS,
             "max_tool_repetitions": GOOSE_MAX_TOOL_REPETITIONS,
-            "resume": {
+            "resume": ({
+                "status": "continuing",
+                "source": str(resume_from),
+                "automatic_continuation": False,
+                "details": resume_details,
+            } if resume_from is not None else {
                 "status": "available_from_saved_evidence",
                 "source": "analyst_stdout.jsonl + analyst_tool_calls.jsonl + evidence/",
                 "automatic_continuation": False,
-            },
+            }),
         }
         lifecycle_path = _write_investigation_lifecycle(run_dir, lifecycle)
 
@@ -469,7 +759,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 message = "LLM 凭据缺失: " + str(route.get("key_env", "?"))
                 finish_lifecycle("failed", "credentials_missing")
                 _record_investigation_result(instance_id, pid, create_time, "failed", message, run_dir,
-                                             {"lifecycle": deepcopy(lifecycle)})
+                                             {"lifecycle": deepcopy(lifecycle), **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
                 _record_onboarding_outcome(instance_id, pid, create_time, "failed", message, run_dir, struct.get("compatibility"))
                 print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
                 return
@@ -477,7 +767,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 message = "ASG_INSECURE_SSL 仅允许当前路由的显式 TLS 配置使用"
                 finish_lifecycle("blocked", "tls_policy_blocked")
                 _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir,
-                                             {"lifecycle": deepcopy(lifecycle)})
+                                             {"lifecycle": deepcopy(lifecycle), **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
                 _record_onboarding_outcome(instance_id, pid, create_time, "blocked", message, run_dir, struct.get("compatibility"))
                 print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)
                 return
@@ -489,17 +779,28 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 "--params", f"target_pid={pid}",
                 "--provider", route["provider"],
                 "--model", route["model"],
-                "--max-turns", str(GOOSE_MAX_TURNS),
-                "--max-tool-repetitions", str(GOOSE_MAX_TOOL_REPETITIONS),
                 "--output-format", "stream-json",
                 "--with-extension", extension
             ]
+            if GOOSE_MAX_TURNS is not None:
+                cmd[cmd.index("--output-format"):cmd.index("--output-format")] = ["--max-turns", str(GOOSE_MAX_TURNS)]
+            if GOOSE_MAX_TOOL_REPETITIONS is not None:
+                cmd[cmd.index("--output-format"):cmd.index("--output-format")] = ["--max-tool-repetitions", str(GOOSE_MAX_TOOL_REPETITIONS)]
 
             env = os.environ.copy()
             env.update(build_goose_env(route, key, pid))
             env.update(ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
                        ASG_AUDIT_DIR=str(run_dir), ASG_RECIPE_DIR=str(recipes_dir),
-                       ASG_TARGET_STREAM_FILE=str(stream_file))
+                       ASG_TARGET_STREAM_FILE=str(stream_file),
+                       ASG_FINDINGS_FILE=str(run_dir / "investigation_findings.json"))
+            if resume_from is not None:
+                env.update(
+                    ASG_RESUME_FROM_RUN_DIR=str(resume_from),
+                    ASG_RESUME_FINDINGS_FILE=str(resume_from / "investigation_findings.json"),
+                    ASG_RESUME_LIFECYCLE_FILE=str(resume_from / "investigation_lifecycle.json"),
+                    ASG_RESUME_AUDIT_FILE=str(resume_from / "analyst_tool_calls.jsonl"),
+                    ASG_RESUME_EVIDENCE_DIR=str(run_dir / "evidence"),
+                )
 
             out_path = run_dir / "analyst_stdout.jsonl"
             err_path = run_dir / "analyst_stderr.log"
@@ -514,34 +815,86 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
 
             print(f"[Analyst] Goose 开始自主逆向接管 PID={pid}...")
             t0 = time.time()
-            out_stream = out_path.open("w", encoding="utf-8")
             err_stream = err_path.open("w", encoding="utf-8")
+            journal = _StreamJournal(out_path, GOOSE_STDOUT_MAX_BYTES)
+            analyst_process = None
+            cancelled = False
+            timed_out = False
             try:
                 analyst_process = subprocess.Popen(
-                    cmd, cwd=ROOT, env=env, stdout=out_stream, stderr=err_stream, text=True,
+                    cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=err_stream,
+                    text=True, bufsize=1,
                 )
                 lifecycle["goose_process"] = _process_identity(analyst_process.pid)
                 lifecycle["goose_process"]["pid"] = analyst_process.pid
+                with INVESTIGATION_LOCK:
+                    ACTIVE_ANALYST_PROCESSES[instance_id] = analyst_process
                 _write_investigation_lifecycle(run_dir, lifecycle)
-                try:
-                    analyst_returncode = analyst_process.wait(timeout=GOOSE_TIMEOUT_S)
-                except subprocess.TimeoutExpired:
-                    lifecycle["timed_out"] = True
-                    lifecycle["status"] = "timeout"
-                    lifecycle["end_reason"] = "timeout"
-                    analyst_process.kill()
-                    analyst_returncode = analyst_process.wait()
-                else:
-                    lifecycle["status"] = "completed" if analyst_returncode == 0 else "failed"
-                    lifecycle["end_reason"] = "completed" if analyst_returncode == 0 else "nonzero_exit"
+                reader = threading.Thread(target=_drain_goose_stdout, args=(analyst_process, journal),
+                                          name=f"analyst-stream-{pid}", daemon=True)
+                reader.start()
+                deadline = t0 + GOOSE_TIMEOUT_S if GOOSE_TIMEOUT_S is not None else None
+                while True:
+                    analyst_returncode = analyst_process.poll()
+                    audit_path = run_dir / "analyst_tool_calls.jsonl"
+                    try:
+                        audit_mtime = audit_path.stat().st_mtime
+                        with audit_path.open(encoding="utf-8") as _af:
+                            audit_count = sum(1 for line in _af if line.strip())
+                    except OSError:
+                        audit_mtime = None
+                        audit_count = 0
+                    activity_times = [journal.last_activity_at]
+                    if audit_mtime is not None:
+                        activity_times.append(audit_mtime)
+                    last_activity = max(activity_times) if activity_times else t0
+                    no_activity = max(0.0, time.time() - last_activity)
+                    lifecycle["progress"] = {
+                        "stream": journal.stats(),
+                        "audit_tool_call_count": audit_count,
+                        "last_activity_at": iso(last_activity),
+                        "no_activity_seconds": round(no_activity, 1),
+                        "diagnostic_status": "idle_long" if no_activity >= GOOSE_IDLE_DIAGNOSTIC_S else "active",
+                    }
+                    _write_investigation_lifecycle(run_dir, lifecycle)
+                    with INVESTIGATION_LOCK:
+                        cancelled = instance_id in INVESTIGATION_CANCEL_REQUESTS
+                        if cancelled:
+                            INVESTIGATION_CANCEL_REQUESTS.discard(instance_id)
+                    if cancelled and analyst_returncode is None:
+                        analyst_process.terminate()
+                        lifecycle["status"] = "cancelled"
+                        lifecycle["end_reason"] = "cancelled"
+                        break
+                    if analyst_returncode is not None:
+                        lifecycle["status"] = "completed" if analyst_returncode == 0 else "failed"
+                        lifecycle["end_reason"] = "completed" if analyst_returncode == 0 else "nonzero_exit"
+                        break
+                    if deadline is not None and time.time() >= deadline:
+                        timed_out = True
+                        lifecycle["timed_out"] = True
+                        lifecycle["status"] = "timeout"
+                        lifecycle["end_reason"] = "timeout"
+                        analyst_process.kill()
+                        break
+                    time.sleep(1.0)
+                if analyst_process.poll() is None:
+                    try:
+                        analyst_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        analyst_process.kill()
+                        analyst_process.wait()
+                analyst_returncode = analyst_process.returncode
+                reader.join(timeout=10)
+                if reader.is_alive():
+                    lifecycle["stream_reader_warning"] = "stdout reader did not finish within 10 seconds"
+                stream_stats = journal.close()
                 lifecycle["returncode"] = analyst_returncode
+                lifecycle["timed_out"] = timed_out
+                lifecycle["stream"] = stream_stats
                 lifecycle["ended_at"] = iso()
                 lifecycle["elapsed_ms"] = int((time.time() - t0) * 1000)
-                calls_path = run_dir / "analyst_tool_calls.jsonl"
-                try:
-                    lifecycle["tool_call_count"] = sum(1 for line in calls_path.read_text(encoding="utf-8").splitlines() if line.strip())
-                except OSError:
-                    lifecycle["tool_call_count"] = 0
+                lifecycle["tool_call_count"] = lifecycle.get("progress", {}).get("audit_tool_call_count", 0)
                 _write_investigation_lifecycle(run_dir, lifecycle)
             except OSError as exc:
                 lifecycle["status"] = "failed"
@@ -551,8 +904,14 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 _write_investigation_lifecycle(run_dir, lifecycle)
                 raise
             finally:
-                out_stream.close()
                 err_stream.close()
+                if analyst_process is not None:
+                    with INVESTIGATION_LOCK:
+                        ACTIVE_ANALYST_PROCESSES.pop(instance_id, None)
+                try:
+                    journal.close()
+                except (AttributeError, OSError, ValueError):
+                    pass
             cp = subprocess.CompletedProcess(cmd, analyst_returncode)
             elapsed_ms = int((time.time() - t0) * 1000)
 
@@ -597,10 +956,12 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                                                  f"已保存候选配方 {entry.get('id')}（{hook_text}），未安装／未验证"
                                                  if install_result is None
                                                  else f"已保存候选配方 {entry.get('id')}（{hook_text}），接入链状态: {install_result.get('status')}",
-                                                 run_dir, {**onboarding_details, "lifecycle": deepcopy(lifecycle)})
+                                                 run_dir, {**onboarding_details, "lifecycle": deepcopy(lifecycle),
+                                                           **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
-                    _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir, {"lifecycle": deepcopy(lifecycle)})
+                    _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir,
+                                                 {"lifecycle": deepcopy(lifecycle), **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
                     _record_onboarding_outcome(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir, struct.get("compatibility"))
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
             else:
@@ -611,12 +972,18 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                         stderr_tail = redact('\n'.join(err_txt[-6:]))[-600:]
                 except OSError:
                     pass
-                reason = (f"Goose 调查超时；已保留进度，可基于隔离证据继续调查"
-                          if lifecycle.get("timed_out") else
-                          f"Goose 未产生有效 Recipe (returncode={cp.returncode})")
+                if lifecycle.get("timed_out"):
+                    reason = "Goose 调查超时；已保留进度，可基于隔离证据继续调查"
+                elif lifecycle.get("end_reason") == "cancelled":
+                    reason = "Goose 调查已取消；已保留进度，可基于隔离证据继续调查"
+                else:
+                    reason = f"Goose 未产生有效 Recipe (returncode={cp.returncode})"
                 if stderr_tail:
                     reason += "；stderr 尾部: " + stderr_tail
-                _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir, {"lifecycle": deepcopy(lifecycle)})
+                result_status = ("timeout" if lifecycle.get("timed_out") else
+                                 "cancelled" if lifecycle.get("end_reason") == "cancelled" else "failed")
+                _record_investigation_result(instance_id, pid, create_time, result_status, reason, run_dir,
+                                             {"lifecycle": deepcopy(lifecycle), **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
                 _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
                 print(f"[Analyst] 接管完成但未产生有效 Recipe; returncode={cp.returncode}; stderr_tail={stderr_tail[:200]}", file=sys.stderr)
 
@@ -625,7 +992,8 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             if lifecycle and lifecycle.get("status") == "running":
                 finish_lifecycle("failed", "exception", error_type=type(exc).__name__)
             _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir,
-                                         {"lifecycle": deepcopy(lifecycle) if lifecycle else {}})
+                                         {"lifecycle": deepcopy(lifecycle) if lifecycle else {},
+                                          **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
             _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:
@@ -803,11 +1171,31 @@ def scan_agents_once():
             if not AUTONOMOUS_ANALYSIS_ENABLED and not investigation_result:
                 investigation_result = {"status": "disabled", "message": "自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)"}
 
+            with STATE_LOCK:
+                active_run = dict(SCAN_STATE['active_investigations'].get(pid, {}))
+            if active_run.get('instance_id') and active_run['instance_id'] != instance_id:
+                active_run = {}  # 复用 PID 的旧运行态不进入新实例
+            log_dir = active_run.get('log_dir') or investigation_result.get('log_dir')
+            partial_findings = _load_partial_findings(
+                Path(log_dir) if log_dir else None,
+                {"pid": pid, "create_time": pinfo.get('create_time')},
+            )
+            partial_identity = ((partial_findings or {}).get("findings") or {}).get("identity") \
+                if isinstance(partial_findings, dict) else None
+            if (not local_identity and not matched_fp and isinstance(partial_identity, dict)
+                    and partial_identity.get("status") == "identified"):
+                partial_value = partial_identity.get("value") or {}
+                partial_name = partial_value.get("name") if isinstance(partial_value, dict) else None
+                if partial_name and partial_name != "unidentified-agent":
+                    display_name = f"Goose 调查: {partial_name} ({name})"
+
             recipe_obj = matched_fp.get("hook_recipe", {}) if matched_fp else {}
             adapter_info = {
                 "matched": is_matched,
                 "investigating": is_investigating,
                 "investigation": investigation_result,
+                "partial_findings": partial_findings,
+                "investigated_identity": partial_identity,
                 "match_ms": match_ms,
                 "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
                 "behavioral_class": (recipe_obj.get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
@@ -838,11 +1226,6 @@ def scan_agents_once():
                 observation_snapshot, pid, pinfo.get('create_time'))
             for field in adapter_info['assets']:
                 adapter_info[field] = None
-            with STATE_LOCK:
-                active_run = dict(SCAN_STATE['active_investigations'].get(pid, {}))
-            if active_run.get('instance_id') and active_run['instance_id'] != instance_id:
-                active_run = {}  # 复用 PID 的旧运行态不进入新实例
-            log_dir = active_run.get('log_dir') or investigation_result.get('log_dir')
             if log_dir:
                 for ev_path in sorted((Path(log_dir) / 'evidence').glob('ev-*.json')):
                     try:
@@ -855,6 +1238,11 @@ def scan_agents_once():
                             adapter_info['assets'].update({k: v for k, v in presentation(True, collections=collections)['assets'].items() if k in collections})
                     except (OSError, ValueError):
                         continue
+            partial_assets = _partial_asset_collections(partial_findings)
+            for field, record in partial_assets.items():
+                current = adapter_info['assets'].get(field) or {}
+                if current.get('status') not in ('collected', 'empty') or record.get('status') in ('collected', 'empty'):
+                    adapter_info['assets'][field] = presentation(True, collections={field: record})['assets'][field]
             adapter_info['hook'] = '未安装' 
             adapter_info['observation'] = '未接入／未验证'
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
@@ -1314,8 +1702,18 @@ HTML_PAGE = """<!DOCTYPE html>
 <script>
 function assetText(adapter, key) {
   const item = (adapter.assets || {})[key] || {label: '尚未采集'};
-  return escapeHtml(item.label + (item.message ? '：' + item.message : '') + (item.source ? ' [来源: ' + item.source + ']' : '') +
+  const source = item.sources && item.sources.length ? item.sources.join(', ') : item.source;
+  return escapeHtml(item.label + (item.message ? '：' + item.message : '') + (source ? ' [来源: ' + source + ']' : '') +
     (item.value ? ' · ' + JSON.stringify(item.value) : ''));
+}
+function findingText(finding) {
+  if (!finding) return '尚未得到 Goose 身份结论';
+  const value = finding.value || {};
+  const name = typeof value === 'object' ? (value.name || '未识别') : value;
+  const runtime = typeof value === 'object' ? (value.runtime || '运行时未知') : '';
+  const refs = Array.isArray(finding.evidence_refs) ? finding.evidence_refs.join(', ') : '';
+  return escapeHtml((finding.status === 'identified' ? name : '身份未知') +
+    (runtime ? ' · ' + runtime : '') + (refs ? ' · 证据: ' + refs : ''));
 }
 function renderTools(tools) {
   if (!Array.isArray(tools) || tools.length === 0) {
@@ -1448,6 +1846,7 @@ async function openInspector(pid) {
         <div><b>进程存活时长:</b> <span style="color: #fff;">${formatUptime(agent.uptime_sec)}</span></div>
         <div><b>工作区路径 (CWD):</b> <span style="color: #38bdf8; font-family: monospace;">${adapter.workspace_cwd || '未知'}</span></div>
         <div><b>宿主治理层级:</b> <span style="color: #cbd5e1;">${adapter.host_platform || '未知'}</span></div>
+        <div><b>Goose 调查身份:</b> <span style="color: #38bdf8;">${findingText(adapter.investigated_identity)}</span></div>
       </div>
     </div>
 
@@ -1570,6 +1969,7 @@ async function updateUI() {
       
       const statusHtml = escapeHtml(investigation.label + ' · ' + (investigation.message || '') +
         ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText + ' | ' + onboardingText);
+      const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
 
@@ -1607,6 +2007,12 @@ async function updateUI() {
 
       const btnText = investigation.status === 'disabled' ? investigation.message : (isInvestigating ? '调查执行中' : 'Goose 深度重测');
       const btnDisabled = investigation.can_request ? '' : 'disabled';
+      const continuation = investigation.can_continue
+        ? `<button onclick="triggerContinue(${a.pid})" class="btn-reinvestigate" style="color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);">基于已保留证据续查</button>`
+        : '';
+      const cancelButton = isInvestigating
+        ? `<button onclick="triggerCancel(${a.pid})" class="btn-reinvestigate" style="color: #f87171; border-color: rgba(248, 113, 113, 0.4);">取消调查</button>`
+        : '';
 
       const scoreClass = a.score >= 80 ? 'score-high' : (a.score >= 50 ? 'score-mid' : 'score-low');
 
@@ -1635,6 +2041,8 @@ async function updateUI() {
               <div style="display: flex; gap: 6px;">
                 <button onclick="openInspector(${a.pid})" class="btn-reinvestigate" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">🔍 深度透视</button>
                 <button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="btn-reinvestigate" ${btnDisabled}>${btnText}</button>
+                ${continuation}
+                ${cancelButton}
               </div>
             </div>
             <div class="adapter-box">
@@ -1642,6 +2050,10 @@ async function updateUI() {
               <div class="adapter-row">
                 <span class="adapter-label">调查 / 指纹 / Hook:</span>
                 <span class="adapter-val">${statusHtml}</span>
+              </div>
+              <div class="adapter-row">
+                <span class="adapter-label">Goose 部分身份:</span>
+                <span class="adapter-val">${partialIdentityHtml}</span>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">宿主与工作区:</span>
@@ -1704,6 +2116,21 @@ async function triggerReinvestigate(pid) {
   try {
     const response = await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
     if (!response.ok) reinvestigatingPids.delete(pid);
+  } catch(e) {}
+  await updateUI();
+}
+
+async function triggerContinue(pid) {
+  reinvestigatingPids.add(pid);
+  try {
+    await fetch('/api/reinvestigate/continue?pid=' + pid, { method: 'POST' });
+  } catch(e) {}
+  await updateUI();
+}
+
+async function triggerCancel(pid) {
+  try {
+    await fetch('/api/reinvestigate/cancel?pid=' + pid, { method: 'POST' });
   } catch(e) {}
   await updateUI();
 }
@@ -1831,6 +2258,56 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 code = 200
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif self.path.startswith("/api/reinvestigate/continue"):
+            pid = _query_pid(self.path)
+            if not AUTONOMOUS_ANALYSIS_ENABLED:
+                payload = presentation(False)['investigation']
+                code = 503
+            else:
+                agent, target = _onboarding_target(pid) if pid else (None, None)
+                previous = _latest_investigation_run(pid, target.get("create_time") if target else None) \
+                    if target else None
+                if not agent or not target:
+                    payload = {"status": "invalid_request", "reason": "需要当前扫描中的有效 pid"}
+                    code = 400
+                elif previous is None:
+                    payload = {"status": "no_resume_source", "reason": "没有同一实例的隔离调查结果可续查"}
+                    code = 409
+                else:
+                    struct = {}
+                    try:
+                        struct = analyzer.analyze(pid)
+                    except Exception as exc:
+                        payload = {"status": "analysis_context_failed", "reason": type(exc).__name__}
+                        code = 500
+                    else:
+                        threading.Thread(
+                            target=run_autonomous_investigation,
+                            args=(pid, struct, True, previous),
+                            name=f"analyst-worker-continue-{pid}",
+                            daemon=True,
+                        ).start()
+                        payload = {"status": "continuing", "target": target, "resume_from": str(previous)}
+                        code = 202
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif self.path.startswith("/api/reinvestigate/cancel"):
+            pid = _query_pid(self.path)
+            agent, target = _onboarding_target(pid) if pid else (None, None)
+            instance_id = f"{pid}:{target.get('create_time')}" if target else None
+            with INVESTIGATION_LOCK:
+                active = bool(instance_id and instance_id in ACTIVE_ANALYST_PROCESSES)
+                if active:
+                    INVESTIGATION_CANCEL_REQUESTS.add(instance_id)
+            payload = {"status": "cancelling", "instance_id": instance_id} if active else {
+                "status": "not_running", "reason": "当前实例没有可取消的 Goose 调查"
+            }
+            self.send_response(202 if active else 409)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         elif self.path.startswith("/api/reinvestigate"):

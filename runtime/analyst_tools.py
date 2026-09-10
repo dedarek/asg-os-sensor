@@ -33,9 +33,15 @@ from runtime.analyst_evidence import (  # noqa: E402
     metadata_candidates,
     read_related_file,
 )
+from runtime import investigation_findings
 AUDIT_DIR = Path(os.environ.get("ASG_AUDIT_DIR", ROOT / "e2e" / "artifacts"))
 EVIDENCE_DIR = AUDIT_DIR / "evidence"
 RECIPE_DIR = Path(os.environ.get("ASG_RECIPE_DIR", AUDIT_DIR / "recipes"))
+FINDINGS_PATH = Path(os.environ.get("ASG_FINDINGS_FILE", AUDIT_DIR / "investigation_findings.json"))
+RESUME_RUN_DIR = Path(os.environ["ASG_RESUME_FROM_RUN_DIR"]) if os.environ.get("ASG_RESUME_FROM_RUN_DIR") else None
+RESUME_FINDINGS_FILE = Path(os.environ["ASG_RESUME_FINDINGS_FILE"]) if os.environ.get("ASG_RESUME_FINDINGS_FILE") else None
+RESUME_LIFECYCLE_FILE = Path(os.environ["ASG_RESUME_LIFECYCLE_FILE"]) if os.environ.get("ASG_RESUME_LIFECYCLE_FILE") else None
+RESUME_AUDIT_FILE = Path(os.environ["ASG_RESUME_AUDIT_FILE"]) if os.environ.get("ASG_RESUME_AUDIT_FILE") else None
 TARGET_STREAM = Path(os.environ.get("ASG_TARGET_STREAM_FILE", "")) if os.environ.get("ASG_TARGET_STREAM_FILE") else None
 TARGET_PID = int(os.environ.get("ASG_TARGET_PID", "0") or 0)
 TARGET_CREATE_TIME = None
@@ -424,10 +430,11 @@ def _validate_investigation_summary(recipe: dict[str, Any]) -> None:
     summary = recipe.get("investigation")
     if not isinstance(summary, dict):
         raise ValueError("recipe investigation summary is required")
-    identity = summary.get("identity_evidence")
-    if (not isinstance(identity, dict) or not identity.get("sources")
-            or not isinstance(identity.get("sources"), list)
-            or not isinstance(identity.get("uncertainty", []), list)):
+    identity = summary.get("identity_evidence") or summary.get("identity")
+    if not isinstance(identity, dict):
+        raise ValueError("recipe investigation identity summary is required")
+    identity_sources = identity.get("sources") or identity.get("evidence_refs")
+    if not isinstance(identity_sources, list) or not identity_sources or not isinstance(identity.get("uncertainty", []), list):
         raise ValueError("investigation.identity_evidence must include sources")
     assets = summary.get("assets")
     if not isinstance(assets, dict):
@@ -443,6 +450,135 @@ def _validate_investigation_summary(recipe: dict[str, Any]) -> None:
             raise ValueError("invalid investigation asset status: " + name)
         if not isinstance(item.get("sources", []), list) or not isinstance(item.get("uncertainty", []), list):
             raise ValueError("investigation asset sources must be a list: " + name)
+
+
+_FINDING_EVIDENCE_TOOLS = {
+    "get_target_context", "inspect_entry_surface", "find_related_files", "read_related_file",
+    "inspect_config_surface", "inspect_loader_surface", "inspect_network_peers",
+    "inspect_execution_trace", "inspect_stream", "inspect_observation", "observe_tree",
+    "observe_runtime_surface",
+}
+_EVIDENCE_REF = re.compile(r"ev-[0-9]+-[a-f0-9]{10}")
+
+
+def _validate_finding_evidence(refs: Any) -> list[str]:
+    if not isinstance(refs, list) or not refs or len(refs) > 16:
+        raise ValueError("finding evidence_refs must contain 1-16 references")
+    result: list[str] = []
+    expected = (TARGET_PID, TARGET_CREATE_TIME)
+    for ref in refs:
+        if not isinstance(ref, str) or not _EVIDENCE_REF.fullmatch(ref) or ref in result:
+            raise ValueError("invalid finding evidence reference: " + str(ref))
+        path = EVIDENCE_DIR / (ref + ".json")
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise ValueError("finding evidence is not in the current audit: " + ref) from exc
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise ValueError("finding evidence is unreadable: " + ref) from exc
+        if not isinstance(item, dict) or item.get("error") or item.get("tool") not in _FINDING_EVIDENCE_TOOLS:
+            raise ValueError("finding evidence is not a successful observation: " + ref)
+        observed = item.get("result")
+        if observed in (None, {}, [], ""):
+            raise ValueError("finding evidence has no result: " + ref)
+        bound = item.get("target") or {}
+        if bound.get("pid") != expected[0] or bound.get("create_time") is None:
+            raise ValueError("finding evidence is bound to another instance: " + ref)
+        if expected[1] is not None and float(bound["create_time"]) != float(expected[1]):
+            raise ValueError("finding evidence create_time does not match target: " + ref)
+        result.append(ref)
+    return result
+
+
+def _submit_investigation_finding(args: dict[str, Any]) -> dict[str, Any]:
+    kind = args.get("kind")
+    evidence_refs = _validate_finding_evidence(args.get("evidence_refs"))
+    uncertainty = args.get("uncertainty", [])
+    open_questions = args.get("open_questions", [])
+    if kind == "identity":
+        status = args.get("status", "unknown")
+        value = {
+            "name": str(args.get("name") or "unidentified-agent")[:240],
+            "runtime": str(args.get("runtime") or "unknown")[:160],
+            "entry": str(args.get("entry") or "unknown")[:400],
+            "version": str(args.get("version") or "unknown")[:160],
+        }
+        if isinstance(args.get("details"), dict):
+            value["details"] = args["details"]
+        finding = {"kind": kind, "status": status, "value": redact(value),
+                   "evidence_refs": evidence_refs, "uncertainty": uncertainty,
+                   "open_questions": open_questions}
+    elif kind == "asset":
+        asset = args.get("asset")
+        status = args.get("status")
+        value = args.get("value", args.get("summary"))
+        finding = {"kind": kind, "asset": asset, "status": status, "value": redact(value),
+                   "evidence_refs": evidence_refs, "uncertainty": uncertainty,
+                   "open_questions": open_questions}
+    else:
+        raise ValueError("finding kind must be identity or asset")
+    saved = investigation_findings.save_finding(
+        FINDINGS_PATH,
+        {"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
+        finding,
+    )
+    current = saved["findings"]["identity"] if kind == "identity" else saved["findings"]["assets"][args.get("asset")]
+    return {"status": "saved", "finding_path": str(FINDINGS_PATH), "finding": current,
+            "open_questions": saved.get("open_questions", [])}
+
+
+def _read_resume_json(path: Path | None, label: str) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        if not path.exists():
+            return None
+        if path.stat().st_size > 1024 * 1024:
+            raise ValueError(label + " exceeds bounded resume size")
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError(label + " is unreadable: " + type(exc).__name__) from exc
+    if not isinstance(value, dict):
+        raise ValueError(label + " must be an object")
+    return value
+
+
+def _saved_investigation() -> dict[str, Any]:
+    if RESUME_RUN_DIR is None:
+        return {"status": "not_requested", "reason": "no continuation source was supplied"}
+    lifecycle = _read_resume_json(RESUME_LIFECYCLE_FILE, "previous lifecycle")
+    saved = _read_resume_json(RESUME_FINDINGS_FILE, "previous findings")
+    if lifecycle is None and saved is None:
+        raise ValueError("continuation source has no lifecycle or findings")
+    audit_rows: list[dict[str, Any]] = []
+    if RESUME_AUDIT_FILE is not None and RESUME_AUDIT_FILE.exists():
+        try:
+            lines = RESUME_AUDIT_FILE.read_text(encoding="utf-8").splitlines()[-128:]
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("previous audit is unreadable: " + type(exc).__name__) from exc
+        for line in lines:
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, dict) and item.get("evidence_id"):
+                audit_rows.append({"tool": item.get("tool"), "evidence_id": item.get("evidence_id")})
+    selected_lifecycle = {}
+    if lifecycle:
+        for key in ("status", "end_reason", "target", "tool_call_count", "elapsed_ms", "timed_out", "progress", "resume"):
+            if key in lifecycle:
+                selected_lifecycle[key] = lifecycle[key]
+    return {
+        "status": "available",
+        "source": str(RESUME_RUN_DIR),
+        "previous_lifecycle": selected_lifecycle,
+        "findings": (saved or {}).get("findings", {"identity": None, "assets": {}}),
+        "open_questions": (saved or {}).get("open_questions", []),
+        "evidence_refs": audit_rows[-64:],
+        "note": "Only the bounded summary and evidence ids are supplied; previous stdout is not replayed.",
+    }
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -482,6 +618,12 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         p = target_process()
         surface = entry_surface(p)
         return read_related_file(surface, args.get("path", ""))
+    if name == "submit_investigation_finding":
+        target_process()
+        return _submit_investigation_finding(args)
+    if name == "get_saved_investigation":
+        target_process()
+        return _saved_investigation()
     if name == "propose_recipe":
         target_process()
         recipe = redact(args.get("recipe", {}))
@@ -569,6 +711,8 @@ TOOLS = [
     {"name": "inspect_entry_surface", "description": "Read raw and resolved executable/entry paths, parent/child identities, package metadata candidates, sources, and conflicts. This is evidence only; it never chooses an Agent identity.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "find_related_files", "description": "Enumerate bounded text/config files below roots derived from the bound process. Use a short filename glob and a returned root token; secret-like and hidden state files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}}}},
     {"name": "read_related_file", "description": "Read one file previously found below a process-derived root. Content is bounded, parsed when possible, and redacted; arbitrary paths and credentials are rejected.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
+    {"name": "submit_investigation_finding", "description": "Persist one evidence-backed identity or asset finding without proposing or installing a Hook. Findings are partial, versioned and bounded.", "inputSchema": {"type": "object", "required": ["kind", "status", "evidence_refs"], "properties": {"kind": {"type": "string", "enum": ["identity", "asset"]}, "asset": {"type": "string", "enum": ["model_gateway", "mcp", "skills", "rules"]}, "status": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "entry": {"type": "string"}, "version": {"type": "string"}, "value": {}, "summary": {}, "details": {}, "uncertainty": {"type": "array", "items": {"type": "string"}}, "open_questions": {"type": "array", "items": {"type": "string"}}, "evidence_refs": {"type": "array", "items": {"type": "string"}}}}},
+    {"name": "get_saved_investigation", "description": "On an explicit continuation, read only the previous bounded lifecycle summary, partial findings, open questions and evidence ids. Previous stdout is never replayed.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_tree", "description": "Observe only the target process and descendants within the supervisor scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_runtime_surface", "description": "Inspect generic runtime, files, network shape, children, and stream capabilities; no secrets are returned.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_config_surface", "description": "Read selected configuration names from bound target files. No raw contents, secrets, .env or arbitrary paths.", "inputSchema": {"type": "object", "properties": {}}},

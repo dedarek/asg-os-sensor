@@ -439,4 +439,10 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 
 原有回归基线 `90` 项保持通过；新增证据/门禁 `4` 项、生命周期 `2` 项、入口归属 `2` 项，共 `98` 项全量通过。真实 Goose 目标为只读实例 `1052:1789006497.273916`，隔离产物 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/goose-generic-assets-v4-20260910T083028Z/pid_1052_1789029028/`；8 次工具调用后超时，未产生候选配方，按未完成处理。8081 保持 `48028`，8080、生产库和现用 Agent 未动。
 
+## 2026-09-10 review continuation：无总时限调查、部分 Findings 与受控续查/取消收敛
+
+增量基于 HEAD `0377af4`（此前汇报记录为 `a52e08d`，系同一代码内容在微调注释与文档提交时的 commit hash 替换，代码完全一致，不重写历史）。
+
+详细决策、分项 Finding 持久化/看板投影、续查/取消机制、541s 无总时限真实 Goose 运行记录（产物位于 `/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-real-goose-run-a59lwfd1/runs/pid_720_1789032139121/`）及 106 项自动化回归详见根目录 `WORKLOG.md`。
+
 本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成。
