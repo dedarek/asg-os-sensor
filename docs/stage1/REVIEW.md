@@ -4,10 +4,19 @@
 一律以本目录为准。
 
 ## 当前提交与工作树
-- HEAD: 1831da1（分支 work/discovery-goose-fingerprint，基线 f4194d3）。
-- 工作树干净；8081 演示服务运行中（PID 见 artifacts/stage1/authorized-goose/service.json，
-  停止 kill <pid>），隔离指纹库，OpenCode 45780 exact 复用、hook 未安装。
+- HEAD: 7291263（分支 work/discovery-goose-fingerprint，基线 f4194d3）。
+- 工作树干净（docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md 未跟踪，保留顾问交接）。
+- 8081 接收服务运行中（PID 见下文/ps），隔离指纹库，真实事件已验证 3 条（见 WORKLOG）。
 
+## 真实验收（2026-09-10，非模拟）
+- 用户已打开隔离工作区并执行一次目录列举任务；hook.loaded 与 tool.execute
+  before/after（tool=read，同 call_id）均被接收端校验通过（PID 5297 绑定）。
+- 证据归档：artifacts/stage1/evidence/real-hook-2026-09-10/（脱敏，不含 nonce）。
+- 8081 状态页已接通（commit 7291263）：区分历史加载/当前新鲜度/观测 vs 阻断；
+  页面与 JSON 均不公开 nonce；只描述绑定实例，不把其他实例/Agent 标成功。
+
+## 待办（受控卸载验收）
+- 未执行卸载；步骤已写入 WORKLOG。等待顾问协调用户再次只读调用后执行。
 ## 全量测试（精确命令与数量）
 - 命令: ASG_TEST_NODE=<node> python3 -B -m unittest test_discovery test_matcher_stage1   test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration   test_opencode_plugin test_real_cli
 - 结果: Ran 63 tests, OK (60 无 node + 3 real_cli 需 node)（8 discovery + 53 stage1）。其中 stage1 含：

@@ -262,4 +262,35 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 4) HTTP 接线：新增 runtime/opencode/server.py（127.0.0.1 随机端口）暴露 /health /events，
    把已验证 event/health 接到隔离 HTTP 接口，不再停留于库对象。
 5) 插件：nonce 缺失（卸载后）立即停止写事件，不重启引擎的再次触发也不产事件（同进程内验证）。
-- 测试：test_opencode_plugin.py 扩展为 10 用例（事务 4+事件 2+健康 3+HTTP 1），全量 60 tests OK。
+- 测试：test_opencode_plugin.py 扩展为 10 用例（事务 4+事件 2+健康 3+HTTP 1），全量 60 tests OK。## 2026-09-10 真实验收证据 + 8081 状态页接通
+
+### 真实 OpenCode 观测（非模拟，用户实测）
+- 工作区：/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe
+- runid 660ad5f492e7ab91；manifest active=true，workspace/插件 sha256 与安装一致。
+- 三条真实事件（nonce 全部匹配，签名不公开）：
+  - hook.loaded 2026-09-10T02:31:12.205Z
+  - tool.execute.before / after 2026-09-10T02:33:06.515Z / .522Z，tool=read，
+    同一 call_id call_MHw2S2ZSb1E4RDhVblNqNDJaZnQ
+- 引擎实例：PID 5297（OpenCode Helper / NodeService），create_time=1789006943.640438，
+  父进程 OpenCode PID 4970。psutil 复核存活。
+- 脱敏归档：artifacts/stage1/evidence/real-hook-2026-09-10/*（已忽略，不含 nonce）。
+- 只证明：本安装/本实例的加载与一次真实工具调用对。不证明阻断、完整资产、全工具或其他 Agent。
+
+### 8081 状态页与语义（commit 7291263）
+- server.py 新增 --port；/ 与 /page 渲染 HTML 状态页；/health /events JSON 不变（投影不含 nonce）。
+- 页面区分：历史加载握手（loaded_observed）≠ 当前新鲜度（health 状态）；
+  观测（tool.execute.before/after 事件）≠ 阻断（页面明确“未安装控制面”）。
+- 只描述绑定实例（--pid 快照）；不把同族其他实例/其他 Agent 标为已挂接。
+- fail closed：manifest 缺失/损坏/非 active/不匹配 -> 503。
+
+### 测试
+- 原有测试全部通过（discovery/stage1/synthetic/opencode real-cli 等）。
+- 新增 test_observe_page.py（7 项，无需 node）：nonce 不泄露、真实绑定事件通过、
+  未绑定/空闲/已撤销/损坏 manifest 语义、PID 复用拒绝。
+
+### 受控卸载验收（待协调，尚未执行）
+- 不手动删状态目录；用 ghost_install.py --uninstall（校验 manifest+hash）。
+- 卸载后接收器下一请求立即 revoked（503），事件历史保留在 runs/<runid>/。
+- 需用户再次做一次只读调用证明：调用成功 + 旧 run 无新事件 + 接口显示已撤销；
+  无事件本身不是卸载成功证据。等待顾问协调后执行。
+
