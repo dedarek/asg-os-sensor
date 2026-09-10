@@ -36,7 +36,7 @@ _MANIFEST_NAMES = {
 }
 _SENSITIVE_NAME = re.compile(
     r"(^|[._-])(env|secret|secrets|credential|credentials|token|tokens|password|"
-    r"passwd|private|authorized_keys|id_rsa|key)([._-]|$)", re.I
+    r"passwd|private|authorized_keys|id_rsa|key|nonce)([._-]|$)", re.I
 )
 _SENSITIVE_SUFFIX = {".pem", ".key", ".p12", ".pfx", ".crt", ".der"}
 _SECRET_KEY = re.compile(
@@ -368,9 +368,18 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
     if scope != "all":
         if isinstance(scope, str) and scope.startswith(("/", "\\")):
             requested = _resolve(scope)
-            matches = [token for token, root in roots.items() if root == requested]
-            if len(matches) == 1:
-                scope = matches[0]
+            # Follow a manifest's subdirectory/import lead inside an observed
+            # root, instead of enumerating every unrelated dependency first.
+            for root in roots.values():
+                try:
+                    relative = requested.relative_to(root)
+                except ValueError:
+                    continue
+                if any(_SENSITIVE_NAME.search(part) for part in relative.parts):
+                    continue
+                if requested.is_dir():
+                    roots = {scope: requested}
+                    break
         if scope not in roots:
             raise ValueError("unknown related root; use a returned root id or exact returned root path")
         roots = {scope: roots[scope]}
@@ -385,7 +394,7 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
     skipped = 0
     opened = {item.get("resolved") for item in surface.get("opened_files", []) if isinstance(item, dict)}
     for token, root in roots.items():
-        if not root.is_dir() or _skip_file(root):
+        if not root.is_dir() or _SENSITIVE_NAME.search(root.name):
             continue
         try:
             iterator: Iterable[Path] = root.rglob("*")

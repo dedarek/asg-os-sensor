@@ -31,6 +31,39 @@ class AnalystEvidenceTests(unittest.TestCase):
                     break
             self.assertEqual(len(names), 45)
             self.assertEqual(len(set(names)), 45)
+
+    def test_search_descends_into_evidenced_package_scope_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            package = root / '.runtime' / 'deps' / '@random' / 'extension' / 'dist'
+            package.mkdir(parents=True)
+            (root / 'manifest.json').write_text('{}')
+            (package / 'entry.d.ts').write_text('export type Hooks = {}')
+            surface = {'related_roots': [{'id': 'root-0', 'path': str(root)}]}
+            page = find_related_files(surface, '*.ts', str(package))
+            self.assertEqual([f['name'] for f in page['files']], ['entry.d.ts'])
+            self.assertTrue(find_related_files(surface, '*', str(root))['files'])
+            with self.assertRaises(ValueError):
+                find_related_files(surface, '*', str(root.parent))
+
+    def test_preserved_evidence_is_retrievable_by_pointer_and_page(self):
+        from runtime import analyst_tools as at
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = 'ev-123456789-0123456789'
+            target = {'pid': os.getpid(), 'create_time': psutil.Process().create_time()}
+            payload = {'tool': 'read_related_file', 'target': target, 'result': {'content': 'x' * 8001}}
+            (root / (ref + '.json')).write_text(json.dumps(payload))
+            with patch.object(at, 'EVIDENCE_DIR', root), patch.object(at, 'TARGET_PID', target['pid']), \
+                 patch.object(at, 'TARGET_CREATE_TIME', target['create_time']):
+                first = at.call_tool('read_evidence', {'evidence_id': ref, 'select': '/content'})
+                last = at.call_tool('read_evidence', {'evidence_id': ref, 'select': '/content', 'offset': 8000})
+                self.assertEqual(len(first['value']), 4000)
+                self.assertEqual(first['next_offset'], 4000)
+                self.assertEqual(last['value'], 'x')
+                self.assertEqual(first['source_evidence_id'], ref)
+                with self.assertRaises(ValueError):
+                    at.call_tool('read_evidence', {'evidence_id': '../outside'})
     def test_entry_metadata_and_bounded_file_read(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -456,7 +456,7 @@ _FINDING_EVIDENCE_TOOLS = {
     "get_target_context", "inspect_entry_surface", "find_related_files", "read_related_file",
     "inspect_config_surface", "inspect_loader_surface", "inspect_network_peers",
     "inspect_execution_trace", "inspect_stream", "inspect_observation", "observe_tree",
-    "observe_runtime_surface", "search_target_image",
+    "observe_runtime_surface", "search_target_image", "read_evidence",
 }
 _EVIDENCE_REF = re.compile(r"ev-[0-9]+-[a-f0-9]{10}")
 
@@ -573,7 +573,8 @@ def _saved_investigation() -> dict[str, Any]:
             except ValueError:
                 continue
             if isinstance(item, dict) and item.get("evidence_id"):
-                audit_rows.append({"tool": item.get("tool"), "evidence_id": item.get("evidence_id")})
+                audit_rows.append({"tool": item.get("tool"), "evidence_id": item.get("evidence_id"),
+                                   "args": redact(item.get("args", {})), "error": bool(item.get("error"))})
     selected_lifecycle = {}
     if lifecycle:
         for key in ("status", "end_reason", "target", "tool_call_count", "elapsed_ms", "timed_out", "progress", "resume"):
@@ -697,6 +698,33 @@ def _continuation_context() -> dict[str, Any]:
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name == 'read_evidence':
+        target_process()
+        ref = args.get('evidence_id', '')
+        _validate_finding_evidence([ref])
+        item = json.loads((EVIDENCE_DIR / (ref + '.json')).read_text())
+        value = item['result']
+        pointer = args.get('select', '')
+        if pointer:
+            if not isinstance(pointer, str) or not pointer.startswith('/'):
+                raise ValueError('select must be a JSON pointer')
+            for part in pointer[1:].split('/'):
+                key = part.replace('~1', '/').replace('~0', '~')
+                value = value[int(key)] if isinstance(value, list) else value[key]
+        offset = args.get('offset', 0)
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise ValueError('offset must be a non-negative integer')
+        next_offset = None
+        if isinstance(value, (list, str)):
+            length = len(value)
+            page = 20 if isinstance(value, list) else 4000
+            value = value[offset:offset + page]
+            next_offset = offset + page if offset + page < length else None
+        if isinstance(value, dict) and len(json.dumps(value)) > 6000:
+            value = {'available_keys': list(value), 'note': 'Select a /field to retrieve its preserved evidence; no data was discarded.'}
+        return {'source_evidence_id': ref, 'source_tool': item['tool'], 'select': pointer,
+                'value': value, 'next_offset': next_offset,
+                'target': {'pid': TARGET_PID, 'create_time': TARGET_CREATE_TIME}}
     if name == "inspect_stream":
         return stream_tail()
     if name == "get_prior_recipe":
@@ -827,9 +855,10 @@ def load_prior() -> dict[str, Any]:
 
 
 TOOLS = [
+    {"name": "read_evidence", "description": "Retrieve preserved successful observation evidence by id, especially after compaction/continuation. Use select JSON pointer (e.g. /metadata or /content), and next_offset for text/list pages. Cite the original source_evidence_id. Do not repeat expensive observations just to recover their existing results.", "inputSchema": {"type": "object", "required": ["evidence_id"], "properties": {"evidence_id": {"type": "string"}, "select": {"type": "string"}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "get_target_context", "description": "Read the supervisor-bound target dossier, process tree, stream shape, and prior memory.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_entry_surface", "description": "Read raw and resolved executable/entry paths, parent/child identities, package metadata candidates, sources, and conflicts. This is evidence only; it never chooses an Agent identity.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "find_related_files", "description": "Enumerate process-related files, at most 20 per page. Use a focused filename glob and returned root token. Pass next_offset as offset to obtain more without a bulk context dump. Secret-like files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}, "offset": {"type": "integer", "minimum": 0}}}},
+    {"name": "find_related_files", "description": "Enumerate process-related files, at most 20 per page. Scope may be a returned root token or an evidence-derived absolute subdirectory inside a returned root (e.g. a package directory named in a manifest). Follow specific package/import leads rather than enumerating unrelated dependencies. Pass next_offset as offset for further pages. Secret-like files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "read_related_file", "description": "Read one file previously found below a process-derived root. Content is bounded, parsed when possible, and redacted; arbitrary paths and credentials are rejected.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "submit_investigation_finding", "description": "Persist one evidence-backed identity or asset finding without proposing or installing a Hook. Findings are partial, versioned and bounded.", "inputSchema": {"type": "object", "required": ["kind", "status", "evidence_refs"], "properties": {"kind": {"type": "string", "enum": ["identity", "asset"]}, "asset": {"type": "string", "enum": ["model_gateway", "mcp", "skills", "rules"]}, "status": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "entry": {"type": "string"}, "version": {"type": "string"}, "value": {}, "summary": {}, "details": {}, "uncertainty": {"type": "array", "items": {"type": "string"}}, "open_questions": {"type": "array", "items": {"type": "string"}}, "evidence_refs": {"type": "array", "items": {"type": "string"}}}}},
     {"name": "get_saved_investigation", "description": "On an explicit continuation, read only the previous bounded lifecycle summary, partial findings, open questions and evidence ids. Previous stdout is never replayed.", "inputSchema": {"type": "object", "properties": {}}},
