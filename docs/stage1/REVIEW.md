@@ -4,7 +4,7 @@
 一律以本目录为准。
 
 ## 当前提交与工作树
-- 当前改动待提交（分支 work/discovery-goose-fingerprint，基线 f4194d3）；
+- 当前提交 `9be36be`（分支 work/discovery-goose-fingerprint，基线 f4194d3）；
   `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 仍是未跟踪的顾问交接文件，不能声明工作树干净。
 - 原多 Agent 看板运行在 `127.0.0.1:8081`；单实例观测接收器独立运行在
   `127.0.0.1:64680`（随机回环端口示例）。8080 未触碰。
