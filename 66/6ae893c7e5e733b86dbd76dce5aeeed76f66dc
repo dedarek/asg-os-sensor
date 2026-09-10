@@ -1,0 +1,26 @@
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_13ea9cca8fd44f 14-15,71-81
+WORKLOG.md
+  s_655532ed3c4512::t_510fd5a70d9a37 404-419
+test_goose_stage1.py
+  s_655532ed3c4512::t_adc2eff5e57611 206-221
+  s_655532ed3c4512::t_f66b59271b0c60 178-205,222-225
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_7f46e365e32667 72-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "666ae893c7e5e733b86dbd76dce5aeeed76f66dc",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/z-ai-glm-5.3-flash"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
