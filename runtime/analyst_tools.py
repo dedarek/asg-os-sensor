@@ -503,6 +503,11 @@ def _submit_investigation_finding(args: dict[str, Any]) -> dict[str, Any]:
             "entry": str(args.get("entry") or "unknown")[:400],
             "version": str(args.get("version") or "unknown")[:160],
         }
+        roles = args.get("roles")
+        if roles is not None:
+            value["roles"] = roles  # enum/bound validation happens in save_finding
+        if args.get("role_reasoning") is not None:
+            value["role_reasoning"] = args.get("role_reasoning")
         if isinstance(args.get("details"), dict):
             value["details"] = args["details"]
         finding = {"kind": kind, "status": status, "value": redact(value),
@@ -579,6 +584,20 @@ def _saved_investigation() -> dict[str, Any]:
         "evidence_refs": audit_rows[-64:],
         "note": "Only the bounded summary and evidence ids are supplied; previous stdout is not replayed.",
     }
+
+
+def _continuation_context() -> dict[str, Any]:
+    """Deterministic continuation context for get_target_context.
+
+    Bounded saved findings, open questions and evidence ids are injected so a
+    continuation does not depend on prompt compliance. stdout is never replayed.
+    """
+    if RESUME_RUN_DIR is None:
+        return {"status": "not_requested"}
+    try:
+        return _saved_investigation()
+    except Exception as exc:
+        return {"status": "failed", "reason": f"{type(exc).__name__}: {exc}"}
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -663,6 +682,7 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                    "launch_evidence": call_tool("inspect_entry_surface", {}),
                    "prior_memory": load_prior(),
                    "prior_experience": call_tool("get_prior_experience", {}),
+                   "prior_investigation": _continuation_context(),
                    "loader_surface": call_tool("inspect_loader_surface", {})}
         if OBSERVE_URL:
             context["observation"] = call_tool("inspect_observation", {})

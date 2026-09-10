@@ -15,6 +15,7 @@ import hashlib
 import time
 import shutil
 import shlex
+from collections import deque
 from copy import deepcopy
 import threading
 import subprocess
@@ -142,6 +143,11 @@ INVESTIGATION_RESULTS: dict[str, dict[str, Any]] = {}  # instance_id -> result
 INVESTIGATION_RETRY_AT: dict[str, float] = {}  # instance_id -> retry_at
 ACTIVE_ANALYST_PROCESSES: dict[str, subprocess.Popen] = {}
 INVESTIGATION_CANCEL_REQUESTS: set[str] = set()
+INVESTIGATION_QUEUE: deque = deque()  # FIFO: {"pid", "create_time", "instance_id", "force"}
+INVESTIGATION_QUEUED: dict[str, dict[str, Any]] = {}  # instance_id -> {enqueued_at, force}
+INVESTIGATION_QUEUE_MAX = _env_int("ASG_INVESTIGATION_QUEUE_MAX", 16)
+# 仅用于调度线程等待/唤醒；与 INVESTIGATION_LOCK 无嵌套持有，避免锁序问题。
+_QUEUE_COND = threading.Condition()
 
 
 def _goose_executable() -> str | None:
@@ -479,6 +485,30 @@ def _partial_asset_collections(partial: dict[str, Any] | None) -> dict[str, dict
     return result
 
 
+def _agent_classification(partial_identity: Any) -> dict[str, Any]:
+    """角色三态分类：confirmed_agent / infrastructure / pending（候选·待确认）。
+
+    仅依据 Goose 证据绑定的 identity.value.roles 判定；名称、依赖、品牌、端口、
+    发现分数不参与。无角色调查（旧历史、未调查）一律 pending，不静默删除。
+    """
+    pending = {"status": "pending", "label": "候选/待确认", "roles": [],
+               "source": [], "reasoning": None}
+    if not isinstance(partial_identity, dict) or partial_identity.get("status") != "identified":
+        return pending
+    value = partial_identity.get("value")
+    roles = value.get("roles") if isinstance(value, dict) else None
+    if not isinstance(roles, list) or not roles or "unknown" in roles:
+        return pending
+    evidence = partial_identity.get("evidence_refs")
+    return {
+        "status": "confirmed_agent" if "agent" in roles else "infrastructure",
+        "label": "确认 Agent" if "agent" in roles else "基础设施",
+        "roles": roles,
+        "source": evidence if isinstance(evidence, list) else [],
+        "reasoning": value.get("role_reasoning") if isinstance(value, dict) else None,
+    }
+
+
 def _observe_request(path: str) -> tuple[int | None, dict[str, Any] | None, str | None]:
     """读取本机观测接收器的 JSON；HTTP 503 仍可能带有合法状态正文。"""
     if not OBSERVE_URL:
@@ -680,6 +710,29 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             return
         INVESTIGATING_INSTANCES[instance_id] = create_time
 
+    if not INVESTIGATION_SEMAPHORE.acquire(blocking=False):
+        with INVESTIGATION_LOCK:
+            INVESTIGATING_INSTANCES.pop(instance_id, None)
+        if force:
+            # 手动请求不丢失：插队到队首，由调度线程在槽位释放后执行。
+            with INVESTIGATION_LOCK:
+                INVESTIGATION_QUEUE.appendleft({"pid": pid, "create_time": create_time,
+                                                "instance_id": instance_id, "force": True})
+                INVESTIGATION_QUEUED[instance_id] = {"enqueued_at": iso(), "force": True}
+            with _QUEUE_COND:
+                _QUEUE_COND.notify_all()
+        return
+    try:
+        _execute_investigation(pid, struct, instance_id, create_time,
+                               force=force, resume_from=resume_from)
+    finally:
+        INVESTIGATION_SEMAPHORE.release()
+
+
+def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
+                           create_time: float | None, force: bool = False,
+                           resume_from: Path | None = None) -> None:
+    """执行一次调查；调用方必须已持有并发槽位并登记 INVESTIGATING_INSTANCES。"""
     goose_bin = _goose_executable()
     if not goose_bin:
         message = f"未找到 Goose CLI（当前解析值: {GOOSE}）。请安装 block-goose-cli 或设置 ASG_GOOSE_BIN。"
@@ -689,16 +742,6 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
             INVESTIGATING_INSTANCES.pop(instance_id, None)
         print(f"[Analyst Unavailable PID={pid}] {message}", file=sys.stderr)
-        return
-
-    # 不把所有候选都排进一个长队：只有拿到并发槽位的 PID 才进入“正在接管”。
-    # 否则几十个候选会在 semaphore 后等待数十分钟，看板就像永远卡住。
-    if not INVESTIGATION_SEMAPHORE.acquire(blocking=False):
-        with INVESTIGATION_LOCK:
-            INVESTIGATING_INSTANCES.pop(instance_id, None)
-        if force:
-            _record_investigation_result(instance_id, pid, create_time, "busy", "分析器并发槽位已满，请稍后重试")
-            _record_onboarding_outcome(instance_id, pid, create_time, "deferred", "分析器并发槽位已满，请稍后重试", compatibility=struct.get("compatibility"))
         return
 
     lifecycle: dict[str, Any] = {}
@@ -1012,7 +1055,118 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             except Exception:
                 pass
     finally:
+        # 并发槽位由调用方（run_autonomous_investigation / _dispatch_worker）负责释放。
+        pass
+
+
+def _enqueue_investigation(pid: int, instance_id: str, create_time: float | None,
+                           force: bool = False) -> str:
+    """入队一次调查请求。返回 enqueued/duplicate/full。"""
+    with INVESTIGATION_LOCK:
+        if instance_id in INVESTIGATING_INSTANCES or instance_id in INVESTIGATION_QUEUED:
+            return "duplicate"
+        previous = INVESTIGATION_RESULTS.get(instance_id)
+        if not force and previous is not None and previous.get("status") == "succeeded":
+            return "duplicate"  # 已有成功调查，防止重复历史调查
+        if not force and now() < INVESTIGATION_RETRY_AT.get(instance_id, 0):
+            return "duplicate"
+        task = {"pid": pid, "create_time": create_time, "instance_id": instance_id, "force": force}
+        if force:
+            INVESTIGATION_QUEUE.appendleft(task)
+        elif len(INVESTIGATION_QUEUE) >= INVESTIGATION_QUEUE_MAX:
+            return "full"
+        else:
+            INVESTIGATION_QUEUE.append(task)
+        INVESTIGATION_QUEUED[instance_id] = {"enqueued_at": iso(), "force": force}
+    with _QUEUE_COND:
+        _QUEUE_COND.notify_all()
+    return "enqueued"
+
+
+def _schedule_investigation(pid: int, struct: dict[str, Any], force: bool = False) -> str:
+    """扫描循环的公平调度入口：统一进入 FIFO 队列，由调度线程按槽位启动。"""
+    if not AUTONOMOUS_ANALYSIS_ENABLED:
+        return "disabled"
+    instance_id, create_time = _freeze_instance(pid, struct)
+    outcome = _enqueue_investigation(pid, instance_id, create_time, force=force)
+    if outcome == "full":
+        _record_investigation_result(instance_id, pid, create_time, "deferred",
+                                     "调查队列已满，稍后自动重试")
+        with INVESTIGATION_LOCK:
+            INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
+    return outcome
+
+
+def _investigation_target_alive(task: dict[str, Any]) -> bool:
+    pid, ct = task.get("pid"), task.get("create_time")
+    if pid is None:
+        return False
+    try:
+        return abs(float(psutil.Process(int(pid)).create_time()) - float(ct)) <= 1e-3
+    except (psutil.Error, TypeError, ValueError):
+        return False
+
+
+def _dispatch_next_investigation(block: bool = True) -> bool:
+    """弹出队首任务；有槽位即启动，无槽位按 FIFO 等待，不丢弃不标失败。"""
+    with _QUEUE_COND:
+        if block:
+            while not INVESTIGATION_QUEUE:
+                _QUEUE_COND.wait()
+        elif not INVESTIGATION_QUEUE:
+            return False
+    with INVESTIGATION_LOCK:
+        task = INVESTIGATION_QUEUE.popleft() if INVESTIGATION_QUEUE else None
+        if task is not None:
+            INVESTIGATION_QUEUED.pop(task["instance_id"], None)
+    if task is None:
+        return False
+    if not _investigation_target_alive(task):
+        _record_investigation_result(task["instance_id"], task["pid"], task.get("create_time"),
+                                     "failed", "实例已退出，排队调查取消")
+        return True
+    if block:
+        INVESTIGATION_SEMAPHORE.acquire()
+    elif not INVESTIGATION_SEMAPHORE.acquire(blocking=False):
+        # 无槽位：任务放回队首等待，保持可见排队状态。
+        with INVESTIGATION_LOCK:
+            INVESTIGATION_QUEUE.appendleft(task)
+            INVESTIGATION_QUEUED[task["instance_id"]] = {"enqueued_at": iso(),
+                                                         "force": task.get("force", False)}
+        return False
+    threading.Thread(target=_dispatch_worker, args=(task,), daemon=True,
+                     name=f"analyst-dispatch-{task['pid']}").start()
+    return True
+
+
+def _dispatch_worker(task: dict[str, Any]) -> None:
+    try:
+        pid = task["pid"]
+        instance_id = task["instance_id"]
+        with INVESTIGATION_LOCK:
+            if instance_id in INVESTIGATING_INSTANCES:
+                return
+            INVESTIGATING_INSTANCES[instance_id] = task.get("create_time")
+        try:
+            struct = analyzer.analyze(pid)
+        except Exception as exc:
+            print(f"[Analyze Error PID={pid}] {exc}", file=sys.stderr)
+            struct = {"pid": pid, "create_time": task.get("create_time")}
+        _execute_investigation(pid, struct, instance_id, task.get("create_time"),
+                               force=task.get("force", False))
+    except Exception as exc:
+        print(f"[Investigation Dispatcher] {type(exc).__name__}: {exc}", file=sys.stderr)
+    finally:
         INVESTIGATION_SEMAPHORE.release()
+
+
+def _investigation_dispatcher_loop() -> None:
+    while True:
+        try:
+            _dispatch_next_investigation(block=True)
+        except Exception as exc:
+            print(f"[Investigation Dispatcher Loop] {type(exc).__name__}: {exc}", file=sys.stderr)
+            time.sleep(1)
 
 
 def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
@@ -1199,6 +1353,16 @@ def scan_agents_once():
                 partial_name = partial_value.get("name") if isinstance(partial_value, dict) else None
                 if partial_name and partial_name != "unidentified-agent":
                     display_name = f"Goose 调查: {partial_name} ({name})"
+            # 角色三态分类：候选/待确认 ≠ 确认 Agent；基础设施不进入 Agent Hook 计划。
+            agent_classification = _agent_classification(partial_identity)
+            if agent_classification['status'] == 'infrastructure':
+                onboarding_view['plan'] = {
+                    'status': 'not_applicable_infrastructure',
+                    'reason': '角色调查判定为基础设施（roles=%s），不生成 Agent Hook 计划'
+                              % ','.join(agent_classification['roles']),
+                }
+                onboarding_view['install'] = None
+                onboarding_view['verification'] = None
 
             recipe_obj = matched_fp.get("hook_recipe", {}) if matched_fp else {}
             adapter_info = {
@@ -1207,6 +1371,7 @@ def scan_agents_once():
                 "investigation": investigation_result,
                 "partial_findings": partial_findings,
                 "investigated_identity": partial_identity,
+                "agent_classification": agent_classification,
                 "match_ms": match_ms,
                 "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
                 "behavioral_class": (recipe_obj.get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
@@ -1279,12 +1444,7 @@ def scan_agents_once():
                 retry_ready = now() >= INVESTIGATION_RETRY_AT.get(instance_id, 0)
             target_allowed = not os.environ.get('ASG_ANALYST_TARGET_PID') or str(pid) == os.environ['ASG_ANALYST_TARGET_PID']
             if target_allowed and AUTONOMOUS_ANALYSIS_ENABLED and (not is_matched or needs_deep_governance) and not is_investigating and retry_ready:
-                threading.Thread(
-                    target=run_autonomous_investigation,
-                    args=(pid, struct),
-                    name=f"analyst-worker-{pid}",
-                    daemon=True
-                ).start()
+                _schedule_investigation(pid, struct)
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -1658,7 +1818,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <!-- 全局治理指标 KPI 栏 -->
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">在线治理 Agent 实体</div>
+    <div class="kpi-label">确认 Agent（角色证据）</div>
     <div class="kpi-val"><span id="kpi-agent-count">0</span><span class="kpi-sub" id="kpi-instance-count">0 实例活跃</span></div>
   </div>
   <div class="kpi-card">
@@ -1725,6 +1885,71 @@ function findingText(finding) {
   const refs = Array.isArray(finding.evidence_refs) ? finding.evidence_refs.join(', ') : '';
   return escapeHtml((finding.status === 'identified' ? name : '身份未知') +
     (runtime ? ' · ' + runtime : '') + (refs ? ' · 证据: ' + refs : ''));
+}
+function classificationText(cls) {
+  if (!cls) return '候选/待确认';
+  const roles = Array.isArray(cls.roles) && cls.roles.length ? ' · ' + cls.roles.join('/') : '';
+  return escapeHtml((cls.label || '候选/待确认') + roles);
+}
+const activityCache = {};
+const activityOpenPids = new Set();
+function escapeActivityText(v) { return escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v == null ? '' : v)); }
+function renderActivity(pid, data) {
+  const box = document.getElementById('activity-body-' + pid);
+  if (!box) return;
+  if (!data || data.error) {
+    box.innerHTML = '<div style="color:#ef4444;padding:8px;">活动读取失败: ' + escapeActivityText(data && (data.reason || data.message) || '未知原因') + '</div>';
+    return;
+  }
+  let html = '';
+  const runs = data.runs || [];
+  if (runs.length > 1) {
+    html += '<div style="margin-bottom:6px;">历史 run: <select onchange="loadActivity(' + pid + ', this.value)" style="background:#111827;color:#cbd5e1;border:1px solid #1f293d;border-radius:4px;font-size:11px;">' +
+      runs.map(r => '<option value="' + escapeActivityText(r.run_id) + '"' + (r.run_id === data.run_id ? ' selected' : '') + '>' + escapeActivityText(r.run_id) + ' (' + escapeActivityText(r.status) + ')</option>').join('') + '</select></div>';
+  }
+  html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">run: ' + escapeActivityText(data.run_id || '无') +
+    ' · 状态: ' + escapeActivityText(data.status) +
+    (data.started_at ? ' · 开始: ' + escapeActivityText(data.started_at) : '') +
+    (data.ended_at ? ' · 结束: ' + escapeActivityText(data.ended_at) : '') +
+    (data.last_activity_at ? ' · 最近活动: ' + escapeActivityText(data.last_activity_at) : '') + '</div>';
+  const events = data.events || [];
+  if (!events.length) {
+    html += '<div style="font-size:11px;color:var(--text-muted);">该 run 暂无已记录事件（等待模型响应或尚未开始）</div>';
+  } else {
+    html += '<div style="font-size:11px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;">' +
+      events.map(ev => {
+        if (ev.type === 'finding_saved') {
+          return '<div style="margin-bottom:3px;"><span style="color:#34d399;">✓ finding</span> ' + escapeActivityText(ev.kind) + (ev.asset ? '/' + escapeActivityText(ev.asset) : '') + ' · ' + escapeActivityText(ev.status) + ' · ' + escapeActivityText(ev.ts) + '</div>';
+        }
+        return '<div style="margin-bottom:3px;"><span style="color:#38bdf8;">🔧</span> ' + escapeActivityText(ev.tool) +
+          ' · <span style="color:' + (ev.status === 'ok' ? '#34d399' : '#ef4444') + ';">' + escapeActivityText(ev.status) + '</span>' +
+          (ev.evidence_id ? ' · <span style="color:var(--text-muted);">' + escapeActivityText(ev.evidence_id) + '</span>' : '') +
+          ' · ' + escapeActivityText(ev.ts) + '</div>';
+      }).join('') + '</div>';
+  }
+  if (data.truncated) html += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">仅显示最近事件（有界）</div>';
+  if (Array.isArray(data.limitations) && data.limitations.length) {
+    html += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">' + data.limitations.map(l => escapeActivityText(l)).join('；') + '</div>';
+  }
+  box.innerHTML = html;
+}
+async function loadActivity(pid, runId) {
+  const box = document.getElementById('activity-body-' + pid);
+  if (!box) return;
+  if (!runId && activityCache[pid]) box.innerHTML = '<div style="color:var(--text-muted);padding:6px;font-size:11px;">加载中…</div>';
+  try {
+    const url = '/api/investigation/activity?pid=' + pid + (runId ? '&run_id=' + encodeURIComponent(runId) : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    activityCache[pid] = {data, at: Date.now()};
+    renderActivity(pid, data);
+  } catch(e) {
+    renderActivity(pid, {error: true, reason: String(e)});
+  }
+}
+function onActivityToggle(pid, el) {
+  if (el.open) { activityOpenPids.add(pid); loadActivity(pid); }
+  else activityOpenPids.delete(pid);
 }
 function renderTools(tools) {
   if (!Array.isArray(tools) || tools.length === 0) {
@@ -1919,9 +2144,14 @@ async function updateUI() {
     let totalInstances = 0;
     let matchedCount = 0;
     let totalPorts = 0;
+    let confirmedCount = 0, infraCount = 0, pendingCount = 0;
     currentAgentsData.forEach(a => {
       totalInstances += (a.all_pids ? a.all_pids.length : 1);
       if (a.adapter && a.adapter.matched) matchedCount++;
+      const cls = (a.adapter && a.adapter.agent_classification) || {};
+      if (cls.status === 'confirmed_agent') confirmedCount++;
+      else if (cls.status === 'infrastructure') infraCount++;
+      else pendingCount++;
       if (a.adapter && a.adapter.network_surface) {
         const lp = a.adapter.network_surface.listening_ports || [];
         const rp = a.adapter.network_surface.remote_peers || [];
@@ -1929,8 +2159,9 @@ async function updateUI() {
       }
     });
     
-    document.getElementById('kpi-agent-count').innerText = totalAgents;
+    document.getElementById('kpi-agent-count').innerText = confirmedCount;
     document.getElementById('kpi-instance-count').innerText = `${totalInstances} 关联进程`;
+    document.getElementById('kpi-instance-count').title = `确认 Agent ${confirmedCount} · 基础设施 ${infraCount} · 待确认 ${pendingCount}`;
     const rate = totalAgents > 0 ? Math.round((matchedCount / totalAgents) * 100) : 0;
     document.getElementById('kpi-hook-rate').innerText = `${rate}%`;
     document.getElementById('kpi-hook-detail').innerText = `${matchedCount}/${totalAgents} 指纹匹配`;
@@ -1978,7 +2209,10 @@ async function updateUI() {
                   ? '接入链: 计划待授权'
                   : '接入链: ' + (plan.status || '尚未生成计划');
       
-      const statusHtml = escapeHtml(investigation.label + ' · ' + (investigation.message || '') +
+      const classification = (a.adapter && a.adapter.agent_classification) || {};
+      const statusHtml = escapeHtml('分类: ' + (classification.label || '候选/待确认') +
+        (classification.roles && classification.roles.length ? ' (' + classification.roles.join('/') + ')' : '') +
+        ' | ' + investigation.label + ' · ' + (investigation.message || '') +
         ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText + ' | ' + onboardingText);
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
@@ -2031,7 +2265,7 @@ async function updateUI() {
         <div class="card">
           <div class="card-top">
             <div>
-              <div class="agent-name inspect-trigger" onclick="openInspector(${a.pid})" title="点击查看深度全景档案">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount}</div>
+              <div class="agent-name inspect-trigger" onclick="openInspector(${a.pid})" title="点击查看深度全景档案">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount} <span class="pid-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.4);">${classificationText(classification)}</span></div>
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
             </div>
             <div style="text-align: right;">
@@ -2103,6 +2337,10 @@ async function updateUI() {
           </div>
 
           ${semanticHtml}
+          <details class="adapter-box" id="activity-details-${a.pid}" style="margin-top:8px;" onToggle="onActivityToggle(${a.pid}, this)">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">🔬 调查活动（工具调用与 finding 时间线，脱敏）</summary>
+            <div id="activity-body-${a.pid}" style="margin-top:6px;"></div>
+          </details>
         </div>
       `;
     });
@@ -2159,6 +2397,7 @@ function handleHashRouting() {
 window.addEventListener('hashchange', handleHashRouting);
 setInterval(updateUI, 5000);
 updateUI().then(handleHashRouting);
+setInterval(() => { activityOpenPids.forEach(pid => loadActivity(pid)); }, 5000);
 </script>
 </body>
 </html>
@@ -2167,6 +2406,31 @@ updateUI().then(handleHashRouting);
 
 class MonitorHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if urllib.parse.urlparse(self.path).path == "/api/investigation/activity":
+            from runtime.investigation_activity import snapshot as activity_snapshot
+            try:
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                pid = int(query.get("pid", [""])[0])
+                _, target = _onboarding_target(pid)
+                if target is None:
+                    raise LookupError("target_not_in_scan")
+                payload = activity_snapshot(
+                    Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard"))),
+                    pid, target["create_time"], query.get("run_id", [None])[0],
+                    int(query.get("limit", ["40"])[0]))
+                code = 200
+            except (ValueError, TypeError):
+                code, payload = 400, {"error": "invalid_activity_request"}
+            except LookupError:
+                code, payload = 404, {"error": "activity_target_or_run_not_found"}
+            except OSError:
+                code, payload = 503, {"error": "activity_store_unavailable"}
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            return
         if self.path == "/" or self.path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -2182,6 +2446,20 @@ class MonitorHandler(BaseHTTPRequestHandler):
                     adapter['investigation'] = presentation(AUTONOMOUS_ANALYSIS_ENABLED,
                         inst in INVESTIGATING_INSTANCES, INVESTIGATION_RESULTS.get(inst))['investigation']
                     adapter['investigating'] = adapter['investigation']['status'] == 'running'
+                    queued = INVESTIGATION_QUEUED.get(inst)
+                    if queued is not None and adapter['investigation'].get('status') not in ('running',):
+                        position = None
+                        for index, task in enumerate(INVESTIGATION_QUEUE):
+                            if task.get("instance_id") == inst:
+                                position = index + 1
+                                break
+                        adapter['investigation'] = {
+                            'status': 'queued', 'label': '排队中',
+                            'message': '已加入调查队列' + (f'，第 {position} 位' if position else ''),
+                            'source': 'investigation_scheduler', 'can_request': False,
+                            'enqueued_at': queued.get('enqueued_at'), 'queue_position': position,
+                        }
+                        adapter['investigating'] = False
             data = json.dumps(snapshot, ensure_ascii=False)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -2361,6 +2639,7 @@ def main():
     
     t = threading.Thread(target=background_scanner_loop, name="scanner-thread", daemon=True)
     t.start()
+    threading.Thread(target=_investigation_dispatcher_loop, name="investigation-dispatcher", daemon=True).start()
     print(f"[Monitor] {SCAN_INTERVAL_S}s 扫描与调查引擎已启动")
     if not AUTONOMOUS_ANALYSIS_ENABLED:
         print("[Monitor] 自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)")

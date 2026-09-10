@@ -382,3 +382,22 @@ Goose 运行时长表述：默认无 wall-clock 截止，但 CLI 原生轮数上
 ### 新代码端口验证与保护核对
 
 8082（PID 6658，本批新代码，隔离指纹库/运行目录，ASG_AGENT_SCORE_THRESHOLD=0 仅用于让合成目标入列）实测 /api/state 含 investigated_identity、部分资产状态、exact 命中（fp_rev 1）、Hook 未安装。8081（PID 48028）确认为旧代码（/api/state 无 investigated_identity 字段），不能声称新 API/UI 已在 8081 生效；8081 部署收尾由顾问接手，本执行方不再操作端口服务。8080 无监听；现用 Agent PID 5297 未触碰；生产指纹库 SHA256 仍为 627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2。本批自建进程：合成目标 PID 6325、8082 面板 PID 6658（停止方式：确认工作目录为本 worktree 后仅对 PID 发 TERM）。
+
+## 2026-09-10 MVP 小任务：调查活动面板接线（活动 UI 消费顾问契约）
+
+任务卡范围：仅收尾活动面板，使页面消费顾问实现的 GET /api/investigation/activity（模块 a6e7192 + 路由由顾问编写，本提交保留其路由段）。同批保留既有未提交工程（公平队列调度、角色三态分类接线、确定性续查注入、queued/deferred 状态），在提交说明中单列，均属"已接线、未做真实闭环验收"，不冒充本任务完成项。
+
+### 活动面板实现（本任务验收项）
+
+页面每张卡片新增"调查活动"折叠面板：展开或展开后每 5 秒经 GET /api/investigation/activity 拉取；多 run 时显示历史 run 下拉（当前/历史选择）；事件仅显示真实记录（tool_completed 的工具名/状态/证据 id/时间戳；finding_saved 的 kind/asset/status/时间戳），无开始时间/耗时字段、无模型内部内容、无原始参数（与后端 limitations 一致）。状态呈现区分：无事件显示"该 run 暂无已记录事件（等待模型响应或尚未开始）"；truncated 显示有界提示；错误显示后端真实脱敏原因。
+
+### 实际验收证据（临时本地 HTTP + 真实历史 run，非浏览器截图）
+
+脚本与结果：/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/activity_ui_acceptance.py 与 activity-ui-acceptance-20260910.json。真实 run 根 real-goose-synth-20260910b/runs，注入真实 1052 实例（与已记录 run 同 pid+create_time）后经临时 ThreadingHTTPServer 实测：
+
+- 默认当前 run：200，pid_1052_1789035478449，28 事件（26 工具 + 2 finding），含 last_activity_at；
+- 指定历史 run pid_1052_1789035033893：200，10 事件（模型提前收尾的首轮，如实显示）；
+- 在扫描但无 run 的实例：200 not_started；未知 pid：404；跨实例 run_id：400（按 run_id 正则拒绝）；非法 pid：400；
+- 页面静态校验：HTML 含活动面板与接口调用接线（无浏览器截图工具，HTTP+静态为本次校验边界）。
+
+全量回归 Ran 113 tests OK（含顾问 6 项活动测试与 15 项状态测试）。

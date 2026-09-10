@@ -14,6 +14,7 @@ from typing import Any
 ASSET_NAMES = ("model_gateway", "mcp", "skills", "rules")
 ASSET_STATUSES = {"collected", "empty", "failed", "unsupported", "unknown", "not_collected"}
 IDENTITY_STATUSES = {"identified", "unknown"}
+IDENTITY_ROLES = {"agent", "model_gateway", "tool_service", "host", "other", "unknown"}
 MAX_FINDING_BYTES = 12 * 1024
 MAX_HISTORY = 64
 MAX_OPEN_QUESTIONS = 32
@@ -65,6 +66,19 @@ def validate_finding(finding: dict[str, Any]) -> dict[str, Any]:
         value = finding.get("value")
         if not isinstance(value, (dict, str)):
             raise ValueError("identity value must be an object or string")
+        if isinstance(value, dict):
+            roles = value.get("roles")
+            if roles is not None:
+                if (not isinstance(roles, list) or not roles
+                        or not all(isinstance(role, str) for role in roles)
+                        or any(role not in IDENTITY_ROLES for role in roles)):
+                    raise ValueError("identity roles must be a non-empty list of: "
+                                     + ", ".join(sorted(IDENTITY_ROLES)))
+                if len(roles) != len(set(roles)):
+                    raise ValueError("identity roles must not repeat")
+                reasoning = value.get("role_reasoning")
+                if reasoning is not None and not isinstance(reasoning, (str, list)):
+                    raise ValueError("role_reasoning must be a string or list of strings")
     elif kind == "asset":
         asset = finding.get("asset")
         if asset not in ASSET_NAMES:

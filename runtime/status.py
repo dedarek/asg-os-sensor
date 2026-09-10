@@ -45,6 +45,7 @@ def investigation_state(enabled, running=False, result=None):
     status = 'running' if running else {
         'succeeded': 'succeeded', 'failed': 'failed', 'timeout': 'timeout',
         'cancelled': 'cancelled', 'unavailable': 'failed', 'blocked': 'failed',
+        'queued': 'queued', 'deferred': 'deferred',
         'busy': 'not_scheduled',
     }.get(raw_status, 'not_scheduled')
     message = result.get('message', '')
@@ -54,6 +55,7 @@ def investigation_state(enabled, running=False, result=None):
         message = message.replace('接入点建议有证据支持', '接入点 proposed/unverified（未核对接入点证据）')
     state = {'running': '执行中', 'succeeded': '成功', 'failed': '失败',
              'timeout': '超时（已保留证据）', 'cancelled': '已取消（已保留证据）',
+             'queued': '排队中', 'deferred': '暂缓（队列已满）',
              'not_scheduled': '未调度'}[status]
     response = {'status': status, 'label': state, 'message': message,
                 'source': 'investigation_scheduler', 'can_request': not running}
