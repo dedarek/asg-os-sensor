@@ -1,0 +1,25 @@
+runtime/analyst_tools.py
+  s_1512a994888af5::t_19a08dcb61624c 597,636-637,640-643,645-646,649-666
+test_analyst_evidence.py
+  s_1512a994888af5::t_19a08dcb61624c 175-176
+WORKLOG.md
+  s_1512a994888af5::t_f18badcca69d20 449-454
+recipes/runtime_hook_analyst.yaml
+  s_1512a994888af5::t_3c6dac069b1571 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a9ace9e7baf9949b82f9bbb515a6973fb0aa59e5",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
