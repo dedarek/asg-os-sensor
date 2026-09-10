@@ -1,0 +1,25 @@
+runtime/matcher.py
+  s_655532ed3c4512::t_3515f15c920bcc 345
+test_matcher_stage1.py
+  s_655532ed3c4512::t_3c3faec1a62c6c 318-326
+test_analyst_redaction.py
+  s_655532ed3c4512::t_3c3faec1a62c6c 1-32
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_3515f15c920bcc 69-89,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0ad9664efc2687f9b39501c146d8056ade8ba6ba",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
