@@ -1,0 +1,21 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_429e88a4fe7748 833-837
+WORKLOG.md
+  s_655532ed3c4512::t_429e88a4fe7748 682-686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "446a28b35d5784eafc915cacb75507f7c2a0d5d3",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
