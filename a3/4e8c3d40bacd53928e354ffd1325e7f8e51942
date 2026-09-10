@@ -1,0 +1,26 @@
+test_goose_stage1.py
+  s_655532ed3c4512::t_8074234aa79375 148,150
+  s_655532ed3c4512::t_e1c3cdc634487b 121-123,128-132,136,138-141,143-146,149,151,153
+  s_655532ed3c4512::t_5ed4ffd8d55933 135,137
+  s_655532ed3c4512::t_14910a15507f57 124-127,133-134,142,147,152
+WORKLOG.md
+  s_655532ed3c4512::t_ba4f1748525ac1 353-384
+REVIEW.md
+  s_655532ed3c4512::t_d0e5ab50699a99 274-277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a34e8c3d40bacd53928e354ffd1325e7f8e51942",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/z-ai-glm-5.3-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
