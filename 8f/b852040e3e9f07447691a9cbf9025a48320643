@@ -1,0 +1,21 @@
+monitor_dashboard.py
+  s_655532ed3c4512::t_ab96ef03a096c4 1072-1084,1088
+test_investigation_lifecycle.py
+  s_655532ed3c4512::t_ab96ef03a096c4 273,277-279,299-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8fb852040e3e9f07447691a9cbf9025a48320643",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
