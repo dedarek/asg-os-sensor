@@ -1,0 +1,21 @@
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_5f42d14abe4171 7-9,11-19,67
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_96b693bfca3960 265-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "bf65ce87072af14eb9f41fcbc6ceae0b9a71296f",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
