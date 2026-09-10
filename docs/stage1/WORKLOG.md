@@ -397,3 +397,7 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 观测接收器 `http://127.0.0.1:52708`，PID `24804`；workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json` active；plugin `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`，3 行 `valid=3/invalid=0`。真实绑定 PID+create_time `5297:1789006943.640438`，当前 health 为 `stale/healthy=false`（事件超过 TTL），不显示为当前生效。
 
 8080 无监听；生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2` 与既有记录一致；现用 Agent、全局配置和 active manifest 未动。停止只处理本任务看板 PID `33217` 或接收器 PID `24804`，先核对命令归属。
+
+## 2026-09-10 review follow-up：受控 onboarding 反馈闭环
+
+实现提交 `a90e0c8`。字段语义、测试分类、真实 Goose 阻塞证据、8081 页面及插件绝对路径以根目录 `WORKLOG.md` 同名章节为准；本节只保留历史记录的增量索引，避免重写前轮计划。新增回归包括隔离 prior 的真实 MCP 子进程、exact 自动 onboarding、PID+create_time 重绑定和撤销 manifest 验证；全量 83 项通过。真实 Goose 结果为 `blocked_before_model_request`，`external_request_sent=false`，没有调查成功。

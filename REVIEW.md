@@ -77,3 +77,45 @@ echo $!
 验证摘要同时确认 8080 无监听，生产指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`，与此前记录一致。当前运行的看板环境使用隔离指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/authorized-goose/fingerprints.json`、`ASG_RUN_DIR` 指向上述 run 目录、`ASG_AUTONOMOUS_ANALYSIS=0`；没有设置真实调查外发或自动安装授权变量。
 
 停止只处理本任务 PID `33217`（看板）或 `24804`（接收器），先核对命令归属，不按进程名批量终止。保留当前真实 Agent 和 active manifest，等待 review。
+
+## 最新审查交付：commit a90e0c8
+
+本轮工作树 `/Users/mac/个人项目/asg-os-sensor-stage1`、分支 `work/discovery-goose-fingerprint`，实现提交 `a90e0c8`，基线 `8dfe6a0`。本轮把 prior 经验读取、真实来源门禁、exact 扫描自动执行和撤销验证补到受控 onboarding 切片；文档提交随后单独记录。状态映射以 `WORKLOG.md` 的“字段 → 来源 → 缺失含义”为准。
+
+### 交付内容
+
+- 调查：禁用时 API/UI 均为 `disabled`，不显示解析中；无真实持久队列时不伪造 `queued`。失败、阻塞和繁忙原因可写入隔离经验供后续 Goose 参考。
+- 资产：实例没有采集证据时统一为 `not_collected`；成功空采集才可显示未发现；采集失败、网络无数据、执行事件未接入均不转换成否定结论。
+- Hook：指纹命中、配方结构校验通过、`hook.loaded` 都不等价于已防护；加载只返回 `loaded_verified`，加载加工具事件才返回 `events_verified`，撤销 manifest 返回 `revoked`。Sink 保持未接入／未验证。
+- prior：新增 `get_prior_experience`，脚本方式启动也使用显式仓库导入路径和继承的隔离库；损坏库是 MCP 错误，窄投影不含路径、配方、凭据或 nonce。
+- 执行路径：exact 扫描与新调查共用授权、固定 backend、隔离 workspace、幂等安装和 PID+create_time 验证；新实例不会继承旧实例的事件成功状态。
+
+### 验收证据
+
+| 类别 | 结果 |
+| --- | --- |
+| 单元/本地回归 | 全量 83 项通过；目标 `test_onboarding test_dashboard_http` 14 项通过 |
+| 模拟集成 | Node 加载仓库真实插件并验证 `hook.loaded`、`tool.execute.before/after`；来源明确为 `goose-simulated` |
+| 真实 MCP 子进程 | 真实 `python runtime/analyst_tools.py` 进程在无 `PYTHONPATH` 时读取隔离 prior，并返回失败/验证摘要；审计和证据均在临时目录 |
+| 真实 Goose | 未通过：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-KouKJi6H/real_goose_result.json` 为 `blocked_before_model_request`，`external_request_sent=false`，原因是配置凭据缺失 |
+| 真实终端扫描 | 8081 扫描 3 个本机实例；调查 disabled、资产/网络 not_collected、Hook not_installed |
+
+### 隔离验收页面与插件路径
+
+页面现在可打开：[http://127.0.0.1:8081/](http://127.0.0.1:8081/)，看板 PID `38258`。运行目录、日志和核对摘要分别为：
+
+- `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-jcA6qPaU`
+- `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-jcA6qPaU/server.log`
+- `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-jcA6qPaU/verification.json`
+
+插件部署和事件接收：workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；plugin `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。接收器为 `http://127.0.0.1:52708`、PID `24804`，已有 `3` 条有效事件、`0` 条无效事件，当前健康为 `stale/healthy=false`，不被宣称为当前 Hook 生效。
+
+保护核对：8080 无监听；生产指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`，与既有记录一致；未修改全局配置、未重启或停止现用 Agent、未卸载 active 插件。
+
+### Review 结论和限制
+
+`a90e0c8` 是受控 onboarding 反馈闭环和状态真实性修复，不是 Stage1 闭环完成。真实 Goose 没有因凭据缺失而被模拟成功；通用 backend、真实目标安装、下一次启动后的真实 Hook 生效、MCP/Skill/规则/网络当前实例采集和阻断算法仍未完成。当前具备继续 review exact/similar/miss 与 revision 演进的代码基础，但不具备进入真实 Hook 安装与防控阶段的验收依据。
+
+当前保留隔离服务供 review。停止前确认 PID `38258` 的工作目录为本 worktree 后，仅停止该 PID；接收器如需停止只处理 PID `24804`，不按进程名批量终止。
+
+**本轮是状态真实性修复和受控 onboarding 反馈闭环，不是 Stage1 闭环完成。**

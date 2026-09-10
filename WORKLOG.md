@@ -69,3 +69,49 @@
 - 真实接收器当前返回 `stale/healthy=false`，原因是最近事件超过 TTL；这不被页面解释为当前 Hook 生效。插件 manifest 仍 active，真实 Agent PID `5297` 和 create_time `1789006943.640438` 未动。
 - 保护核对：8080 无监听；生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`，与既有记录一致。未改全局配置，未重启或停止现用 Agent。
 - 停止方式：先确认 PID `33217` 的命令仍为本工作树 `monitor_dashboard.py`，再只对该 PID 发送 TERM；观测接收器如需停止只处理 PID `24804`。不按进程名批量终止，不手动删除上述证据目录。
+
+## 2026-09-10 review follow-up：受控 onboarding 反馈闭环
+
+实现提交：`a90e0c8 feat(stage1): close onboarding feedback loop`，基于 `8dfe6a0`。本节追加记录本轮实现和最新验收；前文旧 PID、目录和测试数字保留为历史运行记录。
+
+### 字段 → 来源 → 缺失含义
+
+| 维度/字段 | 来源 | 缺失或异常含义 |
+| --- | --- | --- |
+| 调查 | `ASG_AUTONOMOUS_ANALYSIS`、内存调度记录和冻结的 PID+create_time 结果 | 关闭=`disabled`；无持久队列=`not_scheduled`；实际运行=`running`；真实结果才可为 `succeeded`/`failed` |
+| prior 经验 | 隔离 `experience.json` 的锁内读写；MCP 只读当前实例生命周期摘要 | 文件不存在=空历史；损坏/读取失败=显式错误，不转换为空；不返回配方、路径、凭据或 nonce |
+| 资产 | 当前实例采集器带来源的结果 | 无采集凭据=`not_collected`；成功且空才可显示“未发现”；失败=`failed`；不支持=`unsupported` |
+| 关联进程 | 扫描器已有 ownership 的 `process_pids` | 只表示进程归属；无执行事件不推断没有子进程 |
+| 执行事件 | 观测接收器或当前实例执行采集器 | 未接入采集=`not_collected`，与关联进程区域分开 |
+| 网络 | 当前实例网络观测凭据 | 无数据=`not_collected`，不推断无连接或安全 |
+| 宿主类型 | 已获取的 bundle/本地应用证据 | 没有本地证据=`未知`，不默认 CLI |
+| 指纹/配方 | matcher 的 exact/similar/miss 和结构校验 | 命中只表示匹配；结构校验通过只表示可保存，均不表示调查完成或 Hook 生效 |
+| Hook/Sink | ghost_install manifest、EventVerifier 和后续事件 | 看板当前无实际安装=`未安装`；Sink=`未接入／未验证`；`hook.loaded` 仅为加载证据，需工具事件才是观测验证 |
+
+### 实现和安全边界
+
+- `runtime/onboarding.py` 注册唯一已验证的 `opencode-workspace-plugin` backend；计划、安装、加载、工具观测和撤销分别表达。精确命中复用同一安装/验证入口，新 PID+create_time 重新绑定；旧 run 事件不能替代新实例的加载握手。
+- `runtime/analyst_tools.py` 脚本启动显式加入仓库根，`get_prior_experience` 通过子进程使用继承的隔离配置。prior 读错误由 MCP 返回错误；窄投影不暴露路径、配方、凭据或 nonce。`matcher.remember_verified` 使用 supervisor 参数写入 `recipe_source`，不采信模型自行声称的 provenance。
+- `verify_activation` 先核对原安装 runid 和 active manifest，再分别返回 `loaded_verified`、`events_verified` 或 `revoked`；加载本身不会计入 `hook_verified`。阻断能力仍为 `unsupported`。
+- `monitor_dashboard.py` 的 exact 扫描路径调用统一的授权、幂等安装和验证 helper；失败/禁用/繁忙结果写入经验历史，供后续差异调查识别失败先验。模拟来源只有测试环境 `ASG_TEST_SIMULATED=1` 才被接受。
+
+### 测试分类与结果
+
+- 原有测试：前轮 80 项 matcher、发现、状态真实性、观测 HTTP、插件事务和 onboarding 回归继续通过。
+- 新增/本轮扩展测试：真实 MCP 子进程读取隔离失败历史并验证验证状态窄投影；exact 扫描调用授权 onboarding executor；同一 workspace 的第二个 PID+create_time 重新绑定；撤销 manifest 不会由旧事件升级为 Hook 验证。目标集合 `test_onboarding test_dashboard_http` 共 14 项通过。
+- 全量命令：`ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli test_observe_page test_dashboard_http test_onboarding`；结果 `Ran 83 tests in 19.980s`，`OK`。仅有既存 LibreSSL/urllib3 和 ResourceWarning 输出。
+- 单元/本地集成：上述全量回归；模拟集成：Node 子进程加载仓库真实插件并产生 `hook.loaded` 与工具事件，但配方来源为 `goose-simulated`，不冒充 Goose。
+- 真实 Goose：受控随机目标记录于 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-KouKJi6H/real_goose_result.json`，状态 `blocked_before_model_request`，原因是配置的 `ASG_ANALYST_API_KEY` 缺失，`external_request_sent=false`；因此没有真实 Goose 成功调查。
+
+### 最新隔离验收运行
+
+- 页面：`http://127.0.0.1:8081/`；看板 PID `38258`；工作目录 `/Users/mac/个人项目/asg-os-sensor-stage1`；运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-jcA6qPaU`；日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-jcA6qPaU/server.log`；脱敏核对摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-jcA6qPaU/verification.json`。
+- 看板隔离配置：`ASG_PORT=8081`、`ASG_AUTONOMOUS_ANALYSIS=0`、`ASG_FINGERPRINT_DB`、`ASG_RUN_DIR`、`ASG_EVENT_DIR`、`ASG_AUDIT_DIR`、`ASG_RECIPE_DIR`、`ASG_OBSERVE_URL=http://127.0.0.1:52708`；未设置真实调查凭据、不安全 TLS 覆盖或自动安装授权。当前页面/API 为 3 个真实本机实例，调查=`disabled`，资产/网络=`not_collected`，Hook=`not_installed`。
+- 插件接收器：`http://127.0.0.1:52708`，PID `24804`；隔离 workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`，active，runid `660ad5f492e7ab91`；插件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；事件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`，3 条有效、0 条无效，类型为 `hook.loaded`、`tool.execute.before`、`tool.execute.after`。接收器当前 `stale/healthy=false`，因为最新事件超过 TTL，页面没有把它显示为当前生效。
+- 保护核对：8080 无监听；生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent 的绑定实例为 PID `5297`、create_time `1789006943.640438`，未重启、未卸载、未写入其工作区。
+
+### 启动与停止
+
+每次启动先在 worktree 下创建新的 `artifacts/stage1/dashboard-review-<run-id>/`，使用上述 `ASG_*` 隔离变量运行 `python3 -u -B monitor_dashboard.py`；不复用旧运行目录。当前只保留看板 PID `38258` 和接收器 PID `24804`。停止前先用进程 PID 和工作目录核对归属，再只对对应 PID 发送 TERM；不按进程名批量终止。原始运行产物继续由 `.gitignore` 忽略。
+
+本轮是状态真实性修复和受控 onboarding 反馈闭环，不是 Stage1 闭环完成；真实 Goose 成功调查、通用 Agent backend、MCP/Skill/规则/网络实例采集、真实目标安装、Hook 生效及阻断仍未完成。停在 review，不合并、不推送、不部署 8080、不进入下一阶段。

@@ -114,3 +114,7 @@
 - 基线 `f8af00e`；只把已有发现实例、exact 复用或 Goose 调查计划、固定 project workspace-plugin 安装事务、真实事件验证和隔离经验持久化串成最小闭环。
 - 指纹条目/revision 的来源元数据为 `recipe_source=goose` 才能进入可复用调查配方；无来源旧配方标为 manual/legacy，不能自动安装。安装需 `ASG_ONBOARDING_AUTHORIZED=1`、`ASG_ONBOARDING_AUTO_INSTALL=1`、`ASG_ONBOARDING_SCOPE=project` 和匹配 workspace。
 - 计划、安装、激活和验证状态始终独立；本轮不启用真实 Goose 外发、不触碰现用 Agent/全局配置、不操作 8080。通过隔离临时 workspace 和现有真实观测接收器验证，交付后停在 review。
+
+## 2026-09-10 review follow-up
+
+实现提交为 `a90e0c8`（基线 `8dfe6a0`）。本轮补齐 Goose prior 经验窄投影、真实来源门禁、exact 扫描的统一授权/幂等执行路径、PID+create_time 新实例重绑定，以及 manifest 撤销时的验证降级。验收仍使用隔离 8081、隔离指纹库和已有隔离观测接收器，不触碰 8080、全局配置或现用 Agent。真实 Goose 仅记录实际的模型请求前凭据阻塞，不把模拟结果当成功。

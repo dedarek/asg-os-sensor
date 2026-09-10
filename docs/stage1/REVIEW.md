@@ -109,3 +109,7 @@
 真实隔离插件工作区：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；plugin：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。接收器 `http://127.0.0.1:52708` PID `24804`，绑定实例 `5297:1789006943.640438`，已有 `3/0` 有效/无效事件；health 为 `stale/healthy=false`，不宣称当前 Hook 生效。
 
 验证摘要确认 8080 无监听，生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2` 未变化。停止方式只处理看板 PID `33217` 或接收器 PID `24804`，先核对命令归属；现用 Agent 与 active manifest 保持不动。
+
+## 最新审查交付：a90e0c8
+
+本轮是状态真实性修复和受控 onboarding 反馈闭环，不是 Stage1 闭环完成。实现把 prior 历史、来源信任、exact 扫描统一执行、PID+create_time 重绑定和撤销验证接到同一条受控链路；全量 83 项通过，真实 Goose 受配置凭据缺失阻塞在模型请求前。最新页面与绝对路径见根目录 `REVIEW.md` 的“隔离验收页面与插件路径”，不要使用本文件中较早运行的 PID 或目录。
