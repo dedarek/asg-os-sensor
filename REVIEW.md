@@ -157,3 +157,34 @@ echo $!
 - 保护核对：8080 无监听；生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent PID `5297`、接收器 PID `24804` 和 active manifest 未动。macOS 当前锁屏，无法从自动化界面取得截图；页面已通过本机 HTTP 200 和 `/api/state` 核对，解锁后可直接打开上述地址。
 
 本轮不具备进入 Hook 安装与防控阶段的条件：通用 Agent backend、完整资产采集、exact/similar/miss 闭环去重、版本演进、真实新实例复用和 Hook 生效/撤销的全量验收仍未完成。停在 review，不合并、不推送、不部署 8080。
+
+## 2026-09-10 review follow-up：隔离验收工作区已准备
+
+本轮补足了 reviewer 要求的 loader/config/plugin 只读证据和独立引擎可行性核对，并准备了可由用户打开的隔离工作区。`inspect_loader_surface` 通过目标 OpenCode 1.18.25 bundle 的 `Info.plist`、有界 `app.asar` 标记和目标打开文件类别判断作用域；没有观察到目标项目插件路径时保持 `unresolved`。真实盲 Goose 调查因此给出 `unsupported` 候选，不把既有 observer 事件当作未加装目标的证明。
+
+### 已审查的绝对路径
+
+- 工作区：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`
+- 插件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/asg-observe.js`
+- manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/manifest.json`（active，sha256 `7991e3ae5ac6f475f7b322f9aded1fbbb577d6307abe9d57470f71a33e3ccd18`）
+- 本次 run 事件文件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/runs/b5fd699f4d755aa7/events.jsonl`（用户打开前 0 行）
+- 准备摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/readiness.json`
+- 独立启动探测：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/engine-startup/startup.json`；端口 `52709` 的探测进程已停止，未保留测试引擎。
+
+### 已核对的真实接收路径
+
+已有真实隔离接收器 `http://127.0.0.1:52708`（PID `24804`）绑定现用 OpenCode helper `5297:1789006943.640438`。其 manifest、插件和事件文件分别为：
+
+- `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`
+- `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`
+- `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`
+
+该文件有 `3` 条有效、`0` 条无效事件，类型为 `hook.loaded`、`tool.execute.before`、`tool.execute.after`；当前 health 是 `stale/healthy=false`，所以这只证明历史加载和一次工具调用曾被接收，不代表当前 Hook 生效，也不代表新验收工作区已经加载。
+
+### 安全与可行性结论
+
+独立 CLI `/Users/mac/.nvm/versions/node/v24.16.0/bin/opencode` 的 `serve --help` 和 1.18.25 实际 `serve` 探测均成功；显式隔离 HOME/XDG/`OPENCODE_CONFIG_DIR`、CWD 和 52709 端口后，生成物只出现在 `engine-startup` 目录。bundle 仍含单实例锁和全局配置回退/写入实现，因此直接启动桌面 GUI 不安全；用户后续打开新工作区后，应先取得新实例 PID＋create_time，再为该实例启动独立接收器并验证新 run 的 `hook.loaded` 与 `tool.execute.before/after`。
+
+保护核对：8081 仍为 `http://127.0.0.1:8081/`、PID `48028`；8080 无监听；生产指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。本轮没有重启或修改现用 Agent、全局配置、旧 active manifest 或 8080。
+
+本轮完整回归为 `87` 项通过；原有测试、模拟 Node 机制测试、真实 Goose 盲调查和真实终端已有事件分别记录，未混为一个“全部真实通过”。本轮是状态真实性与隔离验收准备，不是 Stage1 闭环完成；停在 review，不进入 Hook 安装或防控。

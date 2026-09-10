@@ -302,6 +302,29 @@ const fs = require('node:fs');
         self.assertEqual(rejected["matched_instances"], [])
         self.assertEqual(rejected["recent"], [])
 
+    def test_loader_surface_separates_bundle_rules_from_target_scope(self):
+        """静态加载器规则可见，但目标 cwd/插件路径未证实就保持 scope unknown。"""
+        import plistlib
+        from types import SimpleNamespace
+        from runtime import analyst_tools
+        bundle = self.root / "Example.app"
+        executable = bundle / "Contents" / "MacOS" / "Example"
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b"binary")
+        info_path = bundle / "Contents" / "Info.plist"
+        info_path.write_bytes(plistlib.dumps({"CFBundleName": "Example", "CFBundleShortVersionString": "1.0"}))
+        asar = bundle / "Contents" / "Resources" / "app.asar"
+        asar.parent.mkdir(parents=True)
+        asar.write_bytes(b"OPENCODE_CONFIG_DIR Glob.scan(\"{plugin,plugins}/*.{ts,js}\") tool.execute.before tool.execute.after opencode.jsonc")
+        fake = SimpleNamespace(exe=lambda: str(executable), cwd=lambda: str(self.root), open_files=lambda: [])
+        with patch.object(analyst_tools, "target_process", return_value=fake):
+            result = analyst_tools.inspect_loader_surface()
+        self.assertEqual(result["status"], "loader_evidence")
+        self.assertTrue(result["plugin_resolution"]["auto_discovery_observed"])
+        self.assertEqual(result["target_scope"]["status"], "unresolved")
+        self.assertTrue(result["target_scope"]["cwd_is_not_install_scope"])
+        self.assertFalse(result["plugin_resolution"]["target_project_plugin_observed"])
+
     @unittest.skipUnless(NODE, "node unavailable; set ASG_TEST_NODE")
     def test_existing_install_rebinds_to_new_pid_and_create_time(self):
         runner = r"""

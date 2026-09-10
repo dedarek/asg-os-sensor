@@ -188,3 +188,48 @@
 - 本轮实现已作为当前分支独立提交交付；8081 看板使用新的隔离运行目录运行，8080、全局配置、生产指纹库和现用 Agent 保持不动。
 
 本轮是兼容历史和真实观测证据补强，不是 Stage1 闭环完成；完整 exact/similar/miss、版本演进、跨 Agent 通用后端和 Hook 安装/生效验证仍停在下一 review 点。
+
+## 2026-09-10 review follow-up：加载器作用域证据与隔离验收工作区
+
+### 字段 → 来源 → 缺失含义
+
+| 字段 | 来源 | 缺失或异常含义 |
+| --- | --- | --- |
+| 加载器规则 | 目标可执行文件对应的 OpenCode `Info.plist`、`app.asar` 有界静态标记 | 只证明实现中存在配置/插件搜索规则，不证明当前目标已加载插件 |
+| 配置范围 | 目标打开文件类别、`OPENCODE_CONFIG_DIR` 静态入口和目标实际配置文件 | 未观察到目标配置文件或项目插件路径=`unknown`；CWD 只作上下文 |
+| 插件范围 | 目标进程打开文件中是否出现项目 `.opencode/plugins` 路径 | 没有目标插件路径=`unresolved`，不能据此安装或宣称可用 |
+| 真实观测 | 回环接收器按 nonce、PID、create_time 校验后的 `/events` 投影 | 无观测字段/无事件不等于没有子进程或没有连接；`stale` 不等于当前生效 |
+| 隔离启动 | 独立 `HOME`、XDG 目录、`OPENCODE_CONFIG_DIR`、CWD 和端口的实际启动探测 | 启动成功只证明服务可运行；没有会话/工具请求就没有插件握手或工具事件结论 |
+
+### 本次实施
+
+- `runtime/analyst_tools.py` 新增只读 `inspect_loader_surface`：读取目标 bundle 的名称/版本、配置覆盖入口、候选配置文件名、插件 glob、Hook 事件标记和目标打开文件类别；不读取全局配置内容，不扫描 workspace，不执行安装。`get_target_context` 在盲调查未配置 `ASG_OBSERVE_URL` 时不再添加 observation 字段。
+- Goose 配方提示要求桌面/打包运行时先取得 loader 证据；目标 CWD 不再被解释成安装范围；没有目标项目插件路径时可以诚实提出 `unsupported`。候选回滚只保留“未来在已确认作用域使用既有事务卸载器”的描述，不把任意删除文件当成已验证回滚。
+- 新增隔离工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`，事务安装器只在该目录预置插件。manifest、插件和空的本次 run 事件文件均为独立路径；未打开前事件数为 0。
+
+### 真实运行与安全核对
+
+- 真实盲 MCP 子进程证据：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/loader-blind-gpozbzy/verification.json`。OpenCode 1.18.25 的 bundle 规则显示 `OPENCODE_CONFIG_DIR`、`opencode.jsonc/opencode.json/config.json` 和 `{plugin,plugins}/*.{ts,js}`，但目标项目插件路径未观察到，scope=`unresolved`，且没有 observation 字段。
+- 真实 Goose 盲调查：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-blind-oDNlaY9r/real_goose_result.json`。Goose 实际调用 loader 证据后输出 OpenCode、置信度 `0.75`、接入方式 `unsupported`；这证明了“根据实际 loader 证据拒绝无依据安装”，不证明新实例 Hook 已加载。其候选路径为该 run 下 `pid_5297_1789018526/recipes/candidate.json`。
+- 独立引擎可行性探测：`opencode serve --hostname 127.0.0.1 --port 52709` 在验收工作区启动成功，进程 PID `52110` 随后已按身份停止；日志和启动摘要在 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/engine-startup/`。探测使用隔离 `HOME`、XDG 五类目录和 `OPENCODE_CONFIG_DIR`，只生成该目录内数据库/缓存/日志；没有发送会话或工具请求，也没有产生新插件事件。
+- app bundle 静态证据同时含 `requestSingleInstanceLock`、`--user-data-dir`、全局配置候选及缺失时创建配置文件的实现标记。因此安全启动的最小路径必须显式提供隔离数据根、配置目录、CWD 和端口；直接启动桌面 GUI 仍可能触发单实例/全局路径，不作为本次自动化动作。
+
+### 测试分类与结果
+
+- 原有测试：前轮 86 项回归继续通过。
+- 新增/扩展测试：`test_onboarding.py` 的 loader scope 分离、脚本 MCP 隔离 prior 和原生兼容路径纳入全量；本次完整命令结果为 `Ran 87 tests in 22.509s`、`OK`。输出只有既存 LibreSSL/ResourceWarning 警告。
+- 模拟集成：Node 插件事件链仍属于 `goose-simulated` 机制测试，不冒充真实 Agent。
+- 真实 Goose：盲调查成功返回候选，但接入方式为 `unsupported`；没有真实新实例的工具事件验收。
+- 真实终端：现用 OpenCode 仍为只读证据；已有隔离接收器仍有 `3` 条有效、`0` 条无效历史事件，health=`stale/healthy=false`。
+
+### 交接路径与边界
+
+- 新验收工作区：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`。
+- 新工作区插件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/asg-observe.js`。
+- 新工作区 manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/manifest.json`。
+- 新工作区事件文件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/runs/b5fd699f4d755aa7/events.jsonl`，用户打开前为 0 行。
+- 已有真实接收器仍为 `http://127.0.0.1:52708`，PID `24804`，绑定现用 OpenCode helper `5297:1789006943.640438`；旧部署路径和 3 条事件保存在 `artifacts/stage1/opencode-observe`，与新工作区严格分开。
+- 8081 页面仍为 `http://127.0.0.1:8081/`，PID `48028`，摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/verification.json`；调查为 disabled，Hook 不显示已安装或已验证。
+- 保护核对：8080 无监听；生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent、全局配置和旧 active manifest 未重启、未修改、未卸载。新工作区验收摘要为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/readiness.json`。
+
+本轮是加载器证据、隔离启动可行性和验收工作区准备，不是 Stage1 闭环完成；停止在 review，不进入 Hook 安装推广或防控。

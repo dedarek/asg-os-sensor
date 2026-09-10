@@ -127,3 +127,9 @@
 原有回归 84 项保持通过；新增兼容跨实例/版本拒绝、MCP 子进程兼容 prior 和显式隔离 recipe 测试后全量为 86 项通过。Node 事件链仍为 `goose-simulated` 机制集成。8081 新验收工作区：`http://127.0.0.1:8081/`，PID `48028`，运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA`，日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/server.log`，摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/verification.json`。8080、生产指纹库、现用 Agent 和 active manifest 未动；macOS 锁屏导致自动化截图未取得，HTTP/API 已核对。
 
 本轮是兼容历史和真实观测证据补强，不是 Stage1 闭环完成，不具备进入 Hook 安装与防控阶段的条件。
+
+## 2026-09-10 review follow-up：隔离验收工作区已准备
+
+隔离工作区：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`；插件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/asg-observe.js`；manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/manifest.json`；事件文件：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/.opencode/plugins/.asg-observe/runs/b5fd699f4d755aa7/events.jsonl`，用户打开前为 0 行。准备摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance/readiness.json`。
+
+已有真实接收器仍为 `http://127.0.0.1:52708`，PID `24804`，旧隔离工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`，历史事件 `3/0` 有效/无效，当前 `stale/healthy=false`。本轮加入 loader scope 只读证据和独立 `opencode serve` 启动探测；全量 `87` 项通过，8080、全局配置和现用 Agent 未动。本轮是隔离验收准备与状态真实性补强，不是 Stage1 闭环完成。

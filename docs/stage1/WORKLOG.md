@@ -415,3 +415,11 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 隔离部署绝对路径：workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；plugin `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`；接收器 `http://127.0.0.1:52708`。本轮没有重装、卸载或重启现用 Agent；Node callback 仅为机制集成，不能冒充真实 Agent 闭环。
 
 本轮是兼容历史和真实观测证据补强，不是 Stage1 闭环完成。
+
+## 2026-09-10 review follow-up：加载器作用域证据与隔离验收工作区
+
+字段语义：目标 `Info.plist`/`app.asar` 只证明加载器实现；目标打开文件中没有项目 `.opencode/plugins` 路径时，作用域为 `unresolved`；CWD 只作上下文。回环事件仍按 nonce、PID、create_time 校验，`stale` 不表示当前生效。
+
+新增 `inspect_loader_surface` 及 Goose 提示门禁；真实盲 MCP 证据为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/loader-blind-gpozbzy/verification.json`，真实 Goose 盲调查为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-blind-oDNlaY9r/real_goose_result.json`，候选接入方式为 `unsupported`，没有把旧 observer 事件当作新目标加载证明。
+
+已准备隔离工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`，插件、manifest 和本次 run 事件文件均在其 `.opencode/plugins/` 下；事件文件在用户打开前为 0 行。独立 `opencode serve` 在端口 52709 启动探测成功，随后停止；摘要在该工作区的 `readiness.json` 和 `engine-startup/startup.json`。完整回归 `87` 项通过（原有/模拟/真实 Goose/真实终端分开记录）。本轮不是 Stage1 闭环完成。

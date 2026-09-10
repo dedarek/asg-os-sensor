@@ -14,7 +14,8 @@ from pathlib import Path
 OBSERVATION_TOOLS = ('get_target_context', 'inspect_config_surface',
                      'observe_tree', 'observe_runtime_surface',
                      'inspect_network_peers', 'inspect_execution_trace',
-                     'inspect_stream')
+                     'inspect_stream', 'inspect_loader_surface',
+                     'inspect_observation')
 
 
 def _real_success(item) -> bool:
@@ -89,7 +90,8 @@ def validate(recipe, evidence_dir, target=None):
             raise ValueError('Evidence spans multiple target instances: ' + ref)
         evidence.append({'evidence_id': ref, 'tool': item['tool']})
 
-    if not any(e['tool'] in ('get_target_context', 'inspect_config_surface') for e in evidence):
+    if not any(e['tool'] in ('get_target_context', 'inspect_config_surface',
+                             'inspect_loader_surface') for e in evidence):
         raise ValueError('Bound target evidence required')
     if target is not None:
         exp = (int(target['pid']), float(target['create_time']))

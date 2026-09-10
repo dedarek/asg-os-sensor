@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import plistlib
 import re
 import subprocess
 import sys
@@ -175,6 +176,134 @@ def process_row(p: psutil.Process) -> dict[str, Any]:
     }
 
 
+def _outer_bundle(executable: str) -> Path | None:
+    try:
+        path = Path(executable).resolve()
+    except (OSError, ValueError):
+        return None
+    bundle = None
+    for candidate in (path, *path.parents):
+        if candidate.suffix == ".app":
+            bundle = candidate
+    return bundle
+
+
+def _bundle_markers(path: Path) -> dict[str, bool]:
+    markers = {
+        "config_env_override": b"OPENCODE_CONFIG_DIR",
+        "config_file_opencode_jsonc": b"opencode.jsonc",
+        "config_file_opencode_json": b"opencode.json",
+        "config_file_config_json": b"config.json",
+        "plugin_scan_call": b"Glob.scan",
+        "plugin_scan_pattern": b"{plugin,plugins}/*.{ts,js}",
+        "hook_before": b"tool.execute.before",
+        "hook_after": b"tool.execute.after",
+    }
+    found = {key: False for key in markers}
+    try:
+        if path.stat().st_size > 256 * 1024 * 1024:
+            return found
+        max_marker = max(len(value) for value in markers.values())
+        carry = b""
+        with path.open("rb") as stream:
+            while True:
+                chunk = stream.read(4 * 1024 * 1024)
+                if not chunk:
+                    break
+                data = carry + chunk
+                for key, marker in markers.items():
+                    if not found[key] and marker in data:
+                        found[key] = True
+                carry = data[-max_marker:]
+                if all(found.values()):
+                    break
+    except OSError:
+        pass
+    return found
+
+
+def inspect_loader_surface() -> dict[str, Any]:
+    """Read only the target's app bundle and open-file classes; never install or scan a workspace."""
+    p = target_process()
+    try:
+        executable = p.exe()
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return {"available": False, "status": "target_executable_unavailable"}
+    bundle = _outer_bundle(executable)
+    if bundle is None:
+        return {"available": False, "status": "no_app_bundle", "target_executable_class": Path(executable).name}
+    info_path = bundle / "Contents" / "Info.plist"
+    asar_path = bundle / "Contents" / "Resources" / "app.asar"
+    info: dict[str, Any] = {}
+    try:
+        if info_path.stat().st_size <= 256 * 1024:
+            loaded = plistlib.loads(info_path.read_bytes())
+            if isinstance(loaded, dict):
+                info = {
+                    "name": loaded.get("CFBundleDisplayName") or loaded.get("CFBundleName"),
+                    "version": loaded.get("CFBundleShortVersionString") or "unknown",
+                }
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        info = {}
+    markers = _bundle_markers(asar_path) if asar_path.is_file() else {}
+    opened_classes: set[str] = set()
+    try:
+        for opened in p.open_files():
+            value = str(opened.path)
+            if value == str(asar_path):
+                opened_classes.add("engine_bundle")
+            if "/.opencode/plugin/" in value or "/.opencode/plugins/" in value:
+                opened_classes.add("project_plugin_path")
+            if value.endswith(("/opencode.json", "/opencode.jsonc", "/config.json")):
+                opened_classes.add("config_file")
+            if "Application Support/ai.opencode.desktop" in value:
+                opened_classes.add("desktop_data_store")
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+    cwd = ""
+    try:
+        cwd = p.cwd()
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+    scan_proven = bool(markers.get("plugin_scan_call") and markers.get("plugin_scan_pattern"))
+    config_names = [name for name, key in (("opencode.jsonc", "config_file_opencode_jsonc"),
+                                           ("opencode.json", "config_file_opencode_json"),
+                                           ("config.json", "config_file_config_json"))
+                    if markers.get(key)]
+    return {
+        "available": True,
+        "status": "loader_evidence" if scan_proven else "bundle_evidence_only",
+        "source": "target executable + bounded app bundle markers + target open-file classes",
+        "bundle": {"name": info.get("name"), "version": info.get("version", "unknown"),
+                   "info_plist": str(info_path), "app_asar": str(asar_path),
+                   "target_opened": "engine_bundle" in opened_classes},
+        "config_resolution": {
+            "env_override_observed": bool(markers.get("config_env_override")),
+            "global_candidate_names": config_names,
+            "target_config_file_observed": "config_file" in opened_classes,
+        },
+        "plugin_resolution": {
+            "auto_discovery_observed": scan_proven,
+            "pattern": "{plugin,plugins}/*.{ts,js}" if scan_proven else None,
+            "hook_events_observed": [name for name, key in (("tool.execute.before", "hook_before"),
+                                                              ("tool.execute.after", "hook_after"))
+                                     if markers.get(key)],
+            "target_project_plugin_observed": "project_plugin_path" in opened_classes,
+        },
+        "target_scope": {
+            "status": "unresolved",
+            "cwd": cwd,
+            "cwd_is_not_install_scope": True,
+            "reason": "目标进程 cwd 不是已确认的 workspace/plugin 配置目录；未观察到目标实际项目插件路径",
+        },
+        "limitations": [
+            "静态 bundle 证据只证明加载器实现和候选规则，不证明当前目标已加载插件",
+            "没有从目标进程打开文件中确认 workspace/config/plugin 作用域，不能据此安装",
+            "未读取全局配置文件、用户凭据或插件内容",
+        ],
+    }
+
+
 def tree_rows(root: psutil.Process) -> list[dict[str, Any]]:
     rows = []
     queue: list[tuple[psutil.Process, int]] = [(root, 0)]
@@ -299,6 +428,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return onboarding.load_prior_experience(instance_id=instance_id, compatibility=compatibility)
     if name == "inspect_observation":
         return inspect_observation()
+    if name == "inspect_loader_surface":
+        return inspect_loader_surface()
     if name == "propose_recipe":
         target_process()
         recipe = redact(args.get("recipe", {}))
@@ -332,10 +463,13 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return {'status': 'unsupported', 'reason': 'Executing the target binary may launch another application; disabled'}
     if name == "get_target_context":
         from runtime.collection import collect
-        return {"target": {'pid': p.pid, 'create_time': p.create_time()},
-                "local_evidence": collect(p), "prior_memory": load_prior(),
-                "prior_experience": call_tool("get_prior_experience", {}),
-                "observation": call_tool("inspect_observation", {})}
+        context = {"target": {'pid': p.pid, 'create_time': p.create_time()},
+                   "local_evidence": collect(p), "prior_memory": load_prior(),
+                   "prior_experience": call_tool("get_prior_experience", {}),
+                   "loader_surface": call_tool("inspect_loader_surface", {})}
+        if OBSERVE_URL:
+            context["observation"] = call_tool("inspect_observation", {})
+        return context
     if name == "observe_runtime_surface":
         from runtime.collection import collect
         return {'local_evidence': collect(p), 'runtime': 'unknown',
@@ -382,6 +516,7 @@ TOOLS = [
     {"name": "inspect_execution_trace", "description": "Inspect sensitive files accessed and active child command lines spawned by the agent.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "probe_help", "description": "Run only --help and --version against the observed executable, without a shell or arbitrary arguments.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_stream", "description": "Inspect a supervisor-exposed output stream and return structure samples after redaction.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "inspect_loader_surface", "description": "Read bounded target app-loader, config-resolution and plugin-scan evidence; target cwd is never treated as install scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_observation", "description": "Read the configured loopback observation receiver health and event types, bound to the target PID+create_time.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_experience", "description": "Read bounded prior lifecycle outcomes for this compatible runtime; corrupt history is an explicit error and private paths are omitted.", "inputSchema": {"type": "object", "properties": {}}},

@@ -128,3 +128,7 @@
 本次基线为 `8dc06d9`，范围仅包含兼容条件下的跨实例 prior 查询、回环观测证据工具、脚本启动的隔离路径边界及对应回归；使用现有真实 OpenCode 实例进行只读 Goose 调查。自动安装保持关闭，不重启或重新安装现用 Agent，不操作 8080。交付后停在 review 点，完整 exact/similar/miss 调度和 revision 演进留待下一步。
 
 验收标准：兼容 executable/entry/build/launch 的新 PID 可读历史并保留 revision/source；入口或构建变化不命中；MCP 子进程不回退默认 recipe/fingerprint 库；Goose 可看到绑定 PID+create_time 的观测健康和事件类型，但不会把 stale 或事件历史当作当前 Hook 生效；原生二进制仍不要求脚本 entry token。
+
+## 2026-09-10 review follow-up：加载器证据与隔离验收准备
+
+基于 `b00bf10`，本次只补充 loader/config/plugin 作用域的只读证据、隔离验收工作区和独立启动可行性核对；不把目标 CWD 当安装范围，不重启现用 Agent，不操作 8080。新工作区在用户打开前保持无事件；完整 Stage1 闭环、Hook 推广安装与防控仍留在后续 review。
