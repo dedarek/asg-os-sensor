@@ -119,3 +119,17 @@ echo $!
 当前保留隔离服务供 review。停止前确认 PID `38258` 的工作目录为本 worktree 后，仅停止该 PID；接收器如需停止只处理 PID `24804`，不按进程名批量终止。
 
 **本轮是状态真实性修复和受控 onboarding 反馈闭环，不是 Stage1 闭环完成。**
+
+## 真实 Goose 复核追加（run 6UDd4Dsj）
+
+顾问指出此前的凭据阻塞来自隔离 worktree 未继承主仓库配置。现已按指定方式从 `/Users/mac/个人项目/asg-os-sensor/.env` 内存加载配置；未复制密钥、未输出值或尾号。预检为 `custom-openai`、`ASG_ANALYST_API_KEY`、`key_present=True`、`qwen38-27b`，TLS 兼容只对本次授权网关生效。
+
+真实随机目标 PID `40956`、create_time `1789016070.516786` 完成两轮真实 Goose：第一轮成功生成并保存隔离候选配方；中间真实 MCP 子进程读取到同一实例的配方 prior；第二轮 `get_target_context` 收到 `prior_experience.recent` 1 条后再次成功。目标最终配方身份为 `Python`，Hook 接入方式为 `unsupported`，所以没有安装或宣称可用 Hook。
+
+证据总览：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/real_goose_result.json`；prior MCP 摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/prior_mcp_result.json`；隔离指纹库：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/fingerprints.json`。审计、证据、候选和日志均在该 run 目录，未污染生产库。
+
+当前全量测试为 84 项通过，包含真实 MCP 子进程和真实 Goose 结果目录的隔离核对；模拟 Node 插件事件仍明确标为 `goose-simulated`。真实调查已完成，但这是受控目标验收，不代表通用 Agent、exact 复用去重、revision 演进或 Hook 生效验证完成。
+
+页面、插件、接收器和保护状态保持不变：8081 页面 PID `38258`；接收器 PID `24804`；manifest、plugin、events 的绝对路径见前文；8080 无监听；生产库哈希仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent PID `5297` 未重启或触碰。
+
+**本轮补充证明真实 Goose 调查和 prior 传递链路，不是 Stage1 闭环完成。**

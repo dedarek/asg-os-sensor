@@ -401,3 +401,7 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 ## 2026-09-10 review follow-up：受控 onboarding 反馈闭环
 
 实现提交 `a90e0c8`。字段语义、测试分类、真实 Goose 阻塞证据、8081 页面及插件绝对路径以根目录 `WORKLOG.md` 同名章节为准；本节只保留历史记录的增量索引，避免重写前轮计划。新增回归包括隔离 prior 的真实 MCP 子进程、exact 自动 onboarding、PID+create_time 重绑定和撤销 manifest 验证；全量 83 项通过。真实 Goose 结果为 `blocked_before_model_request`，`external_request_sent=false`，没有调查成功。
+
+## 2026-09-10 真实 Goose 复核追加
+
+真实 Goose 两轮均 `succeeded`，中间真实 MCP 读取到同一 PID+create_time 的 prior，第二轮 Goose 的 `get_target_context` 收到 1 条 prior。目标是随机本地监听的 Python runtime，模型提出身份 `Python` 和 `unsupported` 接入方式；没有安装 Hook。完整回归为 84 项通过。总结果、候选、审计和隔离指纹库均位于 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/`，密钥未复制或输出。根目录 `WORKLOG.md` 记录字段映射和准确绝对路径。

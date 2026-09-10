@@ -115,3 +115,33 @@
 每次启动先在 worktree 下创建新的 `artifacts/stage1/dashboard-review-<run-id>/`，使用上述 `ASG_*` 隔离变量运行 `python3 -u -B monitor_dashboard.py`；不复用旧运行目录。当前只保留看板 PID `38258` 和接收器 PID `24804`。停止前先用进程 PID 和工作目录核对归属，再只对对应 PID 发送 TERM；不按进程名批量终止。原始运行产物继续由 `.gitignore` 忽略。
 
 本轮是状态真实性修复和受控 onboarding 反馈闭环，不是 Stage1 闭环完成；真实 Goose 成功调查、通用 Agent backend、MCP/Skill/规则/网络实例采集、真实目标安装、Hook 生效及阻断仍未完成。停在 review，不合并、不推送、不部署 8080、不进入下一阶段。
+
+## 2026-09-10 真实 Goose 复核：配置加载、调查与 prior 回读
+
+本节更新此前“真实 Goose 未完成”的历史记录。新增安全修复提交：`055adca fix(stage1): hide credential suffixes from logs`；真实调查使用工作树当时的实现提交 `a90e0c8`，掩码修复随后提交。主仓库 `.env` 只被 `dotenv_values` 读入本次 Python 进程内存，没有复制到 worktree、命令行、报告或日志；预检仅输出路由、`key_env` 和 `key_present`。
+
+### 实际结果
+
+- 预检：`route=custom-openai`、`key_env=ASG_ANALYST_API_KEY`、`key_present=True`、模型 `qwen38-27b`；TLS 兼容仅对本次指定网关授权。
+- 随机目标：PID `40956`、create_time `1789016070.516786`，脚本仅监听 `127.0.0.1`，启动参数不含产品名；调查结束后由驱动脚本终止。
+- 第一轮真实 Goose：`succeeded`，生成候选配方并通过结构/证据门禁；第二轮使用相同 PID+create_time 强制重测，也为 `succeeded`。两轮都没有安装 Hook，自动安装为关闭。
+- 中间真实 MCP：独立子进程、去除 `PYTHONPATH`，通过 `get_prior_experience` 读取同一隔离经验库，返回 `returncode=0`；结果确认有 prior 配方历史、实例 ID 存在、没有暴露 run 路径。第二轮的 `get_target_context` 证据显示 `prior_experience.recent` 为 1 条，证明 Goose 实际收到上一轮经验。
+- Goose 对该通用 Python 目标提出了身份 `Python`，接入方式为 `unsupported`；因此候选配方可以记录调查结论，但没有被误报为可安装接入方案。
+
+### 证据路径
+
+- 总结：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/real_goose_result.json`
+- 预检：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/preflight.json`
+- prior MCP 摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/prior_mcp_result.json`
+- 隔离指纹库：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/fingerprints.json`
+- 第一轮候选：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/pid_40956_1789016070/recipes/candidate.json`
+- 第二轮候选：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/pid_40956_1789016168/recipes/candidate.json`
+- 第二轮 Goose 的 `get_target_context` 证据位于同一第二轮目录的 `evidence/`，摘要记录 `prior_recent_count=1`。
+
+### 测试与保护核对
+
+- 掩码修复后全量命令重新执行，结果 `Ran 84 tests in 22.612s`，`OK`；其中新增回归确认密钥尾号不会进入掩码文本。目标 onboarding/dashboard 集合仍为 14 项通过。
+- 本次真实调查 run 的 `fingerprints.json` 和 `experience.json` 只在 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/`；没有写入生产指纹库。生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。
+- 8081 看板仍为 `http://127.0.0.1:8081/`、PID `38258`；观测接收器仍为 `http://127.0.0.1:52708`、PID `24804`。8080 无监听，现用 Agent PID `5297` 未重启或触碰。
+
+这两轮是受控真实调查和 prior 传递验收，不是 Stage1 闭环完成；强制第二轮用于验证 prior 链路，不替代后续 exact 命中去重、版本演进和真实 Hook 生效验收。

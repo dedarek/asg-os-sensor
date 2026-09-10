@@ -113,3 +113,7 @@
 ## 最新审查交付：a90e0c8
 
 本轮是状态真实性修复和受控 onboarding 反馈闭环，不是 Stage1 闭环完成。实现把 prior 历史、来源信任、exact 扫描统一执行、PID+create_time 重绑定和撤销验证接到同一条受控链路；全量 83 项通过，真实 Goose 受配置凭据缺失阻塞在模型请求前。最新页面与绝对路径见根目录 `REVIEW.md` 的“隔离验收页面与插件路径”，不要使用本文件中较早运行的 PID 或目录。
+
+## 真实 Goose 复核追加：run 6UDd4Dsj
+
+此前凭据阻塞已按主仓库 `.env` 内存加载方式解除。真实 Goose 两轮成功，中间真实 MCP 读取隔离 prior，第二轮上下文证据确认收到 prior；目标配方接入方式为 `unsupported`，无 Hook 安装。全量 84 项通过。完整结果见根目录 `REVIEW.md` 和 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/real_goose_result.json`。本轮仍不是 Stage1 闭环完成。

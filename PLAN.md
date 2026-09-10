@@ -16,3 +16,7 @@
 以 `8dfe6a0` 为文档基线，本轮实现提交为 `a90e0c8`。范围是把受控 onboarding 的执行来源、prior 经验、exact 扫描路径和激活状态继续收紧：仅 supervisor 传入的 Goose 来源可进入可复用配方；经验读取只返回当前 PID+create_time 的生命周期摘要；exact 扫描走与新调查相同的授权、幂等安装和验证路径；manifest 撤销或 runid 改变不会被历史事件提升为 Hook 已验证。
 
 验收保持隔离：8081 单独运行目录和指纹库，观测接收器使用既有隔离 OpenCode workspace；不动 8080、全局配置和现用 Agent。真实 Goose 仅在随机合成目标上尝试，凭据缺失时在模型请求前明确失败，不能计为调查成功。完成后停在 review，不进入 Hook 安装阶段。
+
+## 2026-09-10 真实 Goose 复核追加
+
+在已授权配置源 `/Users/mac/个人项目/asg-os-sensor/.env` 做内存加载后，使用 `ASG_INSECURE_SSL=1` 与 `ASG_ALLOW_INSECURE_ANALYST=1` 仅对指定 Lenovo gateway 的隔离调查完成两轮真实 Goose 调查。目标、指纹库、经验、审计和证据均位于新的 `artifacts/stage1/real-goose-live-6UDd4Dsj/`；自动安装保持关闭，现用 Agent、全局配置和 8080 不动。第一轮成功保存候选配方，中间真实 MCP 读取到同一实例 prior，第二轮在相同 PID+create_time 上成功读取 prior 后再次完成调查。此结果证明真实调查和 prior 读取链路，不等于通用 Agent 或 Hook 闭环完成。

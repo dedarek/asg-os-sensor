@@ -118,3 +118,7 @@
 ## 2026-09-10 review follow-up
 
 实现提交为 `a90e0c8`（基线 `8dfe6a0`）。本轮补齐 Goose prior 经验窄投影、真实来源门禁、exact 扫描的统一授权/幂等执行路径、PID+create_time 新实例重绑定，以及 manifest 撤销时的验证降级。验收仍使用隔离 8081、隔离指纹库和已有隔离观测接收器，不触碰 8080、全局配置或现用 Agent。真实 Goose 仅记录实际的模型请求前凭据阻塞，不把模拟结果当成功。
+
+## 2026-09-10 真实 Goose 复核追加
+
+已按顾问要求从 `/Users/mac/个人项目/asg-os-sensor/.env` 内存加载配置，在隔离目标上完成真实 Goose 两轮调查和中间 prior MCP 回读。结果目录为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/`；自动安装、全局配置、8080 和现用 Agent 均保持不变。详细结果见根目录 `WORKLOG.md`。
