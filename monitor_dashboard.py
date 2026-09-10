@@ -1180,6 +1180,17 @@ def scan_agents_once():
                 Path(log_dir) if log_dir else None,
                 {"pid": pid, "create_time": pinfo.get('create_time')},
             )
+            # An empty new investigation must not hide same-instance saved findings.
+            if partial_findings is None:
+                findings_root = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard")))
+                saved_paths = sorted(findings_root.glob(f"pid_{pid}_*/investigation_findings.json"),
+                                     key=lambda path: path.stat().st_mtime, reverse=True)
+                for saved_path in saved_paths[:64]:
+                    saved_findings = _load_partial_findings(saved_path.parent,
+                        {"pid": pid, "create_time": pinfo.get('create_time')})
+                    if saved_findings and saved_findings.get("findings"):
+                        partial_findings = saved_findings
+                        break
             partial_identity = ((partial_findings or {}).get("findings") or {}).get("identity") \
                 if isinstance(partial_findings, dict) else None
             if (not local_identity and not matched_fp and isinstance(partial_identity, dict)
