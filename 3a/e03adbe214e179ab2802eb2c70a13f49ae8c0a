@@ -1,0 +1,31 @@
+test_analyst_evidence.py
+  s_1512a994888af5::t_defae2eba2336b 40
+  s_1512a994888af5::t_bf7a958a29f948 48-66
+  s_1512a994888af5::t_2d16d22e2d4f1a 34-39,41-47
+runtime/analyst_tools.py
+  s_1512a994888af5::t_a97c844e4e3222 576-577,701-727,858
+  s_1512a994888af5::t_310d6ee07f4c76 861
+  s_1512a994888af5::t_bf7a958a29f948 459
+runtime/analyst_evidence.py
+  s_1512a994888af5::t_310d6ee07f4c76 39,371-382,397
+runtime/recipe_validation.py
+  s_1512a994888af5::t_bf7a958a29f948 21
+WORKLOG.md
+  s_1512a994888af5::t_8255cc35a9b735 456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3ae03adbe214e179ab2802eb2c70a13f49ae8c0a",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
