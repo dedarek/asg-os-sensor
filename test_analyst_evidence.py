@@ -166,6 +166,26 @@ class AnalystEvidenceTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 at.search_target_image({"query": "anything"})
 
+    def test_image_pages_absolute_offsets_and_byte_limit(self):
+        from runtime import analyst_tools as at
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'image'
+            path.write_bytes(b'prefix-' + b'needle-' * 12)
+            with patch.object(at, 'target_process', return_value=SimpleNamespace(exe=lambda: str(path))):
+                first = at.search_target_image({'query': 'needle'})
+                second = at.search_target_image({'query': 'needle', 'offset': first['next_offset']})
+                self.assertEqual([h['offset'] for h in first['hits'] + second['hits']], list(range(7, 91, 7)))
+                self.assertIsNone(second['next_offset'])
+                self.assertEqual(at.search_target_image({'query': 'needle', 'offset': 1000})['hits'], [])
+                for offset in (1.1, True, '12', -1):
+                    with self.assertRaises(ValueError):
+                        at.search_target_image({'query': 'needle', 'offset': offset})
+                with self.assertRaises(ValueError):
+                    at.search_target_image({'query': '中' * 86})
+                path.write_bytes(b'')
+                self.assertEqual(at.search_target_image({'query': 'needle'})['searched_range'], [0, 0])
+
 
 if __name__ == "__main__":
     unittest.main()

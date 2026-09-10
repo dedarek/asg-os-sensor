@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mmap
 import os
 import plistlib
 import re
@@ -604,12 +605,11 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
     no whole-binary dumps. Query is a literal (no regex), matched case-sensitively.
     """
     query = args.get("query")
-    if not isinstance(query, str) or not query or len(query) > SEARCH_IMAGE_MAX_QUERY:
+    if not isinstance(query, str) or not query or len(query.encode('utf-8')) > SEARCH_IMAGE_MAX_QUERY:
         raise ValueError("query must be a non-empty literal string up to "
                          + str(SEARCH_IMAGE_MAX_QUERY) + " bytes")
-    try:
-        offset = int(args.get("offset", 0) or 0)
-    except (TypeError, ValueError):
+    offset = args.get("offset", 0)
+    if not isinstance(offset, int) or isinstance(offset, bool):
         raise ValueError("offset must be an integer")
     if offset < 0:
         raise ValueError("offset must be >= 0")
@@ -629,24 +629,23 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
 
     needle = query.encode("utf-8")
     hits = []
-    with exe.open("rb") as image:
-        image.seek(offset)
-        consumed = image.read(size - offset)
-    base = offset
-    position = 0
-    while len(hits) < SEARCH_IMAGE_MAX_HITS:
-        found = consumed.find(needle, position)
-        if found < 0:
-            break
-        start, end = max(0, found - SEARCH_IMAGE_CONTEXT), min(len(consumed), found + len(needle) + SEARCH_IMAGE_CONTEXT)
-        hits.append({
-            "offset": base + found,
-            "context": _printable_context(consumed[start:end]),
-        })
-        position = found + max(1, len(needle))
+    # Map the image read-only instead of copying up to 1GiB into the MCP heap.
+    # Only the bounded excerpts are materialized; empty/out-of-range pages are valid.
+    position = min(offset, size)
+    if position < size:
+        with exe.open("rb") as image, mmap.mmap(image.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+            while len(hits) < SEARCH_IMAGE_MAX_HITS:
+                found = mapped.find(needle, position)
+                if found < 0:
+                    position = size
+                    break
+                start = max(0, found - SEARCH_IMAGE_CONTEXT)
+                end = min(size, found + len(needle) + SEARCH_IMAGE_CONTEXT)
+                hits.append({"offset": found, "context": _printable_context(mapped[start:end])})
+                position = found + len(needle)
     next_offset = None
-    if hits and base + position < size and len(hits) == SEARCH_IMAGE_MAX_HITS:
-        next_offset = base + position
+    if hits and position < size and len(hits) == SEARCH_IMAGE_MAX_HITS:
+        next_offset = position
     return {
         "status": "collected",
         "target": {"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
@@ -654,7 +653,7 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
         "size": size,
         "mtime": stat_result.st_mtime,
         "query_bytes": len(needle),
-        "searched_range": [offset, size],
+        "searched_range": [min(offset, size), position],
         "hits": hits,
         "next_offset": next_offset,
         "truncated": next_offset is not None,

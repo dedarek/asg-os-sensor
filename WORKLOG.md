@@ -433,3 +433,9 @@ test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三�
 ### 测试
 
 两个测试绑定实际 python3 stub 二进制（101KB）：命中（"Python" 出现 2 次，context 有界、offset < size）、无命中（空 hits、next_offset=None）、错误参数（空/超长/缺 query）、错误 create_time（PID 复用守卫触发 RuntimeError）。全量 Ran 129 tests OK。
+
+## 顾问直接修复并启动真实调查（2026-09-10，恢复开工）
+- 独立检查 d2959b3：目标二进制检索此前整文件读入内存，且报告称已更新的 recipe evidence allowlist 实际遗漏；顾问直接补齐只读映射、UTF-8字节限制、严格分页偏移和证据接入。
+- 本次本机回归 12 项通过（test_analyst_evidence + test_learned_onboarding），不是自主接入成功。
+- 对既有隔离真实 CLI PID44187/create_time1789043968.57205 启动真实 Goose；可复现启动和派生通用遥测契约在 artifacts/stage1/learned-demo/current.json 指向目录。无预置 Hook，无总调查时限；用显式主仓库 env 获取已授权模型凭据，不输出值。
+- 执行者并行只读查真实会话 API，顾问负责此次真实调查和生成计划的独立执行验收；不重启现用桌面 Agent。

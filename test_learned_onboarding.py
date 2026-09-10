@@ -24,6 +24,12 @@ class BridgeTests(unittest.TestCase):
  def test_workspace_mismatch(self):
   self.recipe['hook']['workspace']='/wrong'
   with self.assertRaises(ValueError):prepare(self.recipe,self.ev,self.target,self.ws)
+ def test_image_search_is_accepted_as_bound_observation(self):
+  ref='ev-123456790-0123456789'
+  (self.ev/(ref+'.json')).write_text(json.dumps({'target':self.target,'tool':'search_target_image','result':{'status':'collected','hits':[{'offset':42,'context':'fixture loader'}]}}))
+  self.recipe['evidence_refs'].append(ref)
+  prepared=prepare(self.recipe,self.ev,self.target,self.ws)
+  self.assertEqual(prepared['evidence'][-1]['tool'],'search_target_image')
  def test_unsupported_never_executes(self):
   self.recipe['hook']['method']='unsupported'
   with self.assertRaises(ValueError):prepare(self.recipe,self.ev,self.target,self.ws)
