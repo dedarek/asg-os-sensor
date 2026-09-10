@@ -18,13 +18,13 @@
 ## 待办（受控卸载验收）
 - 未执行卸载；步骤已写入 WORKLOG。等待顾问协调用户再次只读调用后执行。
 ## 全量测试（精确命令与数量）
-- 命令: ASG_TEST_NODE=<node> python3 -B -m unittest test_discovery test_matcher_stage1   test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration   test_opencode_plugin test_real_cli
-- 结果: Ran 69 tests, OK (66 无 node + 3 real_cli 需 node)（8 discovery + 53 stage1 + 7 observe-page + 1 synthetic-integration）。其中 stage1 含：
-  * 真实子进程 CLI 3 项：install..server..uninstall（需 ASG_TEST_NODE） 即时 revoked(503)..reinstall..HTTP 投影
-    无 nonce；插件旧回调在重装后不写新 run（同一 node 进程内验证）。
-  * 合成 SDK Hook 集成 2 项（test_synthetic_hook_integration.py）：HTTP 事件为手工写入
-    合成事件；Node 回调测试非 OpenCode 真实加载——如实标注，不冒充真实验收。
-  * 未加 ASG_TEST_NODE 时 test_real_cli 全类跳过（unittest 报 skip 1, 明确上报）；test_symlink_guard 正常。
+- 命令: ASG_TEST_NODE=<node> python3 -B -m unittest test_discovery test_matcher_stage1
+  test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration
+  test_opencode_plugin test_real_cli test_observe_page
+- 结果: Ran 69 tests, OK。按文件（grep def test_ 统计）：discovery 8、matcher 17、status 11、
+  goose 11、adapter 2、synthetic 1、opencode_plugin 9、real_cli 3、observe_page 7。
+- 节点依赖：test_real_cli 3 项需 ASG_TEST_NODE；其余 66 项无需 node。
+- observe_page 7 项为本轮新增（页面/健康/事件语义、nonce 不泄露、fail-closed）。
 
 ## 已改实现（本分支全部提交）
 - 生命周期 instance_id 贯穿 running/retry/result/API；_record_investigation_result 不再
