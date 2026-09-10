@@ -1,0 +1,83 @@
+WORKLOG.md
+  s_655532ed3c4512::t_d66bfc8baecbbb 300-352
+test_status_stage1.py
+  s_655532ed3c4512::t_cd31d52730bd39 24,26,30-46
+  s_655532ed3c4512::t_7d642c28328af6 153
+  s_655532ed3c4512::t_693137781157d0 150-152,154-157,160-164,169-171
+  s_655532ed3c4512::t_429b50b288008e 117-149,172-205
+  s_655532ed3c4512::t_0736c4fae931a1 158
+  s_655532ed3c4512::t_1552ab681102ae 159
+  s_655532ed3c4512::t_f6a5a185d7791b 165,167-168
+  s_655532ed3c4512::t_5e4b7fb3a4ba7b 166
+  s_655532ed3c4512::t_62742401ed97a3 47
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_2e827a09ff66c4 18-19
+PLAN.md
+  s_655532ed3c4512::t_ec11e7f5dc90d7 50-60
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_65012b708508af 442-447
+monitor_dashboard.py
+  s_655532ed3c4512::t_5b982db7987063 34,143-144,402-406
+  s_655532ed3c4512::t_ece41e71817473 842-843
+  s_655532ed3c4512::t_21705622a96bc8 669-670,706,710-712,726,729-734,738
+  s_655532ed3c4512::t_307d1ffcb57f60 448-481
+  s_655532ed3c4512::t_412c99f91c2e87 2263-2312
+  s_655532ed3c4512::t_d018a52dacffaf 1849
+  s_655532ed3c4512::t_9272bb1cad9060 1705-1706,1709-1717,1972,2010-2015,2054-2056
+  s_655532ed3c4512::t_0458e8a8c12ce6 983-984
+  s_655532ed3c4512::t_f7a3c6590cedd0 14,68-95,98-102
+  s_655532ed3c4512::t_b711668737b2bf 785-788,794-803,819-822,825-826,830-831,833-841,844-891,893-894,897,908-914
+  s_655532ed3c4512::t_e62918d6fede1f 2123-2137
+  s_655532ed3c4512::t_b3a9bcc02ee01a 235-363
+  s_655532ed3c4512::t_a6053347566907 1174-1191,1197-1198,1241-1245
+  s_655532ed3c4512::t_3a366a0cfb54b3 364-401,407-447
+  s_655532ed3c4512::t_545a2450c39b87 762,770,959-960,963-964,975-980,985-986,995-996
+  s_655532ed3c4512::t_ed39347432689e 2044-2045
+  s_b0143c6f6e2ba8::t_f51f58b96e2aea 2057
+REVIEW.md
+  s_655532ed3c4512::t_e61c0373ef7959 242-273
+test_investigation_lifecycle.py
+  s_655532ed3c4512::t_d774869367388e 76-192
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_2bd97b88a397bd 36,40-44,455-581
+  s_655532ed3c4512::t_b241357fb07276 433
+  s_655532ed3c4512::t_e9d34e8d6050d9 621-626,714-715
+  s_655532ed3c4512::t_02a5adc3686a5b 434-437
+  s_b0143c6f6e2ba8::t_7b3aace26262e1 582-583
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_1bfa866eee1290 144-154
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_dcbbf563697fd3 13-15,26-31,56-57
+  s_655532ed3c4512::t_aab98b282f8fcd 38
+runtime/investigation_findings.py
+  s_655532ed3c4512::t_9769a2e4ecf0ad 1-6,8-19,21,27,35-119,127,137,149-151
+  s_655532ed3c4512::t_0f2b8cb8f8b011 7,20,22-26,28-34,120-126,128-136,138-148,152-186
+runtime/status.py
+  s_655532ed3c4512::t_30a003c6771e05 9-36,44-49,55-64
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_ddda208666fe01 153-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a6f249c723f43d387c5461e01452c514c131b0e1",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "copilot/gemini-3.8-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
