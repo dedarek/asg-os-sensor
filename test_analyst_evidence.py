@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import psutil
 
@@ -124,6 +125,46 @@ class AnalystEvidenceTests(unittest.TestCase):
         _validate_investigation_summary({"investigation": summary})
         with self.assertRaises(ValueError):
             _validate_investigation_summary({"investigation": {"identity_evidence": {"sources": []}, "assets": {}}})
+
+    def test_search_target_image_hit_miss_paging_and_wrong_pid(self):
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        create_time = psutil.Process(proc.pid).create_time()
+        from runtime import analyst_tools as at
+        with patch.object(at, "TARGET_PID", proc.pid), \
+             patch.object(at, "TARGET_CREATE_TIME", create_time):
+            # "Python" appears in the stub exe; hits are bounded by MAX_HITS
+            first = at.search_target_image({"query": "Python"})
+            self.assertEqual(first["status"], "collected")
+            self.assertGreater(len(first["hits"]), 0)
+            self.assertLessEqual(len(first["hits"]), at.SEARCH_IMAGE_MAX_HITS)
+            self.assertEqual(first["truncated"], len(first["hits"]) == at.SEARCH_IMAGE_MAX_HITS)
+            self.assertEqual(first["target"]["pid"], proc.pid)
+            for hit in first["hits"]:
+                self.assertGreater(len(hit["context"]), 0)
+                self.assertLess(len(hit["context"]), 1200)
+                self.assertLess(hit["offset"], first["size"])
+            miss = at.search_target_image({"query": "NO-SUCH-LITERAL-STRING"})
+            self.assertEqual(miss["status"], "collected")
+            self.assertEqual(miss["hits"], [])
+            self.assertIsNone(miss["next_offset"])
+            for bad in ({"query": ""}, {"query": "x" * 300}, {}):
+                with self.assertRaises(ValueError):
+                    at.search_target_image(bad)
+
+    def test_search_target_image_rejects_wrong_create_time(self):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(20)"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        from runtime import analyst_tools as at
+        with patch.object(at, "TARGET_PID", proc.pid), \
+             patch.dict(os.environ, {"ASG_TARGET_CREATE_TIME": "1.0"}):
+            with self.assertRaises(RuntimeError):
+                at.search_target_image({"query": "anything"})
 
 
 if __name__ == "__main__":

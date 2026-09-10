@@ -586,6 +586,82 @@ def _saved_investigation() -> dict[str, Any]:
     }
 
 
+SEARCH_IMAGE_MAX_MIRROR_BYTES = 1024 * 1024 * 1024  # refuse whole-disk style mirrors politely
+SEARCH_IMAGE_CONTEXT = 120          # printable context bytes kept around each hit
+SEARCH_IMAGE_MAX_HITS = 8           # hits per page
+SEARCH_IMAGE_MAX_QUERY = 256        # literal query length
+
+
+def _printable_context(data: bytes) -> str:
+    """Make bounded bytes printable; non-printable runs collapse to escapes."""
+    return "".join(chr(b) if 32 <= b < 127 else "\\x%02x" % b for b in data)
+
+
+def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
+    """Literal, bounded search inside the bound process's actual executable image.
+
+    Evidence for embedded loader/plugin strings; no process memory, no execution,
+    no whole-binary dumps. Query is a literal (no regex), matched case-sensitively.
+    """
+    query = args.get("query")
+    if not isinstance(query, str) or not query or len(query) > SEARCH_IMAGE_MAX_QUERY:
+        raise ValueError("query must be a non-empty literal string up to "
+                         + str(SEARCH_IMAGE_MAX_QUERY) + " bytes")
+    try:
+        offset = int(args.get("offset", 0) or 0)
+    except (TypeError, ValueError):
+        raise ValueError("offset must be an integer")
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+
+    p = target_process()
+    try:
+        exe = Path(p.exe())
+        stat_result = exe.stat()
+    except (psutil.Error, OSError) as exc:
+        raise ValueError("target executable is unavailable: " + type(exc).__name__) from exc
+    if not exe.is_file():
+        raise ValueError("target exe is not a regular file")
+    size = stat_result.st_size
+    if size > SEARCH_IMAGE_MAX_MIRROR_BYTES:
+        return {"status": "refused", "reason": "image exceeds the bounded search limit",
+                "size": size, "path_class": "target-exe"}
+
+    needle = query.encode("utf-8")
+    hits = []
+    with exe.open("rb") as image:
+        image.seek(offset)
+        consumed = image.read(size - offset)
+    base = offset
+    position = 0
+    while len(hits) < SEARCH_IMAGE_MAX_HITS:
+        found = consumed.find(needle, position)
+        if found < 0:
+            break
+        start, end = max(0, found - SEARCH_IMAGE_CONTEXT), min(len(consumed), found + len(needle) + SEARCH_IMAGE_CONTEXT)
+        hits.append({
+            "offset": base + found,
+            "context": _printable_context(consumed[start:end]),
+        })
+        position = found + max(1, len(needle))
+    next_offset = None
+    if hits and base + position < size and len(hits) == SEARCH_IMAGE_MAX_HITS:
+        next_offset = base + position
+    return {
+        "status": "collected",
+        "target": {"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
+        "path_class": "target-exe",
+        "size": size,
+        "mtime": stat_result.st_mtime,
+        "query_bytes": len(needle),
+        "searched_range": [offset, size],
+        "hits": hits,
+        "next_offset": next_offset,
+        "truncated": next_offset is not None,
+        "uncertainty": ["literal match only; strings may be split or encoded at runtime"],
+    }
+
+
 def _continuation_context() -> dict[str, Any]:
     """Deterministic continuation context for get_target_context.
 
@@ -643,6 +719,9 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "get_saved_investigation":
         target_process()
         return _saved_investigation()
+    if name == "search_target_image":
+        target_process()
+        return search_target_image(args)
     if name == "propose_recipe":
         target_process()
         recipe = redact(args.get("recipe", {}))
@@ -742,6 +821,7 @@ TOOLS = [
     {"name": "inspect_stream", "description": "Inspect a supervisor-exposed output stream and return structure samples after redaction.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_loader_surface", "description": "Read bounded target app-loader, config-resolution and plugin-scan evidence; target cwd is never treated as install scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_observation", "description": "Read the configured loopback observation receiver health and event types, bound to the target PID+create_time.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "search_target_image", "description": "Literal (case-sensitive, non-regex) search inside the bound process's actual executable file. Returns bounded printable context, hit offsets, next_offset for paging, size/mtime and target identity. Never reads process memory, executes the file, or returns the whole binary.", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "maxLength": 256}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_experience", "description": "Read bounded prior lifecycle outcomes for this compatible runtime; corrupt history is an explicit error and private paths are omitted.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "propose_recipe", "description": "Write a typed candidate recipe for Supervisor verification; cannot activate hooks or execute commands.", "inputSchema": {"type": "object", "required": ["recipe"], "properties": {"recipe": {"type": "object"}}}},

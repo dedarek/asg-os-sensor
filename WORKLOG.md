@@ -417,3 +417,19 @@ recipe_validation.validate 新增：recipe.install_plan 存在时调用 runtime.
 ### 测试（人工标注样本，不当自主生成成功）
 
 test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三个文件、两个不同随机目录（固定种子生成）+ 一个改写已有 config（带原内容 sha256），门禁通过且 hook_evidence_supported 仍为 False（结构≠Hook 证据）。负例：路径穿越（门禁拒）、修改缺 expected_sha256（结构校验无文件系统语义，由顾问 learned_install 的 precondition 强制，测试用临时工作区验证拒绝且原文件未被改动）、install_plan 与 hook.method 不匹配（门禁拒）。全量 Ran 123 tests OK。
+
+## 2026-09-10 MVP 小任务：search_target_image 通用二进制搜索工具
+
+任务卡范围：仅 runtime/analyst_tools.py + test_analyst_evidence.py。未改 recipes、onboarding、learned_install 或页面。
+
+### 工具实现
+
+新增 MCP 工具 search_target_image：对已绑定进程的实际 exe 文件做字面量（非正则、区分大小写）搜索。只允许当前绑定进程的 exe（无任意路径输入），参数为 query（≤256 字节）和 offset（≥0 分页）。mmap/流式读取，返回有界可打印上下文（每侧 120 字节，非打印字符转义）、命中偏移、next_offset（仅命中数达到 MAX_HITS=8 时提供分页）、文件大小/mtime 和 target 身份（pid+create_time）。不读取进程内存、不执行文件、不返回整段二进制；默认拒绝对超过 1GB 的镜像进行搜索。结果经通用 redact 脱敏。
+
+### 门禁联动
+
+该工具已加入 OBSERVATION_TOOLS 白名单，Goose 的 propose_recipe 引用它作为证据时可通过门禁校验。
+
+### 测试
+
+两个测试绑定实际 python3 stub 二进制（101KB）：命中（"Python" 出现 2 次，context 有界、offset < size）、无命中（空 hits、next_offset=None）、错误参数（空/超长/缺 query）、错误 create_time（PID 复用守卫触发 RuntimeError）。全量 Ran 129 tests OK。
