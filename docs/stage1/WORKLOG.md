@@ -446,3 +446,6 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 详细决策、分项 Finding 持久化/看板投影、续查/取消机制、541s 无总时限真实 Goose 运行记录（产物位于 `/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-real-goose-run-a59lwfd1/runs/pid_720_1789032139121/`）及 106 项自动化回归详见根目录 `WORKLOG.md`。
 
 本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成。
+
+## 顾问独立复现：CLI 插件初始化等待依赖
+同一真实 OpenCode CLI 1.18.25、相同空诊断插件和配置，仅改变隔离配置及工作区内是否备有原版SDK依赖：依赖已备好时 /path HTTP200（0.11s），无依赖时15s超时；健康接口两者均200。二进制源码确认插件发现后join配置依赖安装。证据：artifacts/stage1/advisor-dependency-check/result.json，复现脚本同目录。仅证明隔离环境的依赖等待问题可绕过；没有证明网络/锁内部哪一环卡住，也不算Goose自主Hook成功。不改用户配置、不包含ASG预制Hook；两次测试进程均已清理。下一真实引擎验收可复用准备依赖的隔离环境，无需用户开GUI。
