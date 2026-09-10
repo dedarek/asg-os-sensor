@@ -1,0 +1,25 @@
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_2207756b2c2269 618-631
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_2207756b2c2269 281-293
+test_goose_stage1.py
+  s_655532ed3c4512::t_17636a3fb54425 84-103
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_2207756b2c2269 190-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "42f1afaf03a9b8ac2bd8a92cb56684e72c6acbd8",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
