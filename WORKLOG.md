@@ -401,3 +401,19 @@ Goose 运行时长表述：默认无 wall-clock 截止，但 CLI 原生轮数上
 - 页面静态校验：HTML 含活动面板与接口调用接线（无浏览器截图工具，HTTP+静态为本次校验边界）。
 
 全量回归 Ran 113 tests OK（含顾问 6 项活动测试与 15 项状态测试）。
+
+## 2026-09-10 MVP 小任务：install_plan 候选门禁（Goose 可提交通用文件计划）
+
+任务卡范围：仅 recipes/runtime_analyst.yaml 与 runtime/recipe_validation.py；未动 learned_install/onboarding/执行路径。
+
+### 门禁接线
+
+recipe_validation.validate 新增：recipe.install_plan 存在时调用 runtime.learned_install.validate_plan（纯结构：version=1、1-16 个文件、相对路径禁穿越/重叠/绝对路径、内容 UTF-8 文本、总量 ≤512KB、expected_sha256 为 null 或 64 位十六进制）；并要求 hook.method 为 file_plan 或 unsupported（有 install_plan 却声称其它机制即拒绝）。无任何产品 adapter 常量。未执行任何模型产物：门禁只校验，执行仍需监督程序批准 workspace+digest（learned_install.install 的既有约束）。
+
+### 提示词增量
+
+允许 Goose 在证据充分时生成实际 Hook/配置文件内容（install_plan，真实文本非占位符）；workspace 必须来自加载/配置证据，不默认 cwd；expected_sha256 修改文件需先读到原内容；文件型以外机制（IPC/网络 hook/二进制补丁/守护进程控制）如实标注 supervisor 未实现，不乱填 install_plan 或 hook.method。明确：写候选≠授权安装/运行，生成代码未经验证。
+
+### 测试（人工标注样本，不当自主生成成功）
+
+test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三个文件、两个不同随机目录（固定种子生成）+ 一个改写已有 config（带原内容 sha256），门禁通过且 hook_evidence_supported 仍为 False（结构≠Hook 证据）。负例：路径穿越（门禁拒）、修改缺 expected_sha256（结构校验无文件系统语义，由顾问 learned_install 的 precondition 强制，测试用临时工作区验证拒绝且原文件未被改动）、install_plan 与 hook.method 不匹配（门禁拒）。全量 Ran 123 tests OK。

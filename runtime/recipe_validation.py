@@ -11,6 +11,8 @@ import json
 import re
 from pathlib import Path
 
+from runtime.learned_install import validate_plan
+
 OBSERVATION_TOOLS = ('get_target_context', 'inspect_config_surface',
                      'observe_tree', 'observe_runtime_surface',
                      'inspect_network_peers', 'inspect_execution_trace',
@@ -66,6 +68,17 @@ def validate(recipe, evidence_dir, target=None):
         raise ValueError('Hook capabilities/limitations must be lists')
     if not all(isinstance(hook[k], str) and hook[k] for k in ('verification', 'rollback')):
         raise ValueError('Hook verification/rollback descriptions required')
+    install_plan = recipe.get('install_plan')
+    if install_plan is not None:
+        # Candidate file plans are validated here; execution still requires a
+        # supervisor-approved workspace and plan digest (learned_install.install).
+        # Nothing in this gate writes files or runs model-generated code.
+        try:
+            validate_plan(install_plan)
+        except ValueError as exc:
+            raise ValueError('Invalid install_plan: ' + str(exc)) from exc
+        if hook['method'] not in ('file_plan', 'unsupported'):
+            raise ValueError('install_plan requires hook.method="file_plan" or "unsupported"')
 
     refs = recipe['evidence_refs']
     evidence = []

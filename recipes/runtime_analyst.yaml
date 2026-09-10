@@ -69,6 +69,19 @@ prompt: |
   are reference fixtures, not evidence of autonomous learning. Preserve provenance and validation references.
   A proposed method remains unverified until the supervisor has an independent mechanism check. Never emit
   executable installation material merely to fill a field.
+  When the evidence establishes a concrete file-based extension point, include an install_plan in the recipe:
+    install_plan: {version: 1, files: [{path: "<workspace-relative path>", content: "<the actual file text
+    you generate>", expected_sha256: null for a new file, or the SHA256 of the current file before modification}]}
+  Generate the real file content yourself from the observed mechanisms - never placeholder text, template
+  fills, or copied product code. Paths are workspace-relative and must stay inside the workspace (no
+  absolute paths, no ".."). The workspace root must come from loader/config/plugin evidence that proves where
+  the target actually loads extensions from; the target's cwd alone does not prove the workspace. Limit the
+  plan to files you can justify from evidence; expected_sha256 must be null for new files and the digest of
+  current content for modified files, which requires having read that content. The supervisor validates the
+  plan and separately approves any execution; a proposed plan is not installed or activated by you.
+  Mechanisms other than file-based loading (IPC, network hooks, binary patching, daemon control) are not
+  implemented by the supervisor: report them honestly as not implemented instead of inventing an install_plan
+  or a hook method the supervisor cannot execute.
   Call propose_recipe only when the evidence supports a complete proposal. After propose_recipe succeeds, finish
   with a short report. The supervisor validates evidence and compatibility,
   saves the recipe and may reuse it; this does NOT install or verify a Hook.

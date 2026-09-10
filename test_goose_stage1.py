@@ -175,6 +175,54 @@ class GooseStageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             matcher.remember_verified(self.struct, bad, E)
 
+    # ---------- install_plan 门禁：真实生成内容 + 随机目录；穿越/改文件缺摘要/方法不匹配拒绝 ----------
+    def test_install_plan_positive_and_negative(self):
+        import hashlib
+        import random
+        self._write_evidence()
+        # 人工标注的测试样本：随机目录名由本测试固定种子生成，不代表自主生成成功。
+        rng = random.Random(20260910)
+        token = lambda: 'asg-fixture-' + ''.join(rng.choice('0123456789abcdef') for _ in range(12))
+        dir_a, dir_b, existing_dir = token(), token(), token()
+        existing = existing_dir + '/config.json'
+        plan = {
+            'version': 1,
+            'files': [
+                {'path': dir_a + '/hook.js', 'content': 'export const id = "learned";\n', 'expected_sha256': None},
+                {'path': dir_b + '/README.md', 'content': '# learned plan fixture\n', 'expected_sha256': None},
+                {'path': existing, 'content': '{"hooked": true}',
+                 'expected_sha256': hashlib.sha256(b'{}').hexdigest()},
+            ],
+        }
+        recipe = dict(self.recipe, hook=dict(self.recipe['hook'], method='file_plan'), install_plan=plan)
+        out = validate(recipe, self.root, target=self.TARGET)
+        self.assertEqual(len(out['evidence']), 1)
+        self.assertFalse(out['hook_evidence_supported'])
+        # 负例 1：路径穿越
+        escape = dict(plan)
+        escape['files'] = [dict(plan['files'][0], path='../../../etc/asg-escape')]
+        with self.assertRaises(ValueError):
+            validate(dict(recipe, install_plan=escape), self.root, target=self.TARGET)
+        # 负例 2：修改已存在文件但缺 expected_sha256 —— 门禁只做结构校验（无文件系统
+        # 语义），"修改必须带原内容摘要"由安装原语的 precondition 强制（learned_install
+        # 为顾问所有，本测试只消费其公开接口）。
+        from runtime import learned_install as li
+        import tempfile
+        with tempfile.TemporaryDirectory() as ws_tmp:
+            ws_root = Path(ws_tmp).resolve()
+            ws = ws_root / 'workspace'; ws.mkdir()
+            state = ws_root / 'state'; state.mkdir()
+            target_file = ws / existing
+            target_file.parent.mkdir(); target_file.write_text('{}')
+            missing_digest = {'version': 1, 'files': [dict(plan['files'][2], expected_sha256=None)]}
+            with self.assertRaises(ValueError):
+                li.install(missing_digest, ws, state,
+                           approved_workspace=ws, approved_digest=li.plan_digest(missing_digest))
+            self.assertEqual(target_file.read_text(), '{}')
+        # 负例 3：install_plan 与 hook.method 不匹配
+        with self.assertRaises(ValueError):
+            validate(dict(recipe, hook=dict(self.recipe['hook'], method='magic')), self.root, target=self.TARGET)
+
     # ---------- 采集：成功项保留 + 局部失败；本地读取 vs 脱敏外发 ----------
     def _proc(self, files=None):
         p = Mock()
