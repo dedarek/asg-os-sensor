@@ -1,0 +1,53 @@
+runtime/opencode/server.py
+  s_655532ed3c4512::t_47bb34b6668c26 34,127-136
+  s_655532ed3c4512::t_2698527bf3d72b 229-233,238-239,243
+  s_655532ed3c4512::t_819bea11de504f 189-193
+  s_655532ed3c4512::t_8ac63317c81b5e 319,335-338,348-351
+  s_655532ed3c4512::t_c96a729bbf3589 137-139
+  s_845f44fab5fddb::t_6d56830f7be2d1 140-143
+REVIEW.md
+  s_655532ed3c4512::t_cc4e3eaffd247a 465-476
+PLAN.md
+  s_655532ed3c4512::t_212f1af174b769 151-156
+test_opencode_plugin.py
+  s_655532ed3c4512::t_bc5ba38b0fd424 178-181
+  s_655532ed3c4512::t_f44f77ace32ecf 7,168-177,182,226-251
+  s_655532ed3c4512::t_1ad5407eb5d0bc 252-254
+runtime/opencode/event_api.py
+  s_655532ed3c4512::t_0504f1738b1f39 8
+  s_655532ed3c4512::t_aafa90d8fd0f55 18-21,61-65,67-72,140
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_4c26e99b5c5b8e 286-291
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_bb2b1660b7ad44 481-492
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_9413f960c74d4d 297-304
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_cd0fc2127fe9c0 885-898
+WORKLOG.md
+  s_655532ed3c4512::t_e4021c58a68396 734-747
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "193b44bc680bf7a90dd12553bbe7212832843d32",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    },
+    "s_845f44fab5fddb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08593-d65c-7e03-8b4b-7beddacbdae4",
+        "model": "unknown"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
