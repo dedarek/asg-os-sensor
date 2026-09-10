@@ -1,0 +1,22 @@
+runtime/learned_presentation.py
+  s_655532ed3c4512::t_1ecfe827c5a244 25
+  s_655532ed3c4512::t_d7b7a2f3a8069e 1-24,26-45
+test_learned_presentation.py
+  s_655532ed3c4512::t_4404c167d73616 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "36ec71578fcd80bc58b6969faf98514ed9905ccf",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/z-ai-glm-5.3-flash"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
