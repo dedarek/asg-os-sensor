@@ -76,7 +76,9 @@ prompt: |
   fills, or copied product code. Paths are workspace-relative and must stay inside the workspace (no
   absolute paths, no ".."). The workspace root must come from loader/config/plugin evidence that proves where
   the target actually loads extensions from; the target's cwd alone does not prove the workspace. Limit the
-  plan to files you can justify from evidence; expected_sha256 must be null for new files and the digest of
+  plan to files you can justify from evidence. Set hook.method="file_plan" and hook.workspace to the absolute
+  evidence-established workspace root when proposing this executable file plan. Keep unknown scope unresolved;
+  do not invent it. expected_sha256 must be null for new files and the digest of
   current content for modified files, which requires having read that content. The supervisor validates the
   plan and separately approves any execution; a proposed plan is not installed or activated by you.
   Mechanisms other than file-based loading (IPC, network hooks, binary patching, daemon control) are not
