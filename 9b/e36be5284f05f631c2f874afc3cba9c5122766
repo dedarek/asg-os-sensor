@@ -1,0 +1,33 @@
+monitor_dashboard.py
+  s_655532ed3c4512::t_59e6c1d914375e 459,585-586,693-696
+  s_655532ed3c4512::t_aa439f1ef07c7c 946,1192-1195
+  s_655532ed3c4512::t_48dce3c8211fbf 1239-1242,1245
+  s_655532ed3c4512::t_44b36359fc0b69 20,22,72-76,85-88
+  s_655532ed3c4512::t_ec811ac9e078f1 21,139-249
+  s_655532ed3c4512::t_257b3b5e39cef7 250-251
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_547f3e1ed5e154 7-11,17-21,25-32,56-57,60-61,70-74
+runtime/opencode/server.py
+  s_655532ed3c4512::t_ce62d3260f2848 286-291
+test_dashboard_http.py
+  s_655532ed3c4512::t_07ea673eaea8e4 1-83,86-120
+  s_655532ed3c4512::t_24927ce935f149 84-85
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_fb117992bb5b38 297-327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "9be36be5284f05f631c2f874afc3cba9c5122766",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
