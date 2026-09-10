@@ -25,3 +25,9 @@
 - 真实运行：8081 四个本机扫描实例，全部 investigation=disabled、Hook=not_installed；手动 POST 503；浏览器确认禁用按钮及资产“尚未采集”。截图和脱敏计数报告在 artifacts/stage1/truth-review/。
 - 生产库 SHA256 前后一致；8080 前后均无监听，未启动/停止/替换 8080。
 - 保留演示服务 PID 47562，8081。没有安装 Hook、跳过 TLS 或外发调查数据。本轮停止在 review。
+
+## 追加：观测撤销链与看板 HTTP 边界
+
+基线 `cd47ea2`。新增实现保留 manifest 无效/卸载后的已知 PID+create_time，API 和页面显示 `revoked`/`healthy=false`，不把指纹、配方或历史事件解释成 Hook 已安装或已生效。看板适配器拒绝重定向、限制 256 KiB 响应，并把非法 `events.valid/invalid` 降级为 `degraded`。
+
+原有测试与新增测试分开记录：原有 71 项回归继续通过；新增 `test_dashboard_http.py` 3 项覆盖隔离安装卸载撤销、重定向拒绝、异常计数降级，`test_observe_page.py` 增补损坏 prior 的撤销绑定断言。完整结果为 74 项通过（17.906s），未进行真实 Goose 外发、真实 active 插件卸载、Hook 安装或 8080 操作。

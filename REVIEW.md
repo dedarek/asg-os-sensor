@@ -1,6 +1,6 @@
 # 状态真实性修复：review 交付
 
-基线 41a53b5，工作树 /Users/mac/个人项目/asg-os-sensor-stage1，分支 work/discovery-goose-fingerprint。本轮独立提交见 git log -1。
+基线 41a53b5，工作树 /Users/mac/个人项目/asg-os-sensor-stage1，分支 work/discovery-goose-fingerprint。本轮基线 `cd47ea2`，独立提交见 git log -1。
 
 关键文件：runtime/status.py 共用状态；monitor_dashboard.py API/页面/实例呈现；runtime/analyst_tools.py prior 失败传播；test_status_stage1.py 回归；test_matcher_stage1.py 子进程产物隔离；.gitignore 保留接手时本地产物；根目录 PLAN.md/WORKLOG.md/REVIEW.md 是本轮记录，docs/stage1/ 保留前轮历史。
 
@@ -28,6 +28,8 @@ python3 -B monitor_dashboard.py >"$run_dir/server.log" 2>&1 &
 echo $!
 ```
 停止当前演示服务：先 `ps -p 47562 -o pid=,comm=` 确认仍是本次 Python 服务，再 `kill -TERM 47562`；禁止按进程名批量终止。
+
+本轮新增撤销链回归：隔离 `ghost_install.py --install/--uninstall` 后，观测 `/health` 与 `/events` 返回 `503/status=revoked` 并保留绑定实例字段，看板 `/api/state` 同步为 `revoked`；真实活动插件未卸载。完整回归为 74 项通过。本轮是状态真实性修复，不是 Stage1 闭环完成。
 
 ## review 重点与限制
 

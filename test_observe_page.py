@@ -153,7 +153,12 @@ class ObservePageHttpTests(unittest.TestCase):
         mp.write_text("{corrupt json", encoding="utf-8")
         s, b = self._get("/health")
         self.assertEqual(s, 503)
-        self.assertIn("corrupt", b)
+        payload = json.loads(b)
+        self.assertIn("corrupt", payload["error"])
+        self.assertEqual(payload["status"], "revoked")
+        self.assertFalse(payload["healthy"])
+        self.assertEqual(payload["instance_pid"], self.pid)
+        self.assertAlmostEqual(payload["instance_create_time"], self.ct)
 
     def test_pid_reuse_rejected_by_live_create_time(self):
         # PID 被另一存活进程复用：实时 create_time 不匹配 -> unbound（防 PID 复用串结果）

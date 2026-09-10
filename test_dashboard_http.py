@@ -6,14 +6,29 @@
 或真实 Agent。
 """
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import threading
+import time
 import unittest
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 import monitor_dashboard as dashboard
+
+ROOT = Path(__file__).resolve().parent
+GHOST = ROOT / "runtime" / "opencode" / "ghost_install.py"
+
+
+def run_ghost(*args):
+    return subprocess.run([sys.executable, "-B", str(GHOST), *args],
+                          capture_output=True, text=True)
 
 
 class _ObservationFixture(BaseHTTPRequestHandler):
@@ -36,6 +51,31 @@ class _ObservationFixture(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(503 if self.path == "/health" else 200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        pass
+
+
+class _RedirectFixture(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(302)
+        self.send_header("Location", "http://example.invalid/outside")
+        self.end_headers()
+
+    def log_message(self, *_args):
+        pass
+
+
+class _MalformedEventsFixture(BaseHTTPRequestHandler):
+    def do_GET(self):
+        payload = _ObservationFixture.health if self.path == "/health" else {
+            "valid": "3", "invalid": 0, "events": []
+        }
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -114,6 +154,108 @@ class DashboardHttpRegressionTests(unittest.TestCase):
             obs_server.shutdown()
             obs_server.server_close()
             obs_worker.join(timeout=3)
+
+    def test_isolated_install_uninstall_revokes_observer_and_dashboard_state(self):
+        """真实 ghost CLI + 观测 HTTP 子进程 + 原看板 HTTP，完整验证撤销语义。"""
+        pid = os.getpid()
+        create_time = __import__("psutil").Process(pid).create_time()
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            installed = json.loads(run_ghost("--install", "--workspace", str(ws),
+                                              "--nonce", "ISOLATED-REVOCATION").stdout)
+            observer = subprocess.Popen(
+                [sys.executable, "-B", str(ROOT / "runtime" / "opencode" / "server.py"),
+                 "--workspace", str(ws), "--pid", str(pid),
+                 "--create-time", str(create_time)],
+                cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                line = observer.stdout.readline()
+                self.assertIn('"port"', line)
+                observer_port = json.loads(line)["port"]
+                observer_url = "http://127.0.0.1:%d" % observer_port
+                with patch.object(dashboard, "OBSERVE_URL", observer_url), \
+                        patch.object(dashboard, "AUTONOMOUS_ANALYSIS_ENABLED", False):
+                    before = dashboard.read_observation_snapshot()
+                    self.assertEqual(before["status"], "connected")
+                    before_evidence = dashboard.observation_for_instance(before, pid, create_time)
+                    self.assertEqual(before_evidence["status"], "bound_no_events")
+                    dashboard.SCAN_STATE["agents"] = [{
+                        "pid": pid, "instance_id": "%s:%s" % (pid, create_time),
+                        "adapter": {"observation_evidence": before_evidence},
+                    }]
+                    _, _, body = self._get("/api/state")
+                    self.assertEqual(json.loads(body)["agents"][0]["adapter"]
+                                     ["observation_evidence"]["status"], "bound_no_events")
+
+                    uninstalled = run_ghost("--uninstall", "--workspace", str(ws),
+                                            "--name", "asg-observe.js")
+                    self.assertEqual(uninstalled.returncode, 0, uninstalled.stderr)
+
+                    with self.assertRaises(HTTPError) as health_error:
+                        urlopen(observer_url + "/health", timeout=3)
+                    revoked_health = json.load(health_error.exception)
+                    self.assertEqual(revoked_health["status"], "revoked")
+                    self.assertFalse(revoked_health["healthy"])
+                    self.assertEqual(revoked_health["instance_pid"], pid)
+                    self.assertAlmostEqual(revoked_health["instance_create_time"], create_time)
+
+                    with self.assertRaises(HTTPError) as events_error:
+                        urlopen(observer_url + "/events", timeout=3)
+                    self.assertEqual(json.load(events_error.exception)["status"], "revoked")
+
+                    after = dashboard.read_observation_snapshot()
+                    self.assertEqual(after["status"], "revoked")
+                    self.assertEqual(after["instance_pid"], pid)
+                    self.assertAlmostEqual(after["instance_create_time"], create_time)
+                    after_evidence = dashboard.observation_for_instance(after, pid, create_time)
+                    self.assertEqual(after_evidence["status"], "revoked")
+                    self.assertFalse(after_evidence["loaded_observed"])
+                    dashboard.SCAN_STATE["agents"][0]["adapter"]["observation_evidence"] = after_evidence
+                    _, _, body = self._get("/api/state")
+                    state = json.loads(body)
+                    self.assertEqual(state["agents"][0]["adapter"]
+                                     ["observation_evidence"]["status"], "revoked")
+                    self.assertEqual(state["agents"][0]["adapter"]
+                                     ["observation_evidence"]["instance_id"],
+                                     "%s:%s" % (pid, create_time))
+            finally:
+                observer.terminate()
+                try:
+                    observer.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    observer.kill()
+                    observer.wait(timeout=5)
+
+    def test_observe_adapter_rejects_redirect_without_following_it(self):
+        obs_server = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectFixture)
+        worker = threading.Thread(target=obs_server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            with patch.object(dashboard, "OBSERVE_URL",
+                              "http://127.0.0.1:%d" % obs_server.server_port):
+                snapshot = dashboard.read_observation_snapshot()
+            self.assertEqual(snapshot["status"], "unavailable")
+            self.assertIn("JSON", snapshot["message"])
+        finally:
+            obs_server.shutdown()
+            obs_server.server_close()
+            worker.join(timeout=3)
+
+    def test_malformed_event_counts_degrade_without_aborting_scan(self):
+        obs_server = ThreadingHTTPServer(("127.0.0.1", 0), _MalformedEventsFixture)
+        worker = threading.Thread(target=obs_server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            with patch.object(dashboard, "OBSERVE_URL",
+                              "http://127.0.0.1:%d" % obs_server.server_port):
+                snapshot = dashboard.read_observation_snapshot()
+            self.assertEqual(snapshot["status"], "degraded")
+            evidence = dashboard.observation_for_instance(snapshot, 5297, 1789006943.640438)
+            self.assertEqual(evidence["status"], "degraded")
+        finally:
+            obs_server.shutdown()
+            obs_server.server_close()
+            worker.join(timeout=3)
 
 
 if __name__ == "__main__":

@@ -4,11 +4,18 @@
 一律以本目录为准。
 
 ## 当前提交与工作树
-- 当前提交 `9be36be`（分支 work/discovery-goose-fingerprint，基线 f4194d3）；
+- 本轮基线 `cd47ea2`，最终提交见本次独立提交（分支 work/discovery-goose-fingerprint，基线 f4194d3）；
   `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 仍是未跟踪的顾问交接文件，不能声明工作树干净。
-- 原多 Agent 看板运行在 `127.0.0.1:8081`；单实例观测接收器独立运行在
-  `127.0.0.1:64680`（随机回环端口示例）。8080 未触碰。
+- 原多 Agent 看板运行在 `127.0.0.1:8081`；单实例观测接收器独立运行在随机回环端口。
+  8080 未触碰，生产指纹库未修改。
 - 真实事件已验证 3 条（见 WORKLOG），active 插件保持不动。
+
+## 本轮状态真实性修复
+
+- 调查、资产、Hook 三个维度独立投影：调查禁用不再显示解析中；没有采集凭据的资产为尚未采集；指纹或配方不能升级 Hook 状态，Hook 仍为未安装/未验证。
+- 观测服务错误和卸载统一返回 `revoked`、`healthy=false` 及已知 PID/create_time；看板 API 使用同一绑定结果。父 PID 4970 不继承子引擎 PID 5297 的成功证据。
+- 看板适配拒绝重定向、限制响应体 256 KiB，并将非法事件计数降级为 `degraded`，不因单个适配异常中止全局扫描。
+- 真实隔离 CLI install→uninstall→HTTP observer→dashboard/API 回归已覆盖；活动插件未卸载。
 
 ## 真实验收（2026-09-10，非模拟）
 - 用户已打开隔离工作区并执行一次目录列举任务；hook.loaded 与 tool.execute
@@ -27,8 +34,8 @@
   test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1
   test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli
   test_observe_page test_dashboard_http`
-- 结果: `Ran 71 tests in 15.065s`，`OK`。其中 `test_real_cli` 3 项需 node，其余 68 项
-  无需 node；本轮新增 `test_dashboard_http.py` 2 项。输出含现有 LibreSSL/urllib3
+- 结果: `Ran 74 tests in 17.906s`，`OK`。其中 `test_real_cli` 3 项需 node，其余 71 项
+  无需 node；本轮新增 `test_dashboard_http.py` 3 项，并补充损坏 prior 断言。输出含现有 LibreSSL/urllib3
   与 ResourceWarning，未影响测试结果。
 
 ## 已改实现（本分支全部提交）

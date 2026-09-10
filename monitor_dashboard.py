@@ -74,6 +74,17 @@ try:
     OBSERVE_TIMEOUT_S = float(os.environ.get("ASG_OBSERVE_TIMEOUT", "1.0") or "1.0")
 except ValueError:
     OBSERVE_TIMEOUT_S = 1.0
+OBSERVE_MAX_RESPONSE_BYTES = 256 * 1024
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """观测适配只允许配置的回环地址，绝不跟随 Location 跳出回环。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OBSERVE_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 STATE_LOCK = threading.Lock()
 SCAN_STATE = {
     "last_scan_time": None,
@@ -148,13 +159,19 @@ def _observe_request(path: str) -> tuple[int | None, dict[str, Any] | None, str 
         return None, None, "观测服务地址无效"
     try:
         request = urllib.request.Request(OBSERVE_URL + path, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(request, timeout=OBSERVE_TIMEOUT_S) as response:
+        with OBSERVE_OPENER.open(request, timeout=OBSERVE_TIMEOUT_S) as response:
             status = response.status
-            body = response.read().decode("utf-8", "replace")
+            raw = response.read(OBSERVE_MAX_RESPONSE_BYTES + 1)
+            if len(raw) > OBSERVE_MAX_RESPONSE_BYTES:
+                return status, None, "观测服务响应过大"
+            body = raw.decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         status = exc.code
         try:
-            body = exc.read().decode("utf-8", "replace")
+            raw = exc.read(OBSERVE_MAX_RESPONSE_BYTES + 1)
+            if len(raw) > OBSERVE_MAX_RESPONSE_BYTES:
+                return status, None, "观测服务错误响应过大"
+            body = raw.decode("utf-8", "replace")
         except OSError:
             body = ""
     except (OSError, ValueError, urllib.error.URLError) as exc:
@@ -175,17 +192,48 @@ def read_observation_snapshot() -> dict[str, Any]:
                 "message": "未配置隔离观测接收器；扫描结果仍来自本机进程扫描"}
     health_status, health, health_error = _observe_request("/health")
     events_status, events, events_error = _observe_request("/events")
-    if health is None or events is None:
+    if health is None:
         return {"status": "unavailable", "source": OBSERVE_URL,
-                "message": health_error or events_error or "观测服务不可用",
+                "message": health_error or "观测服务不可用",
                 "health_http": health_status, "events_http": events_status}
     try:
         instance_pid = int(health["instance_pid"])
         instance_create_time = float(health["instance_create_time"])
     except (KeyError, TypeError, ValueError):
         return {"status": "invalid", "source": OBSERVE_URL,
-                "message": "观测服务未返回可绑定的 pid/create_time",
+                "message": health_error or "观测服务未返回可绑定的 pid/create_time",
                 "health_http": health_status, "events_http": events_status}
+    health_status_name = health.get("status", "unknown")
+    if health_status_name == "revoked":
+        return {
+            "status": "revoked",
+            "source": OBSERVE_URL,
+            "health_http": health_status,
+            "events_http": events_status,
+            "instance_pid": instance_pid,
+            "instance_create_time": instance_create_time,
+            "health": {
+                "status": "revoked",
+                "healthy": False,
+                "reason": health.get("reason", "观测 manifest 已撤销或无效"),
+                "loaded_observed": False,
+            },
+            "events": {"valid": 0, "invalid": 0},
+            "capabilities": health.get("capabilities") or {},
+            "message": "观测已撤销；保留已知绑定实例，未宣称 healthy",
+        }
+    if events is None:
+        return {"status": "unavailable", "source": OBSERVE_URL,
+                "message": events_error or "观测服务不可用",
+                "health_http": health_status, "events_http": events_status}
+    raw_valid = events.get("valid")
+    raw_invalid = events.get("invalid")
+    if (isinstance(raw_valid, bool) or not isinstance(raw_valid, int) or raw_valid < 0 or
+            isinstance(raw_invalid, bool) or not isinstance(raw_invalid, int) or raw_invalid < 0):
+        return {"status": "degraded", "source": OBSERVE_URL,
+                "message": "观测服务 events 计数类型无效，拒绝授予实例观测成功",
+                "health_http": health_status, "events_http": events_status,
+                "instance_pid": instance_pid, "instance_create_time": instance_create_time}
     return {
         "status": "connected",
         "source": OBSERVE_URL,
@@ -200,8 +248,8 @@ def read_observation_snapshot() -> dict[str, Any]:
             "loaded_observed": bool(health.get("loaded_observed", False)),
         },
         "events": {
-            "valid": int(events.get("valid", 0) or 0),
-            "invalid": int(events.get("invalid", 0) or 0),
+            "valid": raw_valid,
+            "invalid": raw_invalid,
         },
         "capabilities": health.get("capabilities") or {
             "observation": {"status": "supported", "label": "事件观测"},
@@ -221,8 +269,20 @@ def observation_for_instance(snapshot: dict[str, Any], pid: int,
         base.update(status="not_configured", label="尚未接入观测接收器",
                     reason=snapshot.get("message", ""))
         return base
+    if snapshot.get("status") == "revoked":
+        observed_pid = snapshot.get("instance_pid")
+        observed_ct = snapshot.get("instance_create_time")
+        if pid == observed_pid and create_time is not None and observed_ct is not None and \
+                abs(float(create_time) - float(observed_ct)) <= 1e-3:
+            base.update(status="revoked", label="观测已撤销（未宣称 healthy）",
+                        reason=snapshot.get("message", "观测 manifest 已撤销或无效"),
+                        instance_id="%s:%s" % (observed_pid, observed_ct),
+                        health_status="revoked")
+        else:
+            base["reason"] = "观测证据绑定实例已撤销；当前主 PID 未匹配"
+        return base
     if snapshot.get("status") != "connected":
-        base.update(status="unavailable", label="观测服务不可用",
+        base.update(status=snapshot.get("status", "unavailable"), label="观测服务不可用",
                     reason=snapshot.get("message", "观测服务未返回有效状态"))
         return base
     observed_pid = snapshot.get("instance_pid")
@@ -235,14 +295,23 @@ def observation_for_instance(snapshot: dict[str, Any], pid: int,
         return base
     health = snapshot.get("health", {})
     events = snapshot.get("events", {})
+    loaded_observed = bool(health.get("loaded_observed", False))
+    recent_events = int(events.get("valid", 0) or 0)
+    if not loaded_observed and recent_events == 0:
+        base.update(status="bound_no_events", label="已绑定实例，但尚无观测事件",
+                    reason=health.get("reason", "尚无 hook.loaded 或工具事件"),
+                    instance_id="%s:%s" % (observed_pid, observed_ct),
+                    health_status=health.get("status", "unknown"),
+                    capabilities=snapshot.get("capabilities", {}))
+        return base
     base.update(
         status="observed",
         label="已绑定观测证据（仅记录，不支持阻断）",
         instance_id="%s:%s" % (observed_pid, observed_ct),
         health_status=health.get("status", "unknown"),
         health_reason=health.get("reason", ""),
-        loaded_observed=bool(health.get("loaded_observed", False)),
-        recent_events=int(events.get("valid", 0) or 0),
+        loaded_observed=loaded_observed,
+        recent_events=recent_events,
         invalid_events=int(events.get("invalid", 0) or 0),
         capabilities=snapshot.get("capabilities", {}),
     )

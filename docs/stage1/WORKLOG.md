@@ -325,3 +325,40 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 8081 看板启动使用 `ASG_AUTONOMOUS_ANALYSIS=0`、隔离 `ASG_FINGERPRINT_DB`、
   `ASG_RUN_DIR`、`ASG_EVENT_DIR` 和 `ASG_OBSERVE_URL=http://127.0.0.1:64680`；
   本轮只停止/启动了本任务自己的 8081 看板进程，未停止真实 Agent。
+
+## 2026-09-10 状态真实性修复：撤销链与 HTTP 边界
+
+基线为 `cd47ea2`。本轮范围固定为状态真实投影和隔离验收，不代表 Stage1 闭环完成。
+
+### 字段 → 来源 → 缺失含义
+
+| 字段 | 来源 | 缺失或异常含义 |
+| --- | --- | --- |
+| investigation | `ASG_AUTONOMOUS_ANALYSIS` 与现有内存调查记录 | 关闭时为 `disabled`；没有调度器队列时不伪造 `queued`；没有成功记录时不由指纹补成成功 |
+| observation | 接收器 `/health`、`/events`，并以 PID+create_time 绑定 | 未配置为 `not_configured`；连接失败为 `unavailable`；绑定字段无效为 `invalid`；计数类型异常为 `degraded`；manifest 无效/卸载为 `revoked` |
+| assets | 当前实例采集器的完成凭据 | 没有凭据为 `not_collected`；只有带来源的空成功结果才是 `collected_empty`/“未发现”；失败不转为空 |
+| associated_processes | 扫描器现有 ownership 的 `process_pids` | 只表示进程归属；没有执行事件不推断没有子进程，执行事件另由观测采集状态表达 |
+| hook | 本阶段安装器和生效验证器 | 固定 `not_installed`、`verified=false`；指纹命中或配方保存不改变该状态 |
+| network | 当前实例的网络观测凭据 | 无观测数据为 `not_collected`，不解释为无连接或安全 |
+| host_platform | 已获取的本地应用/bundle 证据 | 无本地证据为 `unknown`，不默认成 CLI |
+
+### 本轮实现
+
+- 观测服务在 manifest 损坏、缺失、非 active 或卸载后返回 `503 + status=revoked`，保留已知绑定实例的 PID/create_time，并明确 `healthy=false`；事件历史不被清空。
+- 看板适配器保留 `revoked`、`degraded`、`unavailable` 等状态，不把父进程或其他子进程继承为观测成功。仅 PID+create_time 精确绑定；当前真实 PID 5297 是 OpenCode 子引擎，父 PID 4970 仍为 `not_bound`。
+- 观测 HTTP 客户端禁用重定向、限制响应读取到 256 KiB；`events.valid/invalid` 类型异常降级，不中断扫描。
+- 真实安装器只在 `TemporaryDirectory` 中执行安装和卸载回归；审计、配方、证据目录不使用工作树或默认库。未对真实 active 插件执行卸载。
+
+### 测试区分
+
+- 原有测试：此前 71 项 Stage1 回归和其中既有的观测页面/插件/看板用例继续运行。
+- 新增测试：`test_dashboard_http.py` 新增 3 项，分别覆盖隔离 install→uninstall→HTTP/API `revoked` 链、重定向拒绝、异常事件计数降级；`test_observe_page.py` 补充损坏 prior 返回 revoked 且保留绑定实例字段的断言。
+- 本轮完整命令：
+  `ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli test_observe_page test_dashboard_http`
+  结果：`Ran 74 tests in 17.906s`，`OK`。另行执行的 `py_compile` 通过。输出仅有既存 LibreSSL/ResourceWarning 警告。
+
+### 安全边界与待 review
+
+- 未启用 `ASG_ALLOW_INSECURE_ANALYST=1`，未执行真实 Goose 外发调查，未安装真实 Hook，未卸载活动插件，未修改 8080 或生产指纹库。
+- 8081 演示服务需在代码提交后用新的隔离运行目录重启；最终端口、PID、日志和验证哈希写入本节追加记录。
+- 本轮是状态真实性修复，不是 Stage1 闭环完成；exact/similar/miss、revision 演进、真实 Goose 配方和 Hook 生效验证仍停在后续 review 点。

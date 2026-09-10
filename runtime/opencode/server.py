@@ -35,6 +35,11 @@ from runtime.opencode.event_api import EventVerifier  # noqa: E402
 
 MAX_EVENTS = 500
 
+CAPABILITIES = {
+    "observation": {"status": "supported", "label": "事件观测"},
+    "blocking": {"status": "unsupported", "label": "未支持"},
+}
+
 EVENT_LABELS = {
     "hook.loaded": "加载握手（仅观测：引擎已加载插件，不代表已防护）",
     "tool.execute.before": "工具调用开始（仅观测：事件可记录，不代表可阻断）",
@@ -103,6 +108,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _rejected_payload(self, reason):
+        """即使 manifest 无效/被卸载也返回已知实例绑定，且始终 fail closed。"""
+        srv = self.server
+        return {
+            "status": "revoked",
+            "healthy": False,
+            "reason": reason,
+            "error": reason,
+            "manifest_valid": False,
+            "instance_pid": srv.engine_pid,
+            "instance_create_time": srv.engine_ct,
+            "instance_id": "%s:%s" % (srv.engine_pid, srv.engine_ct),
+            "capabilities": CAPABILITIES,
+            "wired": True,
+        }
+
     def _verify_paths(self, ws, evf):
         """读取路径安全：state 目录、manifest 文件与 events 文件全部组件拒绝 symlink。"""
         import stat
@@ -146,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
         srv = self.server
         res, err = self._verifier()
         if err:
-            return {"error": err}, err
+            return {"error": err, "rejected": self._rejected_payload(err)}, err
         verifier, evf, runid = res
         rows = verifier.read_raw(evf)
         valid, invalid = verifier.bound_events(rows)
@@ -183,10 +204,15 @@ class Handler(BaseHTTPRequestHandler):
         err = ctx.get("error")
         if err:
             title = "ASG Observe - 不可用（fail closed）"
+            rejected = ctx.get("rejected") or {}
             body = (
                 "<h2>状态不可用</h2>"
                 "<p>隔离观测接口拒绝提供服务（fail closed），原因：</p>"
                 "<pre>" + _html.escape(str(err)) + "</pre>"
+                "<p>状态：<strong>revoked</strong>（manifest 无效或已卸载） · "
+                "绑定实例 PID：<code>" + _html.escape(str(rejected.get("instance_pid", "未知")))
+                + "</code> · create_time：<code>"
+                + _html.escape(str(rejected.get("instance_create_time", "未知"))) + "</code></p>"
                 "<p>这符合预期语义：manifest 缺失/损坏/非 active/实例不匹配时，不虚构状态。</p>"
             )
         else:
@@ -263,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/" and not self._accepts_html():
                 # API 兼容：不带浏览器 Accept 时 / 仍返回 JSON 状态
                 if err:
-                    return self._json(503, {"error": err})
+                    return self._json(503, self._rejected_payload(err))
                 return self._json(200, {"service": "asg-observe", "status": "ok",
                                         "runid": ctx["runid"]})
             code = 503 if err else 200
@@ -276,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         res, err = self._verifier()
         if err:
-            return self._json(503, {"error": err})  # fail closed
+            return self._json(503, self._rejected_payload(err))  # fail closed + known binding
         verifier, evf, runid = res
         if self.path == "/health":
             rows = verifier.read_raw(evf)
@@ -285,10 +311,8 @@ class Handler(BaseHTTPRequestHandler):
                                                                "loaded_observed": verifier.loaded_observed(rows),
                                                                "instance_pid": verifier.expected_pid,
                                                                "instance_create_time": verifier.expected_ct,
-                                                               "capabilities": {
-                                                                   "observation": {"status": "supported", "label": "事件观测"},
-                                                                   "blocking": {"status": "unsupported", "label": "未支持"},
-                                                               },
+                                                               "instance_id": "%s:%s" % (verifier.expected_pid, verifier.expected_ct),
+                                                               "capabilities": CAPABILITIES,
                                                                "wired": True})
         if self.path == "/events":
             rows = verifier.read_raw(evf)[-MAX_EVENTS:]
