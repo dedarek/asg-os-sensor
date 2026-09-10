@@ -1,0 +1,52 @@
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_a0bfe15ac85181 105-110
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_a0bfe15ac85181 328-364
+test_observe_page.py
+  s_655532ed3c4512::t_05cb6d3ca9226a 156-161
+WORKLOG.md
+  s_655532ed3c4512::t_a0bfe15ac85181 28-33
+REVIEW.md
+  s_655532ed3c4512::t_3f21c5bd66228b 3,32
+  s_655532ed3c4512::t_6cbcbce41b7396 33
+PLAN.md
+  s_655532ed3c4512::t_a0bfe15ac85181 5-6
+runtime/opencode/server.py
+  s_655532ed3c4512::t_39e32fd791fb3b 38-42,111-117,119-125,292,305,314-315
+  s_655532ed3c4512::t_44f2814a437d5c 118
+  s_655532ed3c4512::t_c14e19eac1846e 170,207,212-215
+  s_655532ed3c4512::t_e2988e324c3910 126
+monitor_dashboard.py
+  s_655532ed3c4512::t_9b426ac104e282 298-306,313-314
+  s_655532ed3c4512::t_6d2749b2176a3c 195,197,225,227
+  s_655532ed3c4512::t_a2558de156b752 272-283,285
+  s_655532ed3c4512::t_4e224c614ac754 77-87,162,164-167,171-174,204,206-224,226,229-236,251-252
+  s_655532ed3c4512::t_b53f72699e4227 228
+test_dashboard_http.py
+  s_655532ed3c4512::t_85a735e6be3bd7 181
+  s_655532ed3c4512::t_c7ca90d4170ea5 188
+  s_655532ed3c4512::t_a8e152fccbbae3 9-12,14,20,62-86,158-180,182-187,189-258
+  s_655532ed3c4512::t_7c370865b91fa4 25-32
+  s_655532ed3c4512::t_44f2814a437d5c 18
+  s_655532ed3c4512::t_132a66ed707a7d 259
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_5adf941cd229e9 37-38
+  s_655532ed3c4512::t_60df117c35ac50 7,9-10,13-18
+  s_655532ed3c4512::t_54fd5ac2810765 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "d7408ccd82e36b15678c9091a96dfd70be00826a",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
