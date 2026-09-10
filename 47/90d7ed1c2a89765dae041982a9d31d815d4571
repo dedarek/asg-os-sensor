@@ -1,0 +1,36 @@
+runtime/llm_proxy.py
+  s_1512a994888af5::t_9434677657c086 10-11,43-54,77,123,125-126
+monitor_dashboard.py
+  s_1512a994888af5::t_f28fa7f68c636e 38,372-389,886,923-924,939-943,1046-1048
+  s_1512a994888af5::t_691fea65fa78a9 1854
+llm.yaml
+  s_1512a994888af5::t_9434677657c086 17-19
+test_tool_transport_health.py
+  s_1512a994888af5::t_f28fa7f68c636e 15-16,21-22,31-32
+runtime/llm_config.py
+  s_1512a994888af5::t_9434677657c086 165
+runtime/tool_transport_health.py
+  s_1512a994888af5::t_f28fa7f68c636e 26-29,36
+WORKLOG.md
+  s_1512a994888af5::t_cb6bb9a7c167b6 459-463
+runtime/tool_context.py
+  s_1512a994888af5::t_2e3ab35620e3f0 1-68
+test_tool_context.py
+  s_1512a994888af5::t_1df7931fc654c1 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4790d7ed1c2a89765dae041982a9d31d815d4571",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
