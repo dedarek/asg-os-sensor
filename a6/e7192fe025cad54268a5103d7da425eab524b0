@@ -1,0 +1,21 @@
+runtime/investigation_activity.py
+  s_1512a994888af5::t_de3f36c73b943e 1-132
+test_investigation_activity.py
+  s_1512a994888af5::t_e70487b32b274c 1-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a6e7192fe025cad54268a5103d7da425eab524b0",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
