@@ -1,0 +1,27 @@
+runtime/analyst_tools.py
+  s_1512a994888af5::t_5d0e58e7bd44bb 460,501-503,505-508,510,513-515
+test_analyst_evidence.py
+  s_1512a994888af5::t_5d3e591407152b 189-204
+WORKLOG.md
+  s_1512a994888af5::t_ef39274a311573 442-443
+runtime/learned_events.py
+  s_1512a994888af5::t_2f4e13f55fa773 1-76
+test_learned_events.py
+  s_1512a994888af5::t_7c3f12bd0233f8 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f375c08793a28c0e24c657fd63d939edff4895f3",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
