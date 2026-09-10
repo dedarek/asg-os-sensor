@@ -1,0 +1,29 @@
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_d474b8bfc0cfae 722-724
+  s_655532ed3c4512::t_029907046554e7 589-664
+  s_655532ed3c4512::t_96d78f4d70f12e 824
+test_analyst_evidence.py
+  s_655532ed3c4512::t_7fbc2ea6373906 9
+  s_655532ed3c4512::t_91d3d60a2f9424 136-156,163,167
+  s_655532ed3c4512::t_08f7f6d679d129 164-166
+  s_655532ed3c4512::t_acc047e3ae8c85 129-133,135,157-161,168
+  s_655532ed3c4512::t_d7c51d3c64db44 134,162
+WORKLOG.md
+  s_655532ed3c4512::t_9f13d7cda8546d 420-435
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "d2959b3c47cb875ba31b59f8dc88c4c640fe99b5",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/z-ai-glm-5.3-flash"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
