@@ -19,7 +19,7 @@
 - 未执行卸载；步骤已写入 WORKLOG。等待顾问协调用户再次只读调用后执行。
 ## 全量测试（精确命令与数量）
 - 命令: ASG_TEST_NODE=<node> python3 -B -m unittest test_discovery test_matcher_stage1   test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration   test_opencode_plugin test_real_cli
-- 结果: Ran 63 tests, OK (60 无 node + 3 real_cli 需 node)（8 discovery + 53 stage1）。其中 stage1 含：
+- 结果: Ran 70 tests, OK (67 无 node + 3 real_cli 需 node)（8 discovery + 53 stage1 + 9 observe-page）。其中 stage1 含：
   * 真实子进程 CLI 3 项：install..server..uninstall（需 ASG_TEST_NODE） 即时 revoked(503)..reinstall..HTTP 投影
     无 nonce；插件旧回调在重装后不写新 run（同一 node 进程内验证）。
   * 合成 SDK Hook 集成 2 项（test_synthetic_hook_integration.py）：HTTP 事件为手工写入
