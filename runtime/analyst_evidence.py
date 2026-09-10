@@ -19,7 +19,7 @@ from typing import Any, Iterable
 import psutil
 
 
-MAX_FILES = 120
+MAX_FILES = 20  # Per page, not an investigation quota; see next_offset.
 MAX_FILE_BYTES = 512 * 1024
 MAX_READ_BYTES = 24 * 1024
 MAX_DEPTH = 5
@@ -358,7 +358,7 @@ def _skip_file(path: Path) -> bool:
 
 
 def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: str = "all",
-                       limit: int = MAX_FILES) -> dict[str, Any]:
+                       limit: int = MAX_FILES, offset: int = 0) -> dict[str, Any]:
     """Enumerate names and metadata below process-derived roots only."""
     if not isinstance(name_pattern, str) or not name_pattern or len(name_pattern) > 120:
         raise ValueError("name_pattern must be a short non-empty glob")
@@ -379,6 +379,10 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
     except (TypeError, ValueError):
         limit = MAX_FILES
     files: list[dict[str, Any]] = []
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        raise ValueError('offset must be a non-negative integer')
+    seen = set()
+    skipped = 0
     opened = {item.get("resolved") for item in surface.get("opened_files", []) if isinstance(item, dict)}
     for token, root in roots.items():
         if not root.is_dir() or _skip_file(root):
@@ -395,6 +399,13 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
                     size = path.stat().st_size
                     if size > MAX_FILE_BYTES:
                         continue
+                    key = str(path.resolve())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    if skipped < offset:
+                        skipped += 1
+                        continue
                     files.append({
                         "path": str(path),
                         "root": token,
@@ -405,20 +416,22 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
                         "readable_text_candidate": path.suffix.lower() in _TEXT_SUFFIXES,
                         "state": "opened_by_target" if str(_resolve(path)) in opened else "search_candidate",
                     })
-                    if len(files) >= limit:
+                    if len(files) > limit:
                         break
                 except OSError:
                     continue
         except OSError:
             continue
-        if len(files) >= limit:
+        if len(files) > limit:
             break
     return {
         "status": "collected",
         "scope": scope,
         "pattern": name_pattern,
-        "files": files,
-        "truncated": len(files) >= limit,
+        "files": files[:limit],
+        "offset": offset,
+        "next_offset": offset + limit if len(files) > limit else None,
+        "truncated": len(files) > limit,
         "uncertainty": ["enumeration is bounded and excludes secret-like names, hidden state and oversized files"],
     }
 

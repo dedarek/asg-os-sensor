@@ -15,6 +15,22 @@ from runtime.analyst_tools import _validate_investigation_summary
 
 
 class AnalystEvidenceTests(unittest.TestCase):
+    def test_paged_file_search_retains_access_without_bulk_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for i in range(45):
+                (root / ('item-%02d.json' % i)).write_text('{}')
+            surface = {'related_roots': [{'id': 'root-0', 'path': str(root)}]}
+            names, offset = [], 0
+            while True:
+                page = find_related_files(surface, '*.json', 'root-0', limit=100, offset=offset)
+                self.assertLessEqual(len(page['files']), 20)
+                names.extend(f['path'] for f in page['files'])
+                offset = page['next_offset']
+                if offset is None:
+                    break
+            self.assertEqual(len(names), 45)
+            self.assertEqual(len(set(names)), 45)
     def test_entry_metadata_and_bounded_file_read(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

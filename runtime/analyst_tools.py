@@ -727,7 +727,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             surface,
             name_pattern=args.get("name_pattern", "*"),
             scope=args.get("scope", "all"),
-            limit=args.get("limit", 120),
+            limit=args.get("limit", 20),
+            offset=args.get("offset", 0),
         )
     if name == "read_related_file":
         p = target_process()
@@ -828,7 +829,7 @@ def load_prior() -> dict[str, Any]:
 TOOLS = [
     {"name": "get_target_context", "description": "Read the supervisor-bound target dossier, process tree, stream shape, and prior memory.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_entry_surface", "description": "Read raw and resolved executable/entry paths, parent/child identities, package metadata candidates, sources, and conflicts. This is evidence only; it never chooses an Agent identity.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "find_related_files", "description": "Enumerate bounded text/config files below roots derived from the bound process. Use a short filename glob and a returned root token; secret-like and hidden state files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}}}},
+    {"name": "find_related_files", "description": "Enumerate process-related files, at most 20 per page. Use a focused filename glob and returned root token. Pass next_offset as offset to obtain more without a bulk context dump. Secret-like files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "read_related_file", "description": "Read one file previously found below a process-derived root. Content is bounded, parsed when possible, and redacted; arbitrary paths and credentials are rejected.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "submit_investigation_finding", "description": "Persist one evidence-backed identity or asset finding without proposing or installing a Hook. Findings are partial, versioned and bounded.", "inputSchema": {"type": "object", "required": ["kind", "status", "evidence_refs"], "properties": {"kind": {"type": "string", "enum": ["identity", "asset"]}, "asset": {"type": "string", "enum": ["model_gateway", "mcp", "skills", "rules"]}, "status": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "entry": {"type": "string"}, "version": {"type": "string"}, "value": {}, "summary": {}, "details": {}, "uncertainty": {"type": "array", "items": {"type": "string"}}, "open_questions": {"type": "array", "items": {"type": "string"}}, "evidence_refs": {"type": "array", "items": {"type": "string"}}}}},
     {"name": "get_saved_investigation", "description": "On an explicit continuation, read only the previous bounded lifecycle summary, partial findings, open questions and evidence ids. Previous stdout is never replayed.", "inputSchema": {"type": "object", "properties": {}}},
