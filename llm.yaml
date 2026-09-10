@@ -14,6 +14,9 @@ routes:
     # Confirmed by this gateway's context-length error; set independently per model.
     context_limit: 32768
     max_output_tokens: 4096
+    # Retain recent complete tool pairs; archived observations remain retrievable.
+    # This bounds request context, not total investigation duration or tool count.
+    tool_context_window: 4
     # This selected endpoint currently presents an expired certificate.  The
     # exception is route-scoped and uses the process-local loopback proxy.
     # Other routes default to certificate verification.

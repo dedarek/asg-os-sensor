@@ -35,6 +35,7 @@ from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher, onboarding, investigation_findings
 from runtime.status import presentation, DISABLED_REASON
 from runtime.learned_presentation import hook_state as learned_hook_state
+from runtime.tool_transport_health import ToolTransportHealth
 from runtime.recipe_validation import validate as validate_recipe
 from runtime.identity import identify, ownership, metadata_identity
 from runtime.stream_parser import redact
@@ -366,6 +367,24 @@ def _drain_goose_stdout(process: subprocess.Popen, journal: _StreamJournal) -> N
             journal.consume(line)
     finally:
         stream.close()
+
+
+def _tool_process_alive(goose_pid: int) -> bool | None:
+    """Only inspect the extension launched beneath our own Goose process."""
+    uncertain = False
+    try:
+        children = psutil.Process(goose_pid).children(recursive=True)
+    except psutil.Error:
+        return None
+    for child in children:
+        try:
+            if str(ROOT / 'runtime' / 'analyst_tools.py') in child.cmdline():
+                return child.is_running() and child.status() != psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            continue
+        except psutil.Error:
+            uncertain = True
+    return None if uncertain else False
 
 
 def _target_matches(value: dict[str, Any], pid: int, create_time: float | None) -> bool:
@@ -864,6 +883,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             analyst_process = None
             cancelled = False
             timed_out = False
+            tool_health = ToolTransportHealth()
             try:
                 analyst_process = subprocess.Popen(
                     cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=err_stream,
@@ -900,6 +920,8 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                         "no_activity_seconds": round(no_activity, 1),
                         "diagnostic_status": "idle_long" if no_activity >= GOOSE_IDLE_DIAGNOSTIC_S else "active",
                     }
+                    transport = tool_health.observe(_tool_process_alive(analyst_process.pid))
+                    lifecycle['progress']['tool_transport'] = transport
                     _write_investigation_lifecycle(run_dir, lifecycle)
                     with INVESTIGATION_LOCK:
                         cancelled = instance_id in INVESTIGATION_CANCEL_REQUESTS
@@ -913,6 +935,11 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                     if analyst_returncode is not None:
                         lifecycle["status"] = "completed" if analyst_returncode == 0 else "failed"
                         lifecycle["end_reason"] = "completed" if analyst_returncode == 0 else "nonzero_exit"
+                        break
+                    if transport == 'transport_lost':
+                        lifecycle['status'] = 'failed'
+                        lifecycle['end_reason'] = 'tool_transport_closed'
+                        analyst_process.terminate()
                         break
                     if deadline is not None and time.time() >= deadline:
                         timed_out = True
@@ -1016,7 +1043,9 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                         stderr_tail = redact('\n'.join(err_txt[-6:]))[-600:]
                 except OSError:
                     pass
-                if lifecycle.get("timed_out"):
+                if lifecycle.get('end_reason') == 'tool_transport_closed':
+                    reason = 'MCP 调查工具进程已退出；已停止无效重试并保留证据，可续查'
+                elif lifecycle.get("timed_out"):
                     reason = "Goose 调查超时；已保留进度，可基于隔离证据继续调查"
                 elif lifecycle.get("end_reason") == "cancelled":
                     reason = "Goose 调查已取消；已保留进度，可基于隔离证据继续调查"
@@ -1822,7 +1851,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="header">
   <div class="title">
     <div class="pulse"></div>
-    ASG · 进程发现与调查状态（未安装 Hook）
+    ASG · 进程发现、自主调查与接入验证
   </div>
   <div class="meta-bar">
     <div class="meta-item">扫描周期: <b id="scan-interval">-</b></div>

@@ -162,7 +162,7 @@ def goose_env(route: dict, key: str, pid: int = 0) -> dict:
     if ca_bundle:
         env['SSL_CERT_FILE'] = ca_bundle
         env['REQUESTS_CA_BUNDLE'] = ca_bundle
-    if tls_exception_enabled(route):
+    if tls_exception_enabled(route) or route.get('tool_context_window') is not None:
         # Goose uses a Rust HTTP client and does not honor PYTHONHTTPSVERIFY.
         # Keep its traffic local, then let the loopback proxy handle broken
         # upstream certificates without weakening TLS for unrelated traffic.

@@ -12,14 +12,14 @@ class ToolTransportHealthTests(unittest.TestCase):
         h = ToolTransportHealth(threshold=3)
         self.assertEqual(h.observe(None), 'unknown')
         h.observe(True)
-        self.assertEqual(h.observe(None), 'alive')
-        self.assertEqual(h.observe(None), 'alive')
+        self.assertEqual(h.observe(None), 'unknown')
+        self.assertEqual(h.observe(None), 'unknown')
 
     def test_alive_then_consecutive_false_reaches_transport_lost(self):
         h = ToolTransportHealth(threshold=3)
         h.observe(True)
-        self.assertEqual(h.observe(False), 'alive')
-        self.assertEqual(h.observe(False), 'alive')
+        self.assertEqual(h.observe(False), 'missing')
+        self.assertEqual(h.observe(False), 'missing')
         self.assertEqual(h.observe(False), 'transport_lost')
 
     def test_recovery_resets_counter(self):
@@ -28,8 +28,8 @@ class ToolTransportHealthTests(unittest.TestCase):
         h.observe(False)
         h.observe(False)
         h.observe(True)
-        self.assertEqual(h.observe(False), 'alive')
-        self.assertEqual(h.observe(False), 'alive')
+        self.assertEqual(h.observe(False), 'missing')
+        self.assertEqual(h.observe(False), 'missing')
         self.assertEqual(h.observe(False), 'transport_lost')
 
 

@@ -7,6 +7,8 @@ never logs request bodies or keys.
 from __future__ import annotations
 
 import os
+import json
+import time
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -38,6 +40,18 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length)
+        window = _STATE.get('tool_context_window')
+        if window and self.path.endswith('/chat/completions'):
+            from runtime.tool_context import compact
+            payload, stats = compact(json.loads(body), window)
+            if stats['applied']:
+                before = len(body)
+                body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+                audit = os.environ.get('ASG_TOOL_CONTEXT_AUDIT')
+                if audit:
+                    with open(audit, 'a', encoding='utf-8') as log:
+                        log.write(json.dumps({'ts': time.time(), **stats, 'before_bytes': before,
+                                              'after_bytes': len(body)}) + '\n')
         base = str(_STATE["base_url"]).rstrip("/")
         # Goose prefixes /v1; configured vendor base already contains /v1.
         suffix = self.path[3:] if base.endswith('/v1') and self.path.startswith('/v1/') else self.path
@@ -60,7 +74,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 headers=headers,
                 stream=True,
                 timeout=float(_STATE.get("timeout_s", 30)),
-                verify=False,
+                verify=_STATE.get('verify_tls', True),
                 allow_redirects=False,
             )
             self.send_response(upstream.status_code)
@@ -106,7 +120,10 @@ def ensure_proxy(route: dict[str, Any], key: str) -> str:
             key=key,
             extra_headers=dict(route.get("extra_headers") or {}),
             timeout_s=float(route.get("timeout_s") or 30),
+            tool_context_window=route.get('tool_context_window'),
         )
+        from runtime.llm_config import tls_exception_enabled
+        _STATE['verify_tls'] = not tls_exception_enabled(route)
         if _SERVER is None:
             host = os.environ.get("ASG_LLM_PROXY_HOST", "127.0.0.1").strip() or "127.0.0.1"
             try:

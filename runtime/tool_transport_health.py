@@ -23,11 +23,14 @@ class ToolTransportHealth:
             self._consecutive_missing = 0
             return 'alive'
         if seen_alive is None:
-            return 'alive' if self._ever_alive else 'unknown'
+            self._consecutive_missing = 0
+            return 'unknown'
+        if seen_alive is not False:
+            raise ValueError('seen_alive must be True, False or None')
         # seen_alive is False
         if not self._ever_alive:
             return 'never_alive'
         self._consecutive_missing += 1
         if self._consecutive_missing >= self._threshold:
             return 'transport_lost'
-        return 'alive'
+        return 'missing'
