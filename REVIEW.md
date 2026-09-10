@@ -271,3 +271,7 @@ echo $!
   - 无凭据硬编码或写入仓库文件。
 
 本轮是无总时限调查与部分 findings 真实收敛，不是 Stage1 闭环完成。
+
+## 2026-09-10 review continuation：续查实测、真实进程部分资产与表述修正
+
+增量提交基于顾问修正 17ef787。合成目标 continue API 续查端到端通过（candidate 过门禁、隔离指纹库写入），真实本机进程 1052（opencodex）经续查取得带来源部分结论（identity=@bitkyc08/opencodex 2.47.0、model_gateway=collected；mcp/skills/rules 保持未知未硬报 empty）。两次续查模型均未调用 get_saved_investigation（遵循度缺口，机制本身可用并已验证）。完整证据路径、prompt 版本哈希、107 项回归、8082/8081 新旧代码区分及保护核对详见根目录 WORKLOG.md 同名章节。合成目标结果不作为真实 Agent 调查通过；exact/similar/miss 与 revision 为已有实现未接线未真实验收；本轮不是 Stage1 闭环完成。

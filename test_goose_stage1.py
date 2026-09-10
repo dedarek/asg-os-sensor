@@ -118,6 +118,39 @@ class GooseStageTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             validate(self.recipe, self.root, target=self.TARGET)
 
+    def test_read_related_file_evidence_requires_binding_and_real_read(self):
+        # read_related_file 被许可为证据类型 ≠ 任何文件都证明任意结论：
+        # 每条引用仍必须绑定本次冻结实例，且读取结果非空、无 error。
+        ctx_ev = {'tool': 'get_target_context', 'error': None,
+                  'result': {'target': dict(self.TARGET), 'local_evidence': {'pid': 7}},
+                  'target': dict(self.TARGET)}
+        (self.root / 'ev-2-0123456789.json').write_text(json.dumps(ctx_ev))
+        read_ev = {'tool': 'read_related_file', 'error': None,
+                   'result': {'path': '/fixture/target/server.py',
+                              'content': 'import time', 'parse_status': 'text'},
+                   'target': dict(self.TARGET)}
+        (self.root / 'ev-1-0123456789.json').write_text(json.dumps(read_ev))
+        recipe = dict(self.recipe, evidence_refs=['ev-1-0123456789', 'ev-2-0123456789'])
+        out = validate(recipe, self.root, target=self.TARGET)
+        self.assertEqual(len(out['evidence']), 2)
+        self.assertFalse(out['hook_evidence_supported'])
+        self.assertEqual(out['evidence'][0]['tool'], 'read_related_file')
+        # 错误绑定（另一实例）拒绝
+        (self.root / 'ev-1-0123456789.json').write_text(json.dumps(
+            dict(read_ev, target={'pid': 7, 'create_time': 999.0})))
+        with self.assertRaises(ValueError):
+            validate(recipe, self.root, target=self.TARGET)
+        # 读取失败（error 非空）拒绝
+        (self.root / 'ev-1-0123456789.json').write_text(json.dumps(
+            dict(read_ev, target=dict(self.TARGET), error='read_failed')))
+        with self.assertRaises(ValueError):
+            validate(recipe, self.root, target=self.TARGET)
+        # 空结果拒绝（read 成功但无任何内容字段时不作为有效证据）
+        (self.root / 'ev-1-0123456789.json').write_text(json.dumps(
+            dict(read_ev, target=dict(self.TARGET), result={})))
+        with self.assertRaises(ValueError):
+            validate(recipe, self.root, target=self.TARGET)
+
     # ---------- 演进门禁：同 exe/runtime 不足；需要入口/包身份证据 ----------
     def test_evolution_requires_family_identity_evidence(self):
         E = [dict(e, target=dict(self.TARGET)) for e in self.evidence]

@@ -350,3 +350,35 @@ Goose recipe 已改为以 launch evidence 为主、既有本地采集为线索�
   - 现用 OpenCode Agent（PID 5297）未被重启或终止；
   - 生产指纹库 `runtime/fingerprints.json` 保持未修改；
   - 无真实凭据硬编码或写入仓库文件。
+
+## 2026-09-10 review continuation：续查实测、真实进程部分资产与表述修正
+
+顾问提交 17ef787（remove hidden investigation quotas and clarify learned reuse）已纳入本轮 prompt 基线记录；按顾问要求只做 WORKLOG 增量引用。测试修改仅 test_goose_stage1.py 新增 1 项，全量 Ran 107 tests OK。
+
+### 分类澄清
+
+合成目标（Python socket 存根 + 人工 fixture 配置）上的真实 Goose 运行不等于真实 Agent 调查通过；上一轮五项 findings 均为合成目标结果，仅证明链路。本轮新增对真实本机进程（opencodex 服务，PID 1052）的只读调查，取得带来源的部分结论；mcp/skills/rules 未提交、保持未知，未硬报 empty。empty 只表达"已检查范围内未配置"，不得由单文件缺字段推论整体没有；规则配置不等于运行已加载。
+
+### 完整证据路径（无省略号）
+
+合成第一轮（上一批，已从临时目录固化进 worktree）：/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-synth-20260910a/pid_720_1789032139121/（含 investigation_findings.json、analyst_tool_calls.jsonl、evidence/、investigation_lifecycle.json、result.json）。
+
+本轮新运行均位于 /Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-synth-20260910b/：
+
+- fixture 与日志：target/、target.log、dashboard.log、testrun.log；隔离指纹库 fingerprints.json（1 条 autonomous-task-agent）。
+- 合成 R1（prompt=a6f249c 版 sha256 7b6ea7c7b4aca2bc83e099ba706b39bf619bb4f60fb9984a5f12be697a4f59ba）：runs/pid_6325_1789033508934/，817s、13 次调用，findings 落盘；最后一次 propose_recipe 因缺字段被拒、无 candidate，结果如实 failed。
+- 合成 R2（实际调用 continue API；prompt 同上，启动早于顾问提交）：runs/pid_6325_1789034372713/，586s、15 次调用，candidate 过门禁（identity=autonomous-task-agent、method=unsupported、confidence=0.85、6 条证据），隔离指纹库写入 harness-3be60b0c4df6。
+- 真实进程 1052 R1（prompt=17ef787 版 sha256 f5fe6cdb69ffc151dba51b6c2e54bb734b4beecaba76aa6cf89993433ba678ad）：runs/pid_1052_1789035033893/，138s、10 次调用后模型自行结束，无 findings 无 candidate，结果如实 failed。
+- 真实进程 1052 续查（continue API，prompt=17ef787 版）：runs/pid_1052_1789035478449/，714s、26 次调用，落盘 identity=@bitkyc08/opencodex 2.47.0（6 条证据）与 model_gateway=collected（provider proxy on :10100，4 条证据）；mcp/skills/rules 未提交；无 candidate，结果如实 failed。
+
+### continue API 实测结论
+
+两次实际 HTTP 调用（POST /api/reinvestigate/continue?pid=）均返回 202 并指向正确前次 run；resume 机制生效（前次 evidence 隔离拷贝：合成 R2 拷入 13 份、1052 续查拷入 10 份）。两次续查中模型均未调用 get_saved_investigation 工具，而是基于拷贝证据自行重验；这是模型遵循度缺口，不是机制缺失，工具本身在真实扩展路径可用（既有测试验证）。
+
+### 表述修正
+
+Goose 运行时长表述：默认无 wall-clock 截止，但 CLI 原生轮数上限 1000 仍存在；达到上限保留进度、可经 continue 续查，不是"真正无限"。exact/similar/miss 与 revision：runtime/matcher.py 已有三档 classify 与 remember_verified 的 revision 演进及对应单测（已有实现），尚未接入本轮 findings 数据流、未做真实闭环验收；后续是接线与验收，不是重造。
+
+### 新代码端口验证与保护核对
+
+8082（PID 6658，本批新代码，隔离指纹库/运行目录，ASG_AGENT_SCORE_THRESHOLD=0 仅用于让合成目标入列）实测 /api/state 含 investigated_identity、部分资产状态、exact 命中（fp_rev 1）、Hook 未安装。8081（PID 48028）确认为旧代码（/api/state 无 investigated_identity 字段），不能声称新 API/UI 已在 8081 生效；8081 部署收尾由顾问接手，本执行方不再操作端口服务。8080 无监听；现用 Agent PID 5297 未触碰；生产指纹库 SHA256 仍为 627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2。本批自建进程：合成目标 PID 6325、8082 面板 PID 6658（停止方式：确认工作目录为本 worktree 后仅对 PID 发 TERM）。
