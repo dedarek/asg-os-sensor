@@ -1,0 +1,21 @@
+test_tool_transport_health.py
+  s_655532ed3c4512::t_71867fedafa616 1-37
+runtime/tool_transport_health.py
+  s_655532ed3c4512::t_3a1bf2576ccdd4 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a79e3980cc0b14e15f135ee911f75a7458559e39",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/z-ai-glm-5.3-flash"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
