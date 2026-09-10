@@ -10,7 +10,9 @@ routes:
     chat_path: /chat/completions
     responses_path: /responses
     extra_headers: {}
-    timeout_s: 30
+    timeout_s: 180
+    # Preserve complete provider function arguments for streaming clients.
+    response_transport: buffered
     # Confirmed by this gateway's context-length error; set independently per model.
     context_limit: 32768
     max_output_tokens: 8192

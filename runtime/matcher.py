@@ -255,23 +255,30 @@ def classify(struct: dict) -> dict:
     f = features_of(struct)
     compatible = struct.get('compatibility')
     similar = None
+    exact = None
+    exact_rank = None
     EXACT_BOUNDS = [
         'covered: executable content, entry content (script/module digest), runtime, platform, launch argv+cwd',
         'not covered: config file contents, dependency versions, MCP/plugin/marketplace sets, model routing, network behavior',
         'exact reuse only provides a recipe for investigation; hook install and effectiveness remain unverified',
     ]
-    for entry in load().get('fingerprints', []):
+    for position, entry in enumerate(load().get('fingerprints', [])):
         ef = entry.get('features', {})
         same_runtime = f['exe'] and ef.get('exe') == f['exe'] and ef.get('runtime') == f['runtime']
         if same_runtime and compatible and entry.get('investigation_verified') is True:
             for revision in reversed(entry.get('revisions', [])):
                 if revision.get('compatibility') == compatible:
-                    return {'status': 'exact', 'entry': deepcopy(dict(entry, hook_recipe=revision['recipe'], revision=revision['revision'])),
+                    rank = (revision.get('validated_at_ns', 0), position, revision.get('revision', 0))
+                    candidate = {'status': 'exact', 'entry': deepcopy(dict(entry, hook_recipe=revision['recipe'], revision=revision['revision'])),
                             'bounds': EXACT_BOUNDS,
                             'reason': 'Observed build and launch constraints unchanged; Hook still unverified',
                             'match_ms': int((time.monotonic()-start)*1000)}
+                    if exact_rank is None or rank > exact_rank:
+                        exact, exact_rank = candidate, rank
         if f['exe'] and ef.get('exe') == f['exe'] and ef.get('runtime') == f['runtime']:
             similar = deepcopy(entry)
+    if exact is not None:
+        return exact
     return {'status': 'similar' if similar else 'miss', 'entry': similar,
             'reason': 'Historical reference only' if similar else 'No family reference',
             'match_ms': int((time.monotonic()-start)*1000)}
@@ -340,6 +347,13 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose'):
     def mutate(db):
         target = stored_recipe.get('match_features', {}).get('evolves_prior_harness')
         entry = next((e for e in db.get('fingerprints', []) if e['id'] == target), None) if target else None
+        if not target:
+            # Repeated observations of the exact same build/launch are revisions,
+            # not new families merely because the model omitted an evolution id.
+            entry = next((e for e in reversed(db.get('fingerprints', []))
+                          if e.get('features') == f and any(
+                              rev.get('compatibility') == struct['compatibility']
+                              for rev in e.get('revisions', []))), None)
         if target and entry is not None:
             prior_compat = None
             for rev in reversed(entry.get('revisions') or []):
@@ -361,6 +375,7 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose'):
                                    'evidence': [], 'status': 'legacy-unverified'}]
         revision = max((r['revision'] for r in entry['revisions']), default=0) + 1
         entry['revisions'].append({'revision': revision, 'recipe': deepcopy(stored_recipe),
+                                  'validated_at_ns': time.time_ns(),
                                   'compatibility': deepcopy(struct['compatibility']), 'evidence': deepcopy(evidence),
                                   'status': 'recipe_validated_hook_unverified', 'source': recipe_source})
         entry.update(name=stored_recipe['agent_identity_name'], hook_recipe=deepcopy(stored_recipe), revision=revision,

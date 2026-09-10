@@ -1096,7 +1096,7 @@ def _enqueue_investigation(pid: int, instance_id: str, create_time: float | None
         if instance_id in INVESTIGATING_INSTANCES or instance_id in INVESTIGATION_QUEUED:
             return "duplicate"
         previous = INVESTIGATION_RESULTS.get(instance_id)
-        if not force and previous is not None and previous.get("status") == "succeeded":
+        if not force and previous is not None and previous.get("status") in ("succeeded", "reused"):
             return "duplicate"  # 已有成功调查，防止重复历史调查
         if not force and now() < INVESTIGATION_RETRY_AT.get(instance_id, 0):
             return "duplicate"
@@ -1469,6 +1469,18 @@ def scan_agents_once():
                     'label': '当前实例的独立验收记录（非持续健康保证）',
                     'blocking': 'not_implemented',
                 }
+                if adapter_info['hook_state']['status'] == 'observing':
+                    adapter_info['assets']['child_executions'] = {
+                        'status': 'collected', 'label': '已采集',
+                        'value': {'events': adapter_info['learned_observation']['events'],
+                                  'paired_calls': adapter_info['learned_observation']['paired_calls']},
+                        'source': 'learned_events.verify: PID/create_time + fresh nonce + paired callbacks',
+                        'message': '当前实例真实工具调用验收快照；不是历史全量记录或持续健康保证',
+                    }
+                    adapter_info['sink_state'] = {
+                        'status': 'observation_verified',
+                        'label': '工具事件观测已验收；语义阻断未实现',
+                    }
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             
             found_agents.append({
@@ -1533,6 +1545,7 @@ def scan_agents_once():
                 main_card["name"] = a["name"]
 
     final_agents = list(grouped_agents.values())
+    final_agents.sort(key=lambda item: item.get('adapter', {}).get('hook_state', {}).get('status') != 'observing')
 
     # 更新指纹库统计
     fp_count = 0
@@ -2241,7 +2254,9 @@ async function updateUI() {
       }
       const isInvestigating = backendInvestigating;
       const observationEvidence = (a.adapter && a.adapter.observation_evidence) || {};
-      const observationText = observationEvidence.status === 'observed'
+      const observationText = a.adapter.learned_observation && a.adapter.learned_observation.status === 'observing'
+        ? '观测证据: 本实例工具前后事件已配对验证（验收快照，非持续健康保证）'
+        : observationEvidence.status === 'observed'
         ? `观测证据: ${observationEvidence.label} · 当前=${observationEvidence.health_status || 'unknown'} · 有效事件=${observationEvidence.recent_events || 0} · 阻断=${(observationEvidence.blocking || {}).label || '未支持'}`
         : `观测证据: ${observationEvidence.label || '未绑定观测证据'}${observationEvidence.reason ? ' · ' + observationEvidence.reason : ''}`;
       const onboarding = (a.adapter && a.adapter.onboarding) || {};
@@ -2275,7 +2290,7 @@ async function updateUI() {
       const statusHtml = escapeHtml('分类: ' + (classification.label || '候选/待确认') +
         (classification.roles && classification.roles.length ? ' (' + classification.roles.join('/') + ')' : '') +
         ' | ' + investigation.label + ' · ' + (investigation.message || '') +
-        ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText + ' | ' + onboardingText);
+        ' | ' + ({exact:'精确匹配（仅构建与启动约束）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText + ' | ' + onboardingText);
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
@@ -2388,7 +2403,7 @@ async function updateUI() {
               <div class="adapter-row"><span class="adapter-label">Skill:</span><span class="adapter-val">${assetText(a.adapter, 'skills')}</span></div>
               <div class="adapter-group-title">🌐 执行与通信画像（无数据不能判断安全性）</div>
               <div class="adapter-row">
-                <span class="adapter-label">执行事件（未接入采集）:</span>
+                <span class="adapter-label">执行事件（${a.adapter.assets.child_executions.status === 'collected' ? '本实例验收' : '未接入采集'}）:</span>
                 <span class="adapter-val" style="color: #f59e0b; font-family: monospace;">${assetText(a.adapter, 'child_executions')}</span>
               </div>
               <div class="adapter-row">

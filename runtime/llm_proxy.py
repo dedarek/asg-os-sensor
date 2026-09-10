@@ -35,6 +35,24 @@ def apply_request_options(payload: dict, options: dict) -> dict:
     return result
 
 
+def completion_as_sse(completion: dict) -> bytes:
+    """Carry complete provider tool arguments in one delta, without re-authoring."""
+    base = {key: completion[key] for key in ('id', 'created', 'model') if key in completion}
+    base['object'] = 'chat.completion.chunk'
+    choices, finished = [], []
+    for choice in completion.get('choices', []):
+        delta = copy.deepcopy(choice.get('message') or {})
+        for index, call in enumerate(delta.get('tool_calls') or []):
+            call['index'] = index
+        choices.append({'index': choice.get('index', 0), 'delta': delta, 'finish_reason': None})
+        finished.append({'index': choice.get('index', 0), 'delta': {},
+                         'finish_reason': choice.get('finish_reason')})
+    chunks = [{**base, 'choices': choices}, {**base, 'choices': finished}]
+    if completion.get('usage'):
+        chunks.append({**base, 'choices': [], 'usage': completion['usage']})
+    return ''.join('data: ' + json.dumps(chunk, ensure_ascii=False) + '\n\n' for chunk in chunks).encode('utf-8') + b'data: [DONE]\n\n'
+
+
 class _ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -67,6 +85,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     with open(audit, 'a', encoding='utf-8') as log:
                         log.write(json.dumps({'ts': time.time(), **stats, 'before_bytes': before,
                                               'after_bytes': len(body)}) + '\n')
+        buffered = False
+        if _STATE.get('response_transport') == 'buffered' and self.path.endswith('/chat/completions'):
+            payload = json.loads(body)
+            buffered = payload.get('stream') is True
+            if buffered:
+                payload['stream'] = False
+                payload.pop('stream_options', None)
+                body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         base = str(_STATE["base_url"]).rstrip("/")
         # Goose prefixes /v1; configured vendor base already contains /v1.
         suffix = self.path[3:] if base.endswith('/v1') and self.path.startswith('/v1/') else self.path
@@ -92,6 +118,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 verify=_STATE.get('verify_tls', True),
                 allow_redirects=False,
             )
+            if buffered and upstream.status_code == 200:
+                wire = completion_as_sse(upstream.json())
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream')
+                self.send_header('Content-Length', str(len(wire)))
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                self.wfile.write(wire)
+                self.close_connection = True
+                return
             self.send_response(upstream.status_code)
             for name in ("Content-Type", "Cache-Control", "X-Request-Id"):
                 value = upstream.headers.get(name)
@@ -139,6 +175,7 @@ def ensure_proxy(route: dict[str, Any], key: str) -> str:
             timeout_s=float(route.get("timeout_s") or 30),
             tool_context_window=route.get('tool_context_window'),
             request_options=copy.deepcopy(options),
+            response_transport=route.get('response_transport', 'stream'),
         )
         from runtime.llm_config import tls_exception_enabled
         _STATE['verify_tls'] = not tls_exception_enabled(route)

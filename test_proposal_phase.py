@@ -1,11 +1,37 @@
 import io
 import json
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 from runtime import analyst_tools as at
 
 
 class ProposalPhaseTests(unittest.TestCase):
+    def test_narrow_container_normalization_does_not_edit_source(self):
+        recipe = {'match_features': {'runtime': 'fixture'}, 'observation': 'fixture',
+                  'hook': {'method': 'file_plan'}, 'fallback': 'none',
+                  'install_plan': {'files': [{'content': 'export default () => ({text: "x"});\n'}]}}
+        raw = json.dumps(recipe)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(at, 'target_process'), \
+             patch.object(at, 'RECIPE_DIR', Path(tmp)), patch.object(at, '_validate_investigation_summary'), \
+             patch('runtime.recipe_validation.validate'):
+            result = at.call_tool('propose_recipe', {'recipe': raw[:-1]})
+            self.assertEqual(result['recipe'], recipe)
+            stored = json.loads((Path(tmp) / 'candidate.json').read_text())
+            self.assertIn('missing_final_object_brace', stored['transport_normalization'])
+            with self.assertRaises(json.JSONDecodeError):
+                at.call_tool('propose_recipe', {'recipe': '{"hook": "unfinished'})
+
+    def test_executable_recipe_requires_top_level_plan(self):
+        from runtime.recipe_validation import validate
+        recipe = {'agent_identity_name': 'fixture', 'match_features': {'runtime': 'fixture'},
+                  'observation': 'fixture', 'fallback': 'leave untouched', 'evidence_refs': ['ev-fixture'],
+                  'hook': {'method': 'file_plan', 'restart_required': True, 'capabilities': [],
+                           'limitations': [], 'verification': 'fixture', 'rollback': 'fixture'}}
+        with self.assertRaisesRegex(ValueError, 'top level'):
+            validate(recipe, Path('.'))
+
     def test_phase_advertises_only_selected_tools(self):
         request = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}) + '\n'
         output = io.StringIO()

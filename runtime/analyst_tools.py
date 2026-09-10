@@ -786,7 +786,23 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return search_target_image(args)
     if name == "propose_recipe":
         target_process()
-        recipe = redact(args.get("recipe", {}))
+        recipe = args.get("recipe", {})
+        normalization = 'none'
+        if isinstance(recipe, str):
+            if len(recipe.encode('utf-8')) > 1024 * 1024:
+                raise ValueError('encoded candidate exceeds proposal scope')
+            raw = recipe.rstrip()
+            try:
+                recipe = json.loads(raw)
+                normalization = 'decoded_json_string'
+            except json.JSONDecodeError as exc:
+                # Narrow provider compatibility: only a missing final outer
+                # object brace. Never invent values or alter generated source.
+                if exc.pos != len(raw) or not raw.startswith('{'):
+                    raise
+                recipe = json.loads(raw + '}')
+                normalization = 'decoded_json_string_missing_final_object_brace'
+        recipe = redact(recipe)
         if not isinstance(recipe, dict):
             raise ValueError("recipe must be an object")
         required = {"match_features", "observation", "hook", "fallback"}
@@ -799,7 +815,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                  target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME})
         RECIPE_DIR.mkdir(parents=True, exist_ok=True)
         path = RECIPE_DIR / "candidate.json"
-        payload = {"status": "candidate", "created_at": now(), "recipe": recipe}
+        payload = {"status": "candidate", "created_at": now(), "recipe": recipe,
+                   "transport_normalization": normalization}
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"candidate_path": str(path), "recipe": recipe, "next": "Supervisor must verify and commit; Analyst cannot activate hooks."}
     p = target_process()

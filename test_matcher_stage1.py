@@ -109,6 +109,26 @@ def _mcp_get_prior(env: dict):
 
 
 class MatcherStage1Tests(unittest.TestCase):
+    def test_exact_same_build_omitted_evolution_becomes_revision(self):
+        struct = dict(NATIVE_STRUCT, compatibility={'executable': 'fixture-digest', 'entry': 'native'})
+        a = matcher.remember_verified(struct, _recipe('first'), [{'evidence_id': 'fixture'}])
+        b = matcher.remember_verified(struct, _recipe('corrected'), [{'evidence_id': 'fixture'}])
+        self.assertEqual(a['id'], b['id'])
+        self.assertEqual(b['revision'], 2)
+        self.assertEqual(matcher.classify(struct)['entry']['hook_recipe']['agent_identity_name'], 'corrected')
+
+    def test_legacy_duplicate_does_not_shadow_newer_exact_recipe(self):
+        from copy import deepcopy
+        struct = dict(NATIVE_STRUCT, compatibility={'executable': 'fixture-digest', 'entry': 'native'})
+        matcher.remember_verified(struct, _recipe('old'), [{'evidence_id': 'fixture'}])
+        db = matcher.load()
+        db['fingerprints'][0]['revisions'][0].pop('validated_at_ns', None)
+        newer = deepcopy(db['fingerprints'][0]); newer['id'] = 'newer'
+        newer['revisions'][0]['recipe']['agent_identity_name'] = 'corrected'
+        db['fingerprints'].append(newer)
+        matcher.save(db)
+        self.assertEqual(matcher.classify(struct)['entry']['id'], 'newer')
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self._orig_db = os.environ.get("ASG_FINGERPRINT_DB")

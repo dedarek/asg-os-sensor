@@ -69,6 +69,8 @@ def validate(recipe, evidence_dir, target=None):
     if not all(isinstance(hook[k], str) and hook[k] for k in ('verification', 'rollback')):
         raise ValueError('Hook verification/rollback descriptions required')
     install_plan = recipe.get('install_plan')
+    if hook['method'] == 'file_plan' and install_plan is None:
+        raise ValueError('file_plan requires recipe.install_plan at top level, not nested under hook; new files use expected_sha256=null, not a fabricated digest')
     if install_plan is not None:
         # Candidate file plans are validated here; execution still requires a
         # supervisor-approved workspace and plan digest (learned_install.install).
