@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mmap
 import os
 import plistlib
 import re
@@ -595,6 +594,7 @@ SEARCH_IMAGE_MAX_MIRROR_BYTES = 1024 * 1024 * 1024  # refuse whole-disk style mi
 SEARCH_IMAGE_CONTEXT = 120          # printable context bytes kept around each hit
 SEARCH_IMAGE_MAX_HITS = 8           # hits per page
 SEARCH_IMAGE_MAX_QUERY = 256        # literal query length
+SEARCH_IMAGE_CHUNK_BYTES = 1024 * 1024
 
 
 def _printable_context(data: bytes) -> str:
@@ -633,20 +633,37 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
 
     needle = query.encode("utf-8")
     hits = []
-    # Map the image read-only instead of copying up to 1GiB into the MCP heap.
-    # Only the bounded excerpts are materialized; empty/out-of-range pages are valid.
+    # Bounded buffered reads, not mmap: mapping some installed executable images
+    # can terminate the reader on macOS. Keep only a chunk and query overlap.
     position = min(offset, size)
     if position < size:
-        with exe.open("rb") as image, mmap.mmap(image.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+        with exe.open("rb") as image, exe.open("rb") as excerpts:
+            image.seek(position)
+            carry = b''
+            next_match = position
             while len(hits) < SEARCH_IMAGE_MAX_HITS:
-                found = mapped.find(needle, position)
-                if found < 0:
+                chunk = image.read(SEARCH_IMAGE_CHUNK_BYTES)
+                if not chunk:
                     position = size
                     break
-                start = max(0, found - SEARCH_IMAGE_CONTEXT)
-                end = min(size, found + len(needle) + SEARCH_IMAGE_CONTEXT)
-                hits.append({"offset": found, "context": _printable_context(mapped[start:end])})
-                position = found + len(needle)
+                data = carry + chunk
+                base = position - len(carry)
+                cursor = max(0, next_match - base)
+                position += len(chunk)
+                while len(hits) < SEARCH_IMAGE_MAX_HITS:
+                    found = data.find(needle, cursor)
+                    if found < 0:
+                        break
+                    absolute = base + found
+                    start = max(0, absolute - SEARCH_IMAGE_CONTEXT)
+                    end = min(size, absolute + len(needle) + SEARCH_IMAGE_CONTEXT)
+                    excerpts.seek(start)
+                    hits.append({"offset": absolute, "context": _printable_context(excerpts.read(end - start))})
+                    cursor = found + len(needle)
+                    next_match = base + cursor
+                carry = data[-(len(needle) - 1):] if len(needle) > 1 else b''
+            if len(hits) == SEARCH_IMAGE_MAX_HITS:
+                position = next_match
     next_offset = None
     if hits and position < size and len(hits) == SEARCH_IMAGE_MAX_HITS:
         next_offset = position

@@ -446,3 +446,9 @@ test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三�
 - 第一轮真实 Goose 原生日志明确返回 ContextLengthExceeded：网关最大32768 tokens，输入至少32769。原路由没声明容量，随后调查重复初始步骤；不是HTTP200即可证明多轮工具调查兼容。
 - 已将 context_limit / max_output_tokens 做成通用路由选项传入 GOOSE_CONTEXT_LIMIT / GOOSE_MAX_TOKENS；此路由按实际错误设32768/4096，不是调查总时间限制。
 - 停止的仅本轮自建 investigator 55015，保留全部证据，实际目标44187及现用8081/桌面Agent未动。修复后用保存证据继续，复现入口仍为 learned-demo/current.json 对应的 run_investigation.py。
+
+## 顾问独立复现并纠正自己的 mmap 方案
+- 真实工具循环没有新增审计但仍消耗模型请求。直接读取 Goose 自己的协议日志（只看工具错误，不输出思维内容/凭据），看到反复 -32603 Transport closed。
+- 提取实际四请求（配置、SDK定义、文件检索、二进制字符串检索）独立启动MCP：返回 -9，第四请求无返回。修复为1MiB分块读取及跨块匹配后，同请求返回0且四条响应齐全。不能再用只在Python可执行文件上的正例替代真实目标验证。
+- 前述容量配置单独不足以防止长工具循环超限；上游也有同类已报问题 https://github.com/aaif-goose/goose/issues/11072 。尚未断言本机精确内部压缩根因；真实MCP断线已复现和修复。
+- 新增通用聚焦机制学习recipe，不给产品答案；资产普查后置到独立阶段，避免一次调查包揽所有任务。保留三轮未成功证据，修复后重新调查，无预制Hook。

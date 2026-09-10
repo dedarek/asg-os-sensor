@@ -172,7 +172,8 @@ class AnalystEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'image'
             path.write_bytes(b'prefix-' + b'needle-' * 12)
-            with patch.object(at, 'target_process', return_value=SimpleNamespace(exe=lambda: str(path))):
+            with patch.object(at, 'target_process', return_value=SimpleNamespace(exe=lambda: str(path))), \
+                 patch.object(at, 'SEARCH_IMAGE_CHUNK_BYTES', 16):
                 first = at.search_target_image({'query': 'needle'})
                 second = at.search_target_image({'query': 'needle', 'offset': first['next_offset']})
                 self.assertEqual([h['offset'] for h in first['hits'] + second['hits']], list(range(7, 91, 7)))
