@@ -1,0 +1,51 @@
+runtime/tool_context.py
+  s_1512a994888af5::t_c95e75275fab79 53-55,68
+runtime/recipe_schema.py
+  s_655532ed3c4512::t_1c39e8a6bdb06d 1-102
+  s_1512a994888af5::t_51bda8dfd13ef6 103-116
+test_proposal_phase.py
+  s_1512a994888af5::t_81f658a39629e4 1-24
+test_route_request_options.py
+  s_655532ed3c4512::t_e2501ede7285f9 1-52
+runtime/llm_proxy.py
+  s_1512a994888af5::t_238abca76cc071 12,27-37,55-57,124-125,141
+runtime/analyst_tools.py
+  s_1512a994888af5::t_064c33667b9ce3 37,876,890,900-904,919,923-924
+  s_1512a994888af5::t_dfe5adc4d153f7 503-507
+  s_1512a994888af5::t_c95e75275fab79 722-726
+runtime/llm_config.py
+  s_1512a994888af5::t_238abca76cc071 165
+llm.yaml
+  s_1512a994888af5::t_238abca76cc071 17-21
+  s_1512a994888af5::t_c95e75275fab79 16
+test_analyst_evidence.py
+  s_1512a994888af5::t_81f658a39629e4 257-260
+test_tool_context.py
+  s_1512a994888af5::t_c95e75275fab79 14
+WORKLOG.md
+  s_1512a994888af5::t_400e12439e1270 464-471
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "c1a0b3d003ece085ba650c1023ce9c78630a08d1",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    },
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/z-ai-glm-5.3-flash"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
