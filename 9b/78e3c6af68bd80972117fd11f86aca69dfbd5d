@@ -1,0 +1,20 @@
+test_discovery.py
+  s_655532ed3c4512::t_a2c11d3ade5da7 4-5,124-155
+  s_655532ed3c4512::t_a47b8e30c29a14 156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "9b78e3c6af68bd80972117fd11f86aca69dfbd5d",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
