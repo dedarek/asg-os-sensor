@@ -1,0 +1,25 @@
+runtime/llm_config.py
+  s_1512a994888af5::t_3e374e77bebfb1 150-159
+llm.yaml
+  s_1512a994888af5::t_3e374e77bebfb1 14-16
+WORKLOG.md
+  s_1512a994888af5::t_55f65f0b2e2d63 444-448
+test_route_context.py
+  s_1512a994888af5::t_c23b88e1debea6 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "7bef5f79a4b49464538161055ce54c8f66939dfb",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
