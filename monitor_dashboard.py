@@ -1893,12 +1893,14 @@ function classificationText(cls) {
 }
 const activityCache = {};
 const activityOpenPids = new Set();
+const activitySelectedRuns = {};
+const activityRequests = {};
 function escapeActivityText(v) { return escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v == null ? '' : v)); }
 function renderActivity(pid, data) {
   const box = document.getElementById('activity-body-' + pid);
   if (!box) return;
   if (!data || data.error) {
-    box.innerHTML = '<div style="color:#ef4444;padding:8px;">活动读取失败: ' + escapeActivityText(data && (data.reason || data.message) || '未知原因') + '</div>';
+    box.innerHTML = '<div style="color:#ef4444;padding:8px;">活动读取失败: ' + escapeActivityText(data && (data.reason || data.message || data.error) || '未知原因') + '</div>';
     return;
   }
   let html = '';
@@ -1922,7 +1924,7 @@ function renderActivity(pid, data) {
           return '<div style="margin-bottom:3px;"><span style="color:#34d399;">✓ finding</span> ' + escapeActivityText(ev.kind) + (ev.asset ? '/' + escapeActivityText(ev.asset) : '') + ' · ' + escapeActivityText(ev.status) + ' · ' + escapeActivityText(ev.ts) + '</div>';
         }
         return '<div style="margin-bottom:3px;"><span style="color:#38bdf8;">🔧</span> ' + escapeActivityText(ev.tool) +
-          ' · <span style="color:' + (ev.status === 'ok' ? '#34d399' : '#ef4444') + ';">' + escapeActivityText(ev.status) + '</span>' +
+          ' · <span style="color:' + (ev.status === 'succeeded' ? '#34d399' : '#ef4444') + ';">' + escapeActivityText(ev.status) + '</span>' +
           (ev.evidence_id ? ' · <span style="color:var(--text-muted);">' + escapeActivityText(ev.evidence_id) + '</span>' : '') +
           ' · ' + escapeActivityText(ev.ts) + '</div>';
       }).join('') + '</div>';
@@ -1936,15 +1938,20 @@ function renderActivity(pid, data) {
 async function loadActivity(pid, runId) {
   const box = document.getElementById('activity-body-' + pid);
   if (!box) return;
-  if (!runId && activityCache[pid]) box.innerHTML = '<div style="color:var(--text-muted);padding:6px;font-size:11px;">加载中…</div>';
+  if (runId !== undefined) activitySelectedRuns[pid] = runId;
+  const selectedRun = activitySelectedRuns[pid];
+  const requestId = (activityRequests[pid] || 0) + 1;
+  activityRequests[pid] = requestId;
   try {
-    const url = '/api/investigation/activity?pid=' + pid + (runId ? '&run_id=' + encodeURIComponent(runId) : '');
+    const url = '/api/investigation/activity?pid=' + pid + (selectedRun ? '&run_id=' + encodeURIComponent(selectedRun) : '');
     const res = await fetch(url);
     const data = await res.json();
+    if (activityRequests[pid] !== requestId) return;
+    if (!res.ok) { renderActivity(pid, data); return; }
     activityCache[pid] = {data, at: Date.now()};
     renderActivity(pid, data);
   } catch(e) {
-    renderActivity(pid, {error: true, reason: String(e)});
+    if (activityRequests[pid] === requestId) renderActivity(pid, {error: true, reason: String(e)});
   }
 }
 function onActivityToggle(pid, el) {
@@ -2337,7 +2344,7 @@ async function updateUI() {
           </div>
 
           ${semanticHtml}
-          <details class="adapter-box" id="activity-details-${a.pid}" style="margin-top:8px;" onToggle="onActivityToggle(${a.pid}, this)">
+          <details class="adapter-box" id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid) ? 'open' : ''} style="margin-top:8px;" onToggle="onActivityToggle(${a.pid}, this)">
             <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">🔬 调查活动（工具调用与 finding 时间线，脱敏）</summary>
             <div id="activity-body-${a.pid}" style="margin-top:6px;"></div>
           </details>
@@ -2345,6 +2352,11 @@ async function updateUI() {
       `;
     });
     grid.innerHTML = html;
+    activityOpenPids.forEach(pid => {
+      const panel = document.getElementById('activity-details-' + pid);
+      if (!panel) { activityOpenPids.delete(pid); return; }
+      if (activityCache[pid]) renderActivity(pid, activityCache[pid].data);
+    });
   } catch (err) {
     console.error("更新失败:", err);
   }
