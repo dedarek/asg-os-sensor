@@ -33,6 +33,8 @@ echo $!
 
 最终隔离验收页面为 `http://127.0.0.1:8081/`（PID 24825），观测接收器为 `http://127.0.0.1:52708`（PID 24804）；运行目录和日志见 WORKLOG，8080 无监听，生产指纹库哈希未变化。页面截图已在本次 review 中核对，显示 3 个真实扫描实例、调查禁用、资产/网络尚未采集、Hook 未安装。
 
+真实部署 manifest 位于 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`，当前 active；事件接收文件为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。调查禁用只作用于隔离看板进程，恢复命令是将其启动环境 `ASG_AUTONOMOUS_ANALYSIS` 改为 `1`，不改全局配置、不添加不安全 TLS 覆盖。
+
 ## review 重点与限制
 
 - 资产保守降级：旧配方资料保留为 historical_recipe；尚无当前实例的采集完整性证明，故不显示历史空数组为“未发现”。后续须连接真实采集器，不能只填状态。

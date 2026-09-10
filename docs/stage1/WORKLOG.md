@@ -369,5 +369,11 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 观测接收器：`http://127.0.0.1:52708`，PID `24804`；实例绑定 `5297:1789006943.640438`；真实历史事件 `valid=3/invalid=0`，当前健康为 `stale/healthy=false`。
 - 隔离目录：运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-1kJT3b`，事件目录为其 `events/`；指纹库使用 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/authorized-goose/fingerprints.json`。
 - 运行配置名：`ASG_HOST`、`ASG_PORT=8081`、`ASG_AUTONOMOUS_ANALYSIS=0`、`ASG_SCAN_INTERVAL=60`、`ASG_FINGERPRINT_DB`、`ASG_RUN_DIR`、`ASG_EVENT_DIR`、`ASG_OBSERVE_URL`；未设置 `ASG_ALLOW_INSECURE_ANALYST`。
+- 部署核对：manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json` 为 `active=true`、runid `660ad5f492e7ab91`；插件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js` 存在；事件文件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl` 共 3 行。
 - 复核：8080 无监听；生产库哈希仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；验收摘要保存在被忽略的 `artifacts/stage1/dashboard-review-1kJT3b/verification.json`。
 - 停止方式：确认 PID 命令仍指向本工作树对应脚本后，分别对 `24825` 和 `24804` 发送 `TERM`；不要按进程名批量终止。当前保留服务供 review。
+
+### 调查开关与受控卸载准备
+
+- `ASG_AUTONOMOUS_ANALYSIS=0` 只注入当前隔离 8081 看板进程，用于本轮如实展示“调查禁用”；没有修改 `.env`、`llm.yaml` 或其他全局配置。恢复隔离看板调查时，将同一启动命令的该值改为 `1`，仍不添加 `ASG_ALLOW_INSECURE_ANALYST`；本轮不执行恢复。
+- 受控卸载仅在顾问协调用户确认后执行：先复核 manifest `active=true`、PID 5297/create_time `1789006943.640438`、事件计数 `3/0`，再运行隔离工作区的 `runtime/opencode/ghost_install.py --uninstall --workspace /Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe --name asg-observe.js`。卸载后必须同时确认旧 run 事件计数不变、observer `/health` 与 `/events` 为 revoked、看板 API 为 revoked；当前不运行该命令。

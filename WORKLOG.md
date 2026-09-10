@@ -33,3 +33,5 @@
 原有测试与新增测试分开记录：原有 71 项回归继续通过；新增 `test_dashboard_http.py` 3 项覆盖隔离安装卸载撤销、重定向拒绝、异常计数降级，`test_observe_page.py` 增补损坏 prior 的撤销绑定断言。完整结果为 74 项通过（17.906s），未进行真实 Goose 外发、真实 active 插件卸载、Hook 安装或 8080 操作。
 
 最终隔离运行：看板 `http://127.0.0.1:8081/`（PID 24825），观测接收器 `http://127.0.0.1:52708`（PID 24804）；运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-1kJT3b`，日志位于该目录的 `server.log`，详细摘要位于该目录的 `verification.json`。8080 无监听，生产库哈希保持 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。
+
+部署核对路径：manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json` 为 active，插件位于其同级 `asg-observe.js`，run 事件文件为 `runs/660ad5f492e7ab91/events.jsonl`。`ASG_AUTONOMOUS_ANALYSIS=0` 仅作用于本次隔离看板进程；恢复时将该进程环境改为 `1`，不修改全局配置且不添加 `ASG_ALLOW_INSECURE_ANALYST`。

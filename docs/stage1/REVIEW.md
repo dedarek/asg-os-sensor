@@ -29,6 +29,7 @@
 - 当前隔离演示：看板 `http://127.0.0.1:8081/`（PID 24825），观测接收器
   `http://127.0.0.1:52708`（PID 24804）；运行记录与停止方式见 WORKLOG，摘要在
   `artifacts/stage1/dashboard-review-1kJT3b/verification.json`。
+- active 部署核对：manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`、插件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js` 和 3 行事件文件均存在；真实引擎 PID 5297/create_time `1789006943.640438` 在线。
 
 ## 待办（受控卸载验收）
 - 未执行卸载；步骤已写入 WORKLOG。等待顾问协调用户再次只读调用后执行。
