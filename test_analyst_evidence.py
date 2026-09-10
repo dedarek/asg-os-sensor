@@ -1,0 +1,130 @@
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+import psutil
+
+from runtime.analyst_evidence import entry_surface, find_related_files, metadata_candidates, read_related_file
+from runtime.analyst_tools import _validate_investigation_summary
+
+
+class AnalystEvidenceTests(unittest.TestCase):
+    def test_entry_metadata_and_bounded_file_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = root / "random-runtime.py"
+            script.write_text("import time; time.sleep(20)\n", encoding="utf-8")
+            (root / "package.json").write_text(json.dumps({
+                "name": "runtime-under-test",
+                "version": "1.2.3",
+                "bin": {"runtime-under-test": "random-runtime.py"},
+                "dependencies": {"some-sdk": "*"},
+            }), encoding="utf-8")
+            (root / "settings.json").write_text(json.dumps({
+                "model": "gateway/model-a",
+                "mcpServers": {"local-tool": {"command": "ignored"}},
+                "apiKey": "do-not-export",
+            }), encoding="utf-8")
+            (root / "authorized_keys").write_text("ssh-ed25519 AAAA-not-exported\n", encoding="utf-8")
+            proc = subprocess.Popen([sys.executable, str(script)], cwd=str(root),
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                observed = psutil.Process(proc.pid)
+                surface = entry_surface(observed)
+                self.assertEqual(surface["target"]["pid"], proc.pid)
+                self.assertTrue(any(item["resolved"] == str(script.resolve())
+                                    for item in surface["entry_candidates"]))
+                metadata = metadata_candidates(surface)
+                self.assertIn("runtime-under-test", json.dumps(metadata))
+                self.assertNotIn("agent_identity", surface)
+
+                cwd_root = next(item for item in surface["related_roots"]
+                                if item["source"] == "process.cwd")
+                root_token = f"root-{surface['related_roots'].index(cwd_root)}"
+                found = find_related_files(surface, "*.json", scope=root_token)
+                settings = next(item for item in found["files"] if item["name"] == "settings.json")
+                self.assertEqual(find_related_files(surface, "authorized_keys", scope=root_token)["files"], [])
+                read = read_related_file(surface, settings["path"])
+                self.assertEqual(read["parse_status"], "json")
+                self.assertIn("gateway/model-a", json.dumps(read))
+                self.assertNotIn("do-not-export", json.dumps(read))
+                with self.assertRaises(ValueError):
+                    read_related_file(surface, str(Path.home() / "outside.json"))
+            finally:
+                proc.terminate()
+                proc.wait(timeout=3)
+
+    def test_home_or_root_cwd_is_not_a_recursive_search_root(self):
+        fake = type("FakeProcess", (), {
+            "pid": 1,
+            "exe": lambda self: "/usr/bin/runtime",
+            "cmdline": lambda self: ["runtime"],
+            "cwd": lambda self: "/",
+            "parent": lambda self: None,
+            "children": lambda self, recursive=False: [],
+            "open_files": lambda self: [],
+            "ppid": lambda self: 0,
+            "status": lambda self: "running",
+            "create_time": lambda self: 1.0,
+        })()
+        surface = entry_surface(fake)
+        self.assertFalse(any(item["path"] == "/" for item in surface["related_roots"]))
+
+    def test_script_mcp_exposes_generic_entry_surface_without_pythonpath(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(__file__).resolve().parent
+            audit = Path(tmp) / "audit"
+            env = dict(os.environ)
+            env.pop("PYTHONPATH", None)
+            env.update({
+                "ASG_TARGET_PID": str(os.getpid()),
+                "ASG_TARGET_CREATE_TIME": str(psutil.Process(os.getpid()).create_time()),
+                "ASG_AUDIT_DIR": str(audit),
+                "ASG_FINGERPRINT_DB": str(Path(tmp) / "isolated-fingerprints.json"),
+                "ASG_RECIPE_DIR": str(Path(tmp) / "recipes"),
+            })
+            proc = subprocess.Popen(
+                [sys.executable, "-B", str(root / "runtime" / "analyst_tools.py")],
+                cwd=str(Path(tmp)), env=env, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            request = json.dumps({
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "inspect_entry_surface", "arguments": {}},
+            }) + "\n"
+            out, err = proc.communicate(request, timeout=20)
+            self.assertEqual(proc.returncode, 0, err)
+            messages = [json.loads(line) for line in out.splitlines() if line.strip()]
+            result = next(message["result"]["content"][0]["text"]
+                          for message in messages if message.get("id") == 1)
+            payload = json.loads(result)
+            self.assertEqual(payload["target"]["pid"], os.getpid())
+            self.assertIn("entry_candidates", payload)
+            evidence = list((audit / "evidence").glob("ev-*.json"))
+            self.assertEqual(len(evidence), 1)
+            recorded = json.loads(evidence[0].read_text(encoding="utf-8"))
+            self.assertEqual(recorded["tool"], "inspect_entry_surface")
+            self.assertEqual(recorded["target"]["pid"], os.getpid())
+
+    def test_investigation_summary_requires_cited_identity_and_asset_states(self):
+        summary = {
+            "identity_evidence": {"sources": ["ev-identity"], "uncertainty": []},
+            "assets": {
+                "model_gateway": {"status": "unknown", "sources": [], "uncertainty": ["not observed"]},
+                "mcp": {"status": "collected", "sources": ["ev-mcp"], "uncertainty": []},
+                "skills": {"status": "empty", "sources": ["ev-skills"], "uncertainty": []},
+                "rules": {"status": "failed", "sources": ["ev-rules"], "uncertainty": ["read failed"]},
+            },
+        }
+        _validate_investigation_summary({"investigation": summary})
+        with self.assertRaises(ValueError):
+            _validate_investigation_summary({"investigation": {"identity_evidence": {"sources": []}, "assets": {}}})
+
+
+if __name__ == "__main__":
+    unittest.main()

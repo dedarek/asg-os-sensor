@@ -49,24 +49,55 @@ def metadata_identity(info):
     A display name alone says nothing about whether the program is an Agent.
     model_sdk indicates declared capability, not proof of an active model call.
     """
+    script_suffixes = {'.cjs', '.js', '.mjs', '.py', '.pyw', '.rb', '.sh', '.ts', '.tsx'}
+
+    def resolved(value):
+        try:
+            return Path(value).resolve(strict=False)
+        except (OSError, ValueError):
+            return Path(value)
+
+    def bin_targets(data, parent):
+        value = data.get('bin')
+        if isinstance(value, str):
+            return [parent / value]
+        if isinstance(value, dict):
+            return [parent / target for target in value.values() if isinstance(target, str)]
+        return []
+
     for value in reversed(entrypoints(info)):
         path = Path(value)
         if not path.is_absolute():
             continue
-        for parent in list(path.parents)[:6]:
+        real_path = resolved(path)
+        for parent in list(real_path.parents)[:10]:
             package = parent / 'package.json'
             try:
                 if package.is_file() and package.stat().st_size < 262144:
                     data = json.loads(package.read_text())
                     if isinstance(data.get('name'), str):
+                        mapped = any(resolved(target) == real_path for target in bin_targets(data, parent))
+                        script_entry = real_path.suffix.lower() in script_suffixes
+                        try:
+                            script_under_package = real_path.is_relative_to(parent)
+                        except AttributeError:
+                            script_under_package = str(real_path).startswith(str(parent) + os.sep)
+                        if not mapped and not (script_entry and script_under_package):
+                            # An outer toolchain manifest is not ownership proof for
+                            # a native child executable.  Continue towards a nearer
+                            # owning package or bundle.
+                            continue
                         deps = data.get('dependencies') or {}
                         sdk = any(k in deps for k in ('openai', '@anthropic-ai/sdk', '@ai-sdk/openai', 'litellm', '@langchain/core'))
                         return {'id': 'package:' + str(parent), 'name': data.get('productName') or data['name'],
-                                'source': 'package-metadata', 'evidence': str(package), 'version': data.get('version', 'unknown'), 'model_sdk': sdk}
+                                'source': 'package-metadata', 'evidence': str(package),
+                                'version': data.get('version', 'unknown'), 'model_sdk': sdk,
+                                'entrypoint': str(path), 'resolved_entrypoint': str(real_path),
+                                'ownership': 'bin-mapping' if mapped else 'script-under-package'}
             except (OSError, ValueError, TypeError):
                 pass
         # Outermost bundle identifies the host, not each Electron helper bundle.
-        bundle = next((p for p in reversed(path.parents) if p.suffix == '.app'), None)
+        bundle = next((p for p in reversed(real_path.parents) if p.suffix == '.app'), None)
         if bundle:
             manifest = bundle / 'Contents' / 'Info.plist'
             try:
@@ -76,7 +107,10 @@ def metadata_identity(info):
                 name = data.get('CFBundleDisplayName') or data.get('CFBundleName')
                 if name:
                     return {'id': 'bundle:' + str(bundle), 'name': name,
-                            'source': 'bundle-metadata', 'evidence': str(manifest), 'version': data.get('CFBundleShortVersionString', 'unknown')}
+                            'source': 'bundle-metadata', 'evidence': str(manifest),
+                            'version': data.get('CFBundleShortVersionString', 'unknown'),
+                            'entrypoint': str(path), 'resolved_entrypoint': str(real_path),
+                            'ownership': 'app-bundle'}
             except (OSError, ValueError, plistlib.InvalidFileException):
                 pass
     return {}

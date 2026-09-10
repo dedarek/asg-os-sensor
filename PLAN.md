@@ -40,3 +40,10 @@
 隔离验收工作区已刷新为当前插件版本，用户打开前保持 `0` 条事件；打开后才取得新实例 PID+create_time，再启动绑定接收器。独立 headless CLI 对照证据保留在 `artifacts/stage1/`：无插件基线可用，带外部插件的实例初始化在有界时间内未完成，故不把 CLI 端口启动或静态部署写成插件已加载。
 
 本次仍不进入真实 Hook 安装、阻断、8080 或 Stage1 闭环完成；完成后停在 review。
+
+
+## 2026-09-10 review continuation：通用证据面与 Goose 自主调查切片
+
+基线为 `246078c`，本轮只把目标进程的原始/解析入口、进程树、近旁元数据和有界配置文件证据交给 Goose，并把调查生命周期与配方调查摘要门禁接上。证据工具不选择产品身份、不生成产品适配器；Goose 必须引用证据形成身份结论，并分别报告 `model_gateway`、`mcp`、`skills`、`rules` 的状态、来源和不确定性。Hook 只允许报告目标机制，仍不安装、不执行、不验证。
+
+运行状态只看生命周期文件：`running`、`completed`、`failed`、`timeout`；超时保留 `analyst_stdout.jsonl`、`analyst_tool_calls.jsonl` 和 `evidence/`，不会降级成 `unsupported`。已检查本机 Goose CLI，没有发现可确认的原生 subagent 参数，因此不启用或宣称该能力。完成后停在 review，不推进 exact/similar/miss、revision 演进或 Hook 安装。

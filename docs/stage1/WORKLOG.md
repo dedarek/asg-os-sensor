@@ -431,3 +431,12 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 - 用户 workspace：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-hook-acceptance`；manifest runid=`d40626064e384a68`，插件 SHA256=`866504bbc7f25c811e25f1d989909342b056c5445061f85fad6cbbde1b1e3825`，待接收 events 文件打开前为 0 行。历史 receiver `http://127.0.0.1:52708` 的 3 条事件当前 stale，不代表新 workspace 已加载。
 - 真实 route 烟测 chat/responses 均 200；真实 Goose 工具链有 5 条 MCP evidence 但没有 candidate recipe，因此不宣称调查成功。headless CLI 无插件基线通过，带插件对照在实例初始化阶段超时，证据在 `artifacts/stage1/`，不与用户 workspace 混用。
 - 8081/PID `48028` 保持隔离，8080 无监听，生产库哈希未变；未修改全局配置、未重启或触碰现用 Agent。本轮不是 Stage1 闭环完成，停在 review。
+
+
+## 2026-09-10 review continuation：通用运行时证据与 Goose 调查生命周期
+
+实现提交 当前 HEAD（本轮独立提交），基线 `246078c`。新增通用 launch/metadata/file evidence 工具，严格绑定 PID+create_time，并限制搜索根、深度、文件数、读取大小和输出；敏感文件和内容脱敏。Goose recipe 现在必须提交带来源与不确定性的身份及四类资产摘要，`propose_recipe` 负责拒绝缺失摘要的候选。调查 wrapper 记录 Goose 子进程 PID+create_time、返回码、超时、预算、审计路径和可恢复 evidence 索引；`timeout` 保留失败原因与进度。
+
+原有回归基线 `90` 项保持通过；新增证据/门禁 `4` 项、生命周期 `2` 项、入口归属 `2` 项，共 `98` 项全量通过。真实 Goose 目标为只读实例 `1052:1789006497.273916`，隔离产物 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/goose-generic-assets-v4-20260910T083028Z/pid_1052_1789029028/`；8 次工具调用后超时，未产生候选配方，按未完成处理。8081 保持 `48028`，8080、生产库和现用 Agent 未动。
+
+本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成。

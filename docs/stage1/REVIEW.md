@@ -141,3 +141,12 @@
 原有 `87` 项回归保持通过，新增 route TLS 回归后当前完整回归 `90` 项通过。真实路由烟测 chat/responses 均 200；真实 Goose 只产生 5 条 MCP evidence，没有 candidate recipe，因此标为未完成。历史接收器 `http://127.0.0.1:52708` 的 3 条事件当前 stale，不当作新 workspace 已加载。headless CLI 无插件基线可用，带插件实例初始化超时，未产生 CLI 事件 claim。
 
 本轮是 route TLS 配置收紧、插件合同测试修复和隔离验收准备，不是 Stage1 闭环完成；未修改全局配置、未重启现用 Agent、未操作 8080，停在 review。
+
+
+## 2026-09-10 review continuation：通用证据面与 Goose 自主调查
+
+本轮提交 当前 HEAD（本轮独立提交）。交付范围是通用运行时证据和调查生命周期：Goose 读取绑定进程的原始/解析入口、进程树、metadata 和受限文件证据，程序校验身份来源及四类资产状态；没有新增产品适配器、Hook 安装或执行材料。资产的成功为空、失败、未知和尚未采集保持分离，Hook 仍为未安装/未验证。超时留下 stdout、tool calls、evidence 和 lifecycle，不能冒充不支持或成功。
+
+全量 `98` 项通过，其中既有回归 `90` 项，新增 `8` 项。真实 Goose 隔离运行保存了 `8` 次工具调用和 `8` 份 evidence 后于 `299998ms` 超时，未生成候选配方；证据目录为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/goose-generic-assets-v4-20260910T083028Z/pid_1052_1789029028/`。本机 Goose CLI 未发现可确认的 native subagent 参数，未宣称支持。
+
+本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成；exact/similar/miss、revision、完整资产采集和 Hook 生效验证留待后续 review。

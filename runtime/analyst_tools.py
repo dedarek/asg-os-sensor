@@ -27,6 +27,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 显式把项目根加入导入路径, 保证 from runtime import matcher 可用。
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from runtime.analyst_evidence import (  # noqa: E402
+    entry_surface,
+    find_related_files,
+    metadata_candidates,
+    read_related_file,
+)
 AUDIT_DIR = Path(os.environ.get("ASG_AUDIT_DIR", ROOT / "e2e" / "artifacts"))
 EVIDENCE_DIR = AUDIT_DIR / "evidence"
 RECIPE_DIR = Path(os.environ.get("ASG_RECIPE_DIR", AUDIT_DIR / "recipes"))
@@ -189,15 +195,14 @@ def _outer_bundle(executable: str) -> Path | None:
 
 
 def _bundle_markers(path: Path) -> dict[str, bool]:
+    """Find generic loader/extension markers without choosing a product."""
     markers = {
-        "config_env_override": b"OPENCODE_CONFIG_DIR",
-        "config_file_opencode_jsonc": b"opencode.jsonc",
-        "config_file_opencode_json": b"opencode.json",
-        "config_file_config_json": b"config.json",
+        "config_env_override": b"CONFIG_DIR",
+        "config_file_name": b"config",
         "plugin_scan_call": b"Glob.scan",
-        "plugin_scan_pattern": b"{plugin,plugins}/*.{ts,js}",
-        "hook_before": b"tool.execute.before",
-        "hook_after": b"tool.execute.after",
+        "plugin_scan_pattern": b"{plugin,plugins}",
+        "hook_before": b".before",
+        "hook_after": b".after",
     }
     found = {key: False for key in markers}
     try:
@@ -223,7 +228,7 @@ def _bundle_markers(path: Path) -> dict[str, bool]:
 
 
 def inspect_loader_surface() -> dict[str, Any]:
-    """Read only the target's app bundle and open-file classes; never install or scan a workspace."""
+    """Read generic bundle, loader and extension evidence; never install or scan a workspace."""
     p = target_process()
     try:
         executable = p.exe()
@@ -233,7 +238,12 @@ def inspect_loader_surface() -> dict[str, Any]:
     if bundle is None:
         return {"available": False, "status": "no_app_bundle", "target_executable_class": Path(executable).name}
     info_path = bundle / "Contents" / "Info.plist"
-    asar_path = bundle / "Contents" / "Resources" / "app.asar"
+    bundle_candidates = [
+        bundle / "Contents" / "Resources" / "app.asar",
+        bundle / "Contents" / "app.asar",
+        bundle / "Contents" / "Resources" / "app.zip",
+    ]
+    package_path = next((candidate for candidate in bundle_candidates if candidate.is_file()), None)
     info: dict[str, Any] = {}
     try:
         if info_path.stat().st_size <= 256 * 1024:
@@ -245,18 +255,19 @@ def inspect_loader_surface() -> dict[str, Any]:
                 }
     except (OSError, ValueError, plistlib.InvalidFileException):
         info = {}
-    markers = _bundle_markers(asar_path) if asar_path.is_file() else {}
+    markers = _bundle_markers(package_path) if package_path else {}
     opened_classes: set[str] = set()
     try:
         for opened in p.open_files():
             value = str(opened.path)
-            if value == str(asar_path):
+            if package_path and value == str(package_path):
                 opened_classes.add("engine_bundle")
-            if "/.opencode/plugin/" in value or "/.opencode/plugins/" in value:
+            parts = {part.lower() for part in Path(value).parts}
+            if "plugin" in parts or "plugins" in parts:
                 opened_classes.add("project_plugin_path")
-            if value.endswith(("/opencode.json", "/opencode.jsonc", "/config.json")):
+            if Path(value).suffix.lower() in {".json", ".jsonc", ".yaml", ".yml", ".toml", ".ini"}:
                 opened_classes.add("config_file")
-            if "Application Support/ai.opencode.desktop" in value:
+            if "application support" in value.lower():
                 opened_classes.add("desktop_data_store")
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
@@ -266,16 +277,13 @@ def inspect_loader_surface() -> dict[str, Any]:
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
     scan_proven = bool(markers.get("plugin_scan_call") and markers.get("plugin_scan_pattern"))
-    config_names = [name for name, key in (("opencode.jsonc", "config_file_opencode_jsonc"),
-                                           ("opencode.json", "config_file_opencode_json"),
-                                           ("config.json", "config_file_config_json"))
-                    if markers.get(key)]
+    config_names = ["config-like file"] if markers.get("config_file_name") else []
     return {
         "available": True,
         "status": "loader_evidence" if scan_proven else "bundle_evidence_only",
         "source": "target executable + bounded app bundle markers + target open-file classes",
         "bundle": {"name": info.get("name"), "version": info.get("version", "unknown"),
-                   "info_plist": str(info_path), "app_asar": str(asar_path),
+                   "info_plist": str(info_path), "bundle_package": str(package_path) if package_path else None,
                    "target_opened": "engine_bundle" in opened_classes},
         "config_resolution": {
             "env_override_observed": bool(markers.get("config_env_override")),
@@ -284,9 +292,9 @@ def inspect_loader_surface() -> dict[str, Any]:
         },
         "plugin_resolution": {
             "auto_discovery_observed": scan_proven,
-            "pattern": "{plugin,plugins}/*.{ts,js}" if scan_proven else None,
-            "hook_events_observed": [name for name, key in (("tool.execute.before", "hook_before"),
-                                                              ("tool.execute.after", "hook_after"))
+            "pattern": "{plugin,plugins}/*.{text-module}" if scan_proven else None,
+            "hook_events_observed": [name for name, key in (("before", "hook_before"),
+                                                              ("after", "hook_after"))
                                      if markers.get(key)],
             "target_project_plugin_observed": "project_plugin_path" in opened_classes,
         },
@@ -298,8 +306,8 @@ def inspect_loader_surface() -> dict[str, Any]:
         },
         "limitations": [
             "静态 bundle 证据只证明加载器实现和候选规则，不证明当前目标已加载插件",
-            "没有从目标进程打开文件中确认 workspace/config/plugin 作用域，不能据此安装",
-            "未读取全局配置文件、用户凭据或插件内容",
+            "没有从目标进程打开文件中确认扩展/配置作用域，不能据此安装",
+            "未读取全局配置文件、用户凭据或扩展内容",
         ],
     }
 
@@ -411,6 +419,32 @@ def inspect_observation() -> dict[str, Any]:
     }
 
 
+def _validate_investigation_summary(recipe: dict[str, Any]) -> None:
+    """Require Goose to account for identity and the four requested asset groups."""
+    summary = recipe.get("investigation")
+    if not isinstance(summary, dict):
+        raise ValueError("recipe investigation summary is required")
+    identity = summary.get("identity_evidence")
+    if (not isinstance(identity, dict) or not identity.get("sources")
+            or not isinstance(identity.get("sources"), list)
+            or not isinstance(identity.get("uncertainty", []), list)):
+        raise ValueError("investigation.identity_evidence must include sources")
+    assets = summary.get("assets")
+    if not isinstance(assets, dict):
+        raise ValueError("investigation.assets is required")
+    required_assets = ("model_gateway", "mcp", "skills", "rules")
+    allowed_status = {"collected", "empty", "failed", "unsupported", "unknown", "not_collected"}
+    missing = [name for name in required_assets if not isinstance(assets.get(name), dict)]
+    if missing:
+        raise ValueError("investigation.assets missing: " + ", ".join(missing))
+    for name in required_assets:
+        item = assets[name]
+        if item.get("status") not in allowed_status:
+            raise ValueError("invalid investigation asset status: " + name)
+        if not isinstance(item.get("sources", []), list) or not isinstance(item.get("uncertainty", []), list):
+            raise ValueError("investigation asset sources must be a list: " + name)
+
+
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "inspect_stream":
         return stream_tail()
@@ -430,6 +464,24 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return inspect_observation()
     if name == "inspect_loader_surface":
         return inspect_loader_surface()
+    if name == "inspect_entry_surface":
+        p = target_process()
+        surface = entry_surface(p)
+        surface["metadata"] = metadata_candidates(surface)
+        return surface
+    if name == "find_related_files":
+        p = target_process()
+        surface = entry_surface(p)
+        return find_related_files(
+            surface,
+            name_pattern=args.get("name_pattern", "*"),
+            scope=args.get("scope", "all"),
+            limit=args.get("limit", 120),
+        )
+    if name == "read_related_file":
+        p = target_process()
+        surface = entry_surface(p)
+        return read_related_file(surface, args.get("path", ""))
     if name == "propose_recipe":
         target_process()
         recipe = redact(args.get("recipe", {}))
@@ -439,6 +491,7 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         missing = sorted(required - set(recipe))
         if missing:
             raise ValueError("recipe missing fields: " + ", ".join(missing))
+        _validate_investigation_summary(recipe)
         from runtime.recipe_validation import validate
         validate(recipe, EVIDENCE_DIR,
                  target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME})
@@ -464,7 +517,9 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "get_target_context":
         from runtime.collection import collect
         context = {"target": {'pid': p.pid, 'create_time': p.create_time()},
-                   "local_evidence": collect(p), "prior_memory": load_prior(),
+                   "local_evidence": collect(p),
+                   "launch_evidence": call_tool("inspect_entry_surface", {}),
+                   "prior_memory": load_prior(),
                    "prior_experience": call_tool("get_prior_experience", {}),
                    "loader_surface": call_tool("inspect_loader_surface", {})}
         if OBSERVE_URL:
@@ -472,7 +527,9 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return context
     if name == "observe_runtime_surface":
         from runtime.collection import collect
-        return {'local_evidence': collect(p), 'runtime': 'unknown',
+        return {'local_evidence': collect(p),
+                'launch_evidence': call_tool("inspect_entry_surface", {}),
+                'runtime': 'unknown',
                 'children': [{'pid': c.pid, 'name': c.name()} for c in p.children()[:40]],
                 'stream': stream_tail()}
     raise ValueError(f"tool not allowlisted: {name}")
@@ -509,6 +566,9 @@ def load_prior() -> dict[str, Any]:
 
 TOOLS = [
     {"name": "get_target_context", "description": "Read the supervisor-bound target dossier, process tree, stream shape, and prior memory.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "inspect_entry_surface", "description": "Read raw and resolved executable/entry paths, parent/child identities, package metadata candidates, sources, and conflicts. This is evidence only; it never chooses an Agent identity.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "find_related_files", "description": "Enumerate bounded text/config files below roots derived from the bound process. Use a short filename glob and a returned root token; secret-like and hidden state files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}}}},
+    {"name": "read_related_file", "description": "Read one file previously found below a process-derived root. Content is bounded, parsed when possible, and redacted; arbitrary paths and credentials are rejected.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "observe_tree", "description": "Observe only the target process and descendants within the supervisor scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_runtime_surface", "description": "Inspect generic runtime, files, network shape, children, and stream capabilities; no secrets are returned.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_config_surface", "description": "Read selected configuration names from bound target files. No raw contents, secrets, .env or arbitrary paths.", "inputSchema": {"type": "object", "properties": {}}},

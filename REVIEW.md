@@ -226,3 +226,16 @@ echo $!
 隔离 workspace 在用户打开前没有启动引擎或 receiver，不会触碰现用 Agent。8080 无监听，生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。headless CLI 插件初始化阻塞已保留为未完成证据，不能用旧桌面实例的历史事件替代新实例验证。
 
 本轮是状态真实性、route TLS 配置和隔离验收准备，不是 Stage1 闭环完成。尚不具备进入真实 Hook 安装与防控的条件；待用户打开 workspace 后，下一步只应绑定新 PID+create_time、启动独立 receiver 并验证新 run 的事件，再进入后续 review。
+
+
+## 2026-09-10 review continuation：通用证据面与 Goose 自主调查
+
+本轮实现提交 当前 HEAD（本轮独立提交），基线为 `246078c`，交付内容是 Goose 自主调查所需的通用、受限证据面和可审计调查生命周期。原始/解析启动路径、进程树、近旁 manifest 候选、冲突和不确定性由 `runtime/analyst_evidence.py` 提供；文件搜索和读取只在目标进程派生根目录内进行，并限制深度、数量、大小和读取字节，敏感路径与内容脱敏。Goose 负责从证据得出身份和资产结论，程序只校验结构、证据引用和目标绑定，不新增产品适配器。
+
+状态语义：调查由 Goose 调度/生命周期记录提供；资产按 `collected`、`empty`、`failed`、`unsupported`、`unknown`、`not_collected` 区分，成功采集且为空才是 `empty`；Hook 仍来自安装 manifest 和绑定事件验证，本轮没有安装或验证，因此指纹和配方不能提升 Hook 状态。超时保存标准输出、工具调用和 evidence，结果标记 `timeout`/调查失败，不改写成 `unsupported`。
+
+本轮全量回归为 `98` 项通过（原有 `90` 项保持通过，新增 8 项：通用证据 4、生命周期 2、原生/符号入口归属 2）。真实 Goose 当前使用隔离 run 目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/goose-generic-assets-v4-20260910T083028Z/pid_1052_1789029028/`，实际完成 8 次工具调用、保存 8 份证据后于 300 秒超时，未产生候选配方；该结果按真实调查未完成报告，不以模拟结果替代。已检查本机 Goose CLI，没有可确认的原生 subagent 入口，本轮未宣称支持。
+
+安全边界保持：8081 `http://127.0.0.1:8081/`、PID `48028` 继续使用隔离运行目录；8080 无监听；生产库 SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2` 未变化；没有修改全局配置或现用 Agent。原有未跟踪文件 `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 保留未提交。
+
+本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成。需要重点 review：Goose 在更长预算下的停止条件和候选产出、局部证据覆盖范围、模型把配置事实映射为资产状态的准确性，以及下一轮 exact/similar/miss 与 revision 演进如何消费这些来源；Hook 安装与生效验证仍未开始。

@@ -1,5 +1,6 @@
 import unittest
 import json
+import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -31,6 +32,43 @@ class DiscoveryTests(unittest.TestCase):
             self.assertFalse(identify(p.info, {'agents': []}))
             score, _ = structural_score(p.info, [{'name': 'worker', 'cmdline': ['worker']}], meta)
             self.assertGreaterEqual(score, 50)
+
+    def test_symlink_entry_uses_real_package_bin_ownership(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root = root / 'node_modules' / 'runtime-package'
+            target = package_root / 'bin' / 'runtime.exe'
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b'fixture executable')
+            (package_root / 'package.json').write_text(json.dumps({
+                'name': 'runtime-package', 'version': '4.5.6',
+                'bin': {'runtime-package': 'bin/runtime.exe'},
+            }))
+            launch = root / 'runtime-link.exe'
+            launch.symlink_to(target)
+            meta = metadata_identity({
+                'exe': str(launch), 'name': 'runtime-link.exe',
+                'cmdline': [str(launch)],
+            })
+            self.assertEqual(meta['name'], 'runtime-package')
+            self.assertEqual(meta['ownership'], 'bin-mapping')
+            self.assertEqual(meta['entrypoint'], str(launch))
+            self.assertEqual(meta['resolved_entrypoint'], str(target.resolve()))
+
+    def test_unrelated_parent_package_is_not_native_entry_ownership(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / 'child' / 'bin' / 'runtime.exe'
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b'fixture executable')
+            (root / 'package.json').write_text(json.dumps({
+                'name': 'unrelated-toolchain', 'bin': {'other': 'bin/other.exe'},
+            }))
+            meta = metadata_identity({
+                'exe': str(target), 'name': 'runtime.exe',
+                'cmdline': [str(target)],
+            })
+            self.assertEqual(meta, {})
 
     def test_unseen_cli_host_and_negative_control(self):
         name = uuid.uuid4().hex

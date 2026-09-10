@@ -136,3 +136,8 @@
 ## 2026-09-10 review continuation：路由级 TLS 配置与隔离验收边界
 
 基于实现提交 `dac0a8f`，本次增量只收紧自定义 LLM 的 TLS 兼容路径、插件导出合同测试和隔离验收证据。TLS 例外由 `llm.yaml` 当前选中 route 的 `tls.verify=false` 与 `transport=loopback-proxy` 决定；默认 route 仍校验证书，代理锁定当前 route 的 origin、拒绝重定向和跨 origin 重配置。隔离验收工作区已刷新为当前插件版本，用户打开前保持无事件；本次不进入真实 Hook 安装、阻断、8080 或 Stage1 闭环完成。
+
+
+## 2026-09-10 review continuation：通用证据面与 Goose 自主调查切片
+
+基线为 `246078c`。本轮仅增加绑定进程的原始/解析入口、进程树、近旁 metadata 和有界配置文件证据，要求 Goose 以引用证据的方式形成身份与 `model_gateway`、`mcp`、`skills`、`rules` 四类资产状态；程序负责结构和证据门禁。超时保留生命周期与审计证据，不转为 `unsupported`。已检查本机 Goose CLI，没有确认的 native subagent 入口，因此不启用或宣称该能力。完成后停在 review，不推进 exact/similar/miss、revision 演进或 Hook 安装。

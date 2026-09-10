@@ -66,8 +66,9 @@ def _env_int(name: str, default: int) -> int:
         return default
 SCAN_INTERVAL_S = _env_int("ASG_SCAN_INTERVAL", 30)
 MAX_ANALYSTS = _env_int("ASG_MAX_ANALYSTS", 2)
-GOOSE_MAX_TURNS = _env_int("ASG_GOOSE_MAX_TURNS", 12)
-GOOSE_TIMEOUT_S = _env_int("ASG_GOOSE_TIMEOUT", 180)
+GOOSE_MAX_TURNS = _env_int("ASG_GOOSE_MAX_TURNS", 18)
+GOOSE_MAX_TOOL_REPETITIONS = _env_int("ASG_GOOSE_MAX_TOOL_REPETITIONS", 4)
+GOOSE_TIMEOUT_S = _env_int("ASG_GOOSE_TIMEOUT", 300)
 GOOSE_RETRY_COOLDOWN_S = _env_int("ASG_GOOSE_RETRY_COOLDOWN", 300)
 AUTONOMOUS_ANALYSIS_ENABLED = os.environ.get("ASG_AUTONOMOUS_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
 ONBOARDING_AUTO_INSTALL_ENABLED = os.environ.get("ASG_ONBOARDING_AUTO_INSTALL", "0").strip() == "1"
@@ -175,6 +176,27 @@ def now() -> float:
 
 def iso(ts: float | None = None) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts or now()))
+
+
+def _process_identity(pid: int | None) -> dict[str, Any]:
+    """Capture PID plus create_time without guessing when the process is gone."""
+    result: dict[str, Any] = {"pid": int(pid) if pid is not None else None, "create_time": None}
+    if pid is None:
+        return result
+    try:
+        result["create_time"] = float(psutil.Process(int(pid)).create_time())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, ValueError):
+        pass
+    return result
+
+
+def _write_investigation_lifecycle(run_dir: Path, lifecycle: dict[str, Any]) -> Path:
+    """Persist wrapper lifecycle separately so a timeout cannot erase its evidence."""
+    path = run_dir / "investigation_lifecycle.json"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(redact(deepcopy(lifecycle)), ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+    return path
 
 
 def _observe_request(path: str) -> tuple[int | None, dict[str, Any] | None, str | None]:
@@ -398,6 +420,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             _record_onboarding_outcome(instance_id, pid, create_time, "deferred", "分析器并发槽位已满，请稍后重试", compatibility=struct.get("compatibility"))
         return
 
+    lifecycle: dict[str, Any] = {}
     try:
         run_dir = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard"))) / f"pid_{pid}_{int(time.time())}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -406,13 +429,37 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
 
         stream_file = run_dir / "target_stream.jsonl"
         stream_file.touch()
+        lifecycle = {
+            "status": "running",
+            "started_at": iso(),
+            "ended_at": None,
+            "target": {"pid": int(pid), "create_time": create_time},
+            "goose_process": {"pid": None, "create_time": None},
+            "returncode": None,
+            "timed_out": False,
+            "end_reason": "running",
+            "timeout_seconds": GOOSE_TIMEOUT_S,
+            "max_turns": GOOSE_MAX_TURNS,
+            "max_tool_repetitions": GOOSE_MAX_TOOL_REPETITIONS,
+            "resume": {
+                "status": "available_from_saved_evidence",
+                "source": "analyst_stdout.jsonl + analyst_tool_calls.jsonl + evidence/",
+                "automatic_continuation": False,
+            },
+        }
+        lifecycle_path = _write_investigation_lifecycle(run_dir, lifecycle)
+
+        def finish_lifecycle(status: str, end_reason: str, **extra: Any) -> None:
+            lifecycle.update({"status": status, "end_reason": end_reason, "ended_at": iso(), **extra})
+            _write_investigation_lifecycle(run_dir, lifecycle)
 
         with STATE_LOCK:
             SCAN_STATE["active_investigations"][pid] = {
                 "status": "investigating",
                 "instance_id": instance_id,
                 "started_at": time.strftime("%H:%M:%S"),
-                "log_dir": str(run_dir)
+                "log_dir": str(run_dir),
+                "lifecycle_path": str(lifecycle_path),
             }
 
         try:
@@ -420,13 +467,17 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             key = load_analyst_key(route)
             if not key:
                 message = "LLM 凭据缺失: " + str(route.get("key_env", "?"))
-                _record_investigation_result(instance_id, pid, create_time, "failed", message, run_dir)
+                finish_lifecycle("failed", "credentials_missing")
+                _record_investigation_result(instance_id, pid, create_time, "failed", message, run_dir,
+                                             {"lifecycle": deepcopy(lifecycle)})
                 _record_onboarding_outcome(instance_id, pid, create_time, "failed", message, run_dir, struct.get("compatibility"))
                 print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
                 return
             if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and not tls_exception_enabled(route):
                 message = "ASG_INSECURE_SSL 仅允许当前路由的显式 TLS 配置使用"
-                _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir)
+                finish_lifecycle("blocked", "tls_policy_blocked")
+                _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir,
+                                             {"lifecycle": deepcopy(lifecycle)})
                 _record_onboarding_outcome(instance_id, pid, create_time, "blocked", message, run_dir, struct.get("compatibility"))
                 print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)
                 return
@@ -439,7 +490,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 "--provider", route["provider"],
                 "--model", route["model"],
                 "--max-turns", str(GOOSE_MAX_TURNS),
-                "--max-tool-repetitions", "2",
+                "--max-tool-repetitions", str(GOOSE_MAX_TOOL_REPETITIONS),
                 "--output-format", "stream-json",
                 "--with-extension", extension
             ]
@@ -452,10 +503,57 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
 
             out_path = run_dir / "analyst_stdout.jsonl"
             err_path = run_dir / "analyst_stderr.log"
+            lifecycle.update({
+                "command": cmd,
+                "stdout_path": str(out_path),
+                "stderr_path": str(err_path),
+                "audit_dir": str(run_dir),
+                "recipe_dir": str(recipes_dir),
+            })
+            _write_investigation_lifecycle(run_dir, lifecycle)
 
             print(f"[Analyst] Goose 开始自主逆向接管 PID={pid}...")
             t0 = time.time()
-            cp = subprocess.run(cmd, cwd=ROOT, env=env, stdout=out_path.open("w", encoding="utf-8"), stderr=err_path.open("w", encoding="utf-8"), text=True, timeout=GOOSE_TIMEOUT_S)
+            out_stream = out_path.open("w", encoding="utf-8")
+            err_stream = err_path.open("w", encoding="utf-8")
+            try:
+                analyst_process = subprocess.Popen(
+                    cmd, cwd=ROOT, env=env, stdout=out_stream, stderr=err_stream, text=True,
+                )
+                lifecycle["goose_process"] = _process_identity(analyst_process.pid)
+                lifecycle["goose_process"]["pid"] = analyst_process.pid
+                _write_investigation_lifecycle(run_dir, lifecycle)
+                try:
+                    analyst_returncode = analyst_process.wait(timeout=GOOSE_TIMEOUT_S)
+                except subprocess.TimeoutExpired:
+                    lifecycle["timed_out"] = True
+                    lifecycle["status"] = "timeout"
+                    lifecycle["end_reason"] = "timeout"
+                    analyst_process.kill()
+                    analyst_returncode = analyst_process.wait()
+                else:
+                    lifecycle["status"] = "completed" if analyst_returncode == 0 else "failed"
+                    lifecycle["end_reason"] = "completed" if analyst_returncode == 0 else "nonzero_exit"
+                lifecycle["returncode"] = analyst_returncode
+                lifecycle["ended_at"] = iso()
+                lifecycle["elapsed_ms"] = int((time.time() - t0) * 1000)
+                calls_path = run_dir / "analyst_tool_calls.jsonl"
+                try:
+                    lifecycle["tool_call_count"] = sum(1 for line in calls_path.read_text(encoding="utf-8").splitlines() if line.strip())
+                except OSError:
+                    lifecycle["tool_call_count"] = 0
+                _write_investigation_lifecycle(run_dir, lifecycle)
+            except OSError as exc:
+                lifecycle["status"] = "failed"
+                lifecycle["end_reason"] = "spawn_error"
+                lifecycle["error_type"] = type(exc).__name__
+                lifecycle["ended_at"] = iso()
+                _write_investigation_lifecycle(run_dir, lifecycle)
+                raise
+            finally:
+                out_stream.close()
+                err_stream.close()
+            cp = subprocess.CompletedProcess(cmd, analyst_returncode)
             elapsed_ms = int((time.time() - t0) * 1000)
 
             # 检查是否成功产出 candidate.json
@@ -499,10 +597,10 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                                                  f"已保存候选配方 {entry.get('id')}（{hook_text}），未安装／未验证"
                                                  if install_result is None
                                                  else f"已保存候选配方 {entry.get('id')}（{hook_text}），接入链状态: {install_result.get('status')}",
-                                                 run_dir, onboarding_details)
+                                                 run_dir, {**onboarding_details, "lifecycle": deepcopy(lifecycle)})
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
-                    _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
+                    _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir, {"lifecycle": deepcopy(lifecycle)})
                     _record_onboarding_outcome(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir, struct.get("compatibility"))
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
             else:
@@ -513,21 +611,21 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                         stderr_tail = redact('\n'.join(err_txt[-6:]))[-600:]
                 except OSError:
                     pass
-                reason = f"Goose 未产生有效 Recipe (returncode={cp.returncode})"
+                reason = (f"Goose 调查超时；已保留进度，可基于隔离证据继续调查"
+                          if lifecycle.get("timed_out") else
+                          f"Goose 未产生有效 Recipe (returncode={cp.returncode})")
                 if stderr_tail:
                     reason += "；stderr 尾部: " + stderr_tail
-                _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
+                _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir, {"lifecycle": deepcopy(lifecycle)})
                 _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
                 print(f"[Analyst] 接管完成但未产生有效 Recipe; returncode={cp.returncode}; stderr_tail={stderr_tail[:200]}", file=sys.stderr)
 
-        except subprocess.TimeoutExpired:
-            reason = f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)"
-            _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
-            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
-            print(f"[Analyst Error PID={pid}] Goose timeout after {GOOSE_TIMEOUT_S}s", file=sys.stderr)
         except Exception as exc:
             reason = f"{type(exc).__name__}: {exc}"
-            _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
+            if lifecycle and lifecycle.get("status") == "running":
+                finish_lifecycle("failed", "exception", error_type=type(exc).__name__)
+            _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir,
+                                         {"lifecycle": deepcopy(lifecycle) if lifecycle else {}})
             _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:

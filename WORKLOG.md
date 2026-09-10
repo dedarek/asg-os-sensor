@@ -271,3 +271,29 @@
 8081 看板仍为 `http://127.0.0.1:8081/`、PID `48028`，运行目录为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA`，调查开关为 `ASG_AUTONOMOUS_ANALYSIS=0`，使用隔离指纹库。8080 无监听；生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`。未修改全局配置，未重启或触碰现用 Agent，未改变旧 active manifest。
 
 本轮是路由级 TLS 配置收紧、测试合同修复和隔离验收准备，不是 Stage1 闭环完成；当前用户打开 workspace 后的真实新实例事件接收、完整 Goose 候选输出、exact/similar/miss 闭环、revision 演进和真实 Hook 生效仍待 review。
+
+
+## 2026-09-10 review continuation：通用运行时证据与 Goose 调查生命周期
+
+本轮实现提交 当前 HEAD（本轮独立提交），基线 `246078c`。新增 `runtime/analyst_evidence.py`，从 supervisor 绑定的 PID+create_time 提供原始/解析 executable 和 entry candidates、父子进程、打开文件类别、近旁 manifest 候选、冲突与不确定性；`find_related_files` 和 `read_related_file` 只允许进程派生根目录，文件名、大小、深度和读取字节数有界，隐藏/敏感文件及内容中的密钥会被排除或脱敏。它们输出证据，不选择 Agent 身份，不包含新的产品适配器。脚本方式启动 `runtime/analyst_tools.py` 会先加入仓库根路径，子进程继承 `ASG_AUDIT_DIR`、`ASG_RECIPE_DIR` 和 `ASG_FINGERPRINT_DB`。
+
+Goose recipe 已改为以 launch evidence 为主、既有本地采集为线索；提示要求有限次搜索/读取后提交 `investigation.identity_evidence` 和四类资产摘要。`propose_recipe` 现在拒绝缺失身份来源或资产状态的配方。资产状态允许 `collected`、`empty`、`failed`、`unsupported`、`unknown`、`not_collected`，每类都带 `sources` 和 `uncertainty`，因此未知、失败和成功为空不会混淆。loader 检查保留为通用 bundle/配置/插件扫描证据，未恢复产品答案。
+
+调查进程改为可记录生命周期：隔离 run 目录先写 `investigation_lifecycle.json`，包含目标与 Goose PID+create_time、返回码、超时、预算、审计路径和可恢复证据索引；超时结束时杀掉的只有本次 Goose 子进程，结果保持调查失败并写明超时，不显示为不支持。默认预算为 `ASG_GOOSE_TIMEOUT=300`、`ASG_GOOSE_MAX_TURNS=18`、`ASG_GOOSE_MAX_TOOL_REPETITIONS=4`，均可按运行覆盖。已检查本机 Goose `run --help` 和总帮助，没有确认的原生 subagent 入口，本轮未启用该能力。
+
+状态映射记录如下：
+
+| 字段 | 来源 | 缺失含义 |
+| --- | --- | --- |
+| 调查身份与资产摘要 | Goose `propose_recipe` 中引用的 MCP evidence | 没有候选或来源不足时调查失败；不会用本地名称冒充成功 |
+| `model_gateway` / `mcp` / `skills` / `rules` | Goose 读取的进程派生文件和受限工具结果 | `not_collected`/`unknown`；成功采集后空结果才可为 `empty` |
+| 调查生命周期 | `investigation_lifecycle.json` | 无文件表示调查尚未创建；超时保留证据并标 `timeout` |
+| Hook | supervisor 安装 manifest 与独立事件验证 | 本轮未安装/未验证，不能由指纹、配方或历史事件推断生效 |
+
+测试分类：原有回归基线为 `90` 项；本轮新增 `test_analyst_evidence.py` 4 项（含真实脚本 MCP 和配方摘要门禁）、`test_investigation_lifecycle.py` 2 项、`test_discovery.py` 2 项，共新增 `8` 项；全量命令结果为 `Ran 98 tests`、`OK`。模拟 Node 事件仍是机制测试；真实 Goose 单独记录，不能混称全部真实通过。
+
+真实 Goose 复核使用现有 OpenCode Agent `1052:1789006497.273916` 只读取证，产物隔离在 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/goose-generic-assets-v4-20260910T083028Z/pid_1052_1789029028/`。Goose 实际执行 `8` 次工具调用并写入 `8` 份 evidence，但在 `299998ms` 后超时，没有 `candidate.json`；结果文件为该目录的 `result.json`，生命周期为 `timeout`。这是真实运行失败/未完成证据，不计为真实调查成功。
+
+保护核对：8081 看板仍为 `http://127.0.0.1:8081/`、PID `48028`；8080 无监听；生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent 与全局配置未修改。工作树中原有未跟踪交接文件 `docs/stage1/ADVISOR_REAL_HOOK_HANDOFF.md` 未加入提交。
+
+本轮是通用调查证据与生命周期切片，不是 Stage1 闭环完成；exact/similar/miss、revision 演进、完整资产采集、Hook 安装及生效验证留在后续 review。
