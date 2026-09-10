@@ -1,0 +1,41 @@
+test_onboarding.py
+  s_655532ed3c4512::t_d29a3c2eaf2221 140-157
+PLAN.md
+  s_655532ed3c4512::t_b6540c83b639db 151-155
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_93e78e010eb1cd 297-304
+WORKLOG.md
+  s_655532ed3c4512::t_e849fb53d2e717 746-747
+  s_655532ed3c4512::t_2aeead552e2c61 750
+  s_655532ed3c4512::t_e7e0301f24b9f6 748-749,751-758
+REVIEW.md
+  s_655532ed3c4512::t_2b9558aba2917a 465-466,468-475
+  s_655532ed3c4512::t_39ce02652f1170 467
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_b68d705bafe751 901
+  s_655532ed3c4512::t_411de62203190c 897-898
+  s_655532ed3c4512::t_dc804345909822 899-900,902-909
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_05df48980cf654 483
+  s_655532ed3c4512::t_9679dcc136db13 481-482,484-491
+runtime/onboarding.py
+  s_655532ed3c4512::t_c3a798f9f44d03 28,580-585
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_539d0921182387 286-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a99295014ff4276dae0638094f363ed1c99d3b2b",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": null
+    }
+  }
+}
