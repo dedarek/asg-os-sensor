@@ -54,9 +54,18 @@
 
 - 原有测试：前轮 74 项状态真实性、观测 HTTP、插件事务、matcher、发现和隔离 prior 回归继续通过。
 - 新增测试：`test_onboarding.py` 5 项，覆盖 exact 复用不调用 Goose、legacy/manual 来源拒绝、similar/unsupported 不安装、真实 Node 插件事件链与幂等安装、损坏经验库显式报错；`test_dashboard_http.py` 新增 1 项，覆盖 onboarding API 的计划读取和无授权不安装。
-- 最终全量命令：`ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli test_observe_page test_dashboard_http test_onboarding`。新增来源门禁后需再执行并记录最终计数。
+- 最终全量命令：`ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli test_observe_page test_dashboard_http test_onboarding`；结果 `Ran 80 tests in 18.302s`，`OK`。
 - 测试类型：单元/HTTP 集成为真实本地代码路径；Node 用例运行仓库真实插件和真实事件校验器，但配方来源是 `goose-simulated`，不冒充真实 Goose；本轮没有真实 Goose 外发验收。
 
 ### 隔离运行准备
 
 代码提交后只重启本任务自己的 8081 看板，使其加载本轮代码；沿用独立观测接收器和已存在的隔离 OpenCode workspace。计划使用新的 `artifacts/stage1/dashboard-review-<run-id>/` 运行目录、指纹库、事件目录和日志，不删除旧产物。验收页面、manifest、插件和事件文件的最终绝对路径在提交后补录；8080 与真实 active Agent 保持不动。
+
+## 最终隔离验收运行（commit 7dec303）
+
+- 看板：`http://127.0.0.1:8081/`，PID `33217`；运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb`；日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/server.log`；核对摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/verification.json`。
+- 看板仅使用隔离指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/authorized-goose/fingerprints.json`，`ASG_AUTONOMOUS_ANALYSIS=0`，未设置授权自动安装变量；页面与 `/api/state` 的 investigation 均为 `disabled`，Hook 为 `not_installed`。
+- 观测接收器：`http://127.0.0.1:52708`，PID `24804`；接收器工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`。manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json` 为 active；插件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；事件文件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`，3 行，`valid=3/invalid=0`，类型为 `hook.loaded`、`tool.execute.before`、`tool.execute.after`。
+- 真实接收器当前返回 `stale/healthy=false`，原因是最近事件超过 TTL；这不被页面解释为当前 Hook 生效。插件 manifest 仍 active，真实 Agent PID `5297` 和 create_time `1789006943.640438` 未动。
+- 保护核对：8080 无监听；生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`，与既有记录一致。未改全局配置，未重启或停止现用 Agent。
+- 停止方式：先确认 PID `33217` 的命令仍为本工作树 `monitor_dashboard.py`，再只对该 PID 发送 TERM；观测接收器如需停止只处理 PID `24804`。不按进程名批量终止，不手动删除上述证据目录。

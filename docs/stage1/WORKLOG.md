@@ -384,8 +384,16 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 
 配方来源门禁：`matcher.remember_verified` 为新调查指纹条目/revision 写入 `recipe_source=goose` 元数据；无来源旧配方视为 `manual/legacy`，不被自动复用。重复安装检查 active manifest 和插件 hash，返回 `already_installed` 而不覆盖。经验库沿用 matcher 的线程锁+跨进程锁，读取异常抛错，不能清库替换。
 
-原有测试与新增测试分开：原有 74 项状态真实性/观测/插件/matcher/发现回归继续通过；新增 `test_onboarding.py` 5 项及 `test_dashboard_http.py` 1 项。最终全量命令及结果在本轮提交后记录；Node 事件链使用真实仓库插件但配方来源为 `goose-simulated`，不冒充真实 Goose。真实 Goose 外发保持关闭。
+原有测试与新增测试分开：原有 74 项状态真实性/观测/插件/matcher/发现回归继续通过；新增 `test_onboarding.py` 5 项及 `test_dashboard_http.py` 1 项。最终全量命令为 `ASG_TEST_NODE=/Users/mac/.nvm/versions/node/v24.16.0/bin/node python3 -B -m unittest test_discovery test_matcher_stage1 test_status_stage1 test_goose_stage1 test_adapter_stage1 test_synthetic_hook_integration test_opencode_plugin test_real_cli test_observe_page test_dashboard_http test_onboarding`，结果 `Ran 80 tests in 18.302s`、`OK`。Node 事件链使用真实仓库插件但配方来源为 `goose-simulated`，不冒充真实 Goose。真实 Goose 外发保持关闭。
 
 字段语义：调查来自开关和调度记录，禁用就是 `disabled`；资产来自实例采集凭据，缺失就是 `not_collected`，成功空结果才是未发现；Hook 来自安装事务和 EventVerifier，指纹命中/配方保存不改变 `not_installed`。关联进程来自 ownership，执行事件来自观测；网络无证据不作无连接/安全判断；宿主无本地证据就是未知。
 
 代码提交后仅重启本任务自己的 8081 看板以加载新代码，沿用独立观测接收器和已有隔离 OpenCode workspace。新的看板运行目录、日志、隔离指纹库和验证摘要使用 `artifacts/stage1/dashboard-review-<run-id>/`；不删除旧证据。最终绝对路径与 8080/生产库核对结果在 review 交付前补录。
+
+## 最终隔离验收运行（commit 7dec303）
+
+看板 `http://127.0.0.1:8081/`，PID `33217`；运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb`；日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/server.log`；脱敏核对摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/verification.json`。看板使用隔离指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/authorized-goose/fingerprints.json`，调查关闭，自动安装授权变量未设置。
+
+观测接收器 `http://127.0.0.1:52708`，PID `24804`；workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json` active；plugin `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`，3 行 `valid=3/invalid=0`。真实绑定 PID+create_time `5297:1789006943.640438`，当前 health 为 `stale/healthy=false`（事件超过 TTL），不显示为当前生效。
+
+8080 无监听；生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2` 与既有记录一致；现用 Agent、全局配置和 active manifest 未动。停止只处理本任务看板 PID `33217` 或接收器 PID `24804`，先核对命令归属。

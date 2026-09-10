@@ -101,3 +101,11 @@
 | 阻断/平台授权/平台注册 | 未实现 | 后续范围 |
 
 本轮是状态真实性修复和最小受控 onboarding 切片，不是 Stage1 闭环完成；通用主流 Agent 接入、真实 Goose 配方、真实目标安装和 Hook 生效验收仍未完成。完成后停在 review，不合并、不推送、不部署 8080。
+
+## 最终隔离验收工作区（commit 7dec303）
+
+页面：`http://127.0.0.1:8081/`，PID `33217`。运行目录：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb`；日志：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/server.log`；摘要：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/verification.json`。页面真实显示 3 个扫描实例、调查 disabled、Hook not_installed。
+
+真实隔离插件工作区：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；plugin：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。接收器 `http://127.0.0.1:52708` PID `24804`，绑定实例 `5297:1789006943.640438`，已有 `3/0` 有效/无效事件；health 为 `stale/healthy=false`，不宣称当前 Hook 生效。
+
+验证摘要确认 8080 无监听，生产库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2` 未变化。停止方式只处理看板 PID `33217` 或接收器 PID `24804`，先核对命令归属；现用 Agent 与 active manifest 保持不动。

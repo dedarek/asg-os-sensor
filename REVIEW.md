@@ -67,3 +67,13 @@ echo $!
 关键限制：当前自动安装适配器只覆盖已经登记的 OpenCode project workspace-plugin；通用主流 Agent 的发现和调查入口尚未完成真实盲测。真实 Goose 仍受本轮隔离看板禁用和 TLS 外发边界限制。配方来源、授权范围、激活时机和事件验证记录会写入隔离 `experience.json`，但这不代表安装已生效或具备阻断能力。
 
 本轮是状态真实性修复和一条受控 onboarding 纵向切片，不是 Stage1 闭环完成；完成后停在 review，不合并、不推送、不部署到 8080、不进入 Hook 安装阶段。
+
+## 最终隔离验收工作区（commit 7dec303）
+
+当前可查看页面为 [http://127.0.0.1:8081/](http://127.0.0.1:8081/)，看板 PID `33217`。运行目录为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb`，日志和脱敏核对摘要分别为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/server.log` 与 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-hPAgMHZb/verification.json`。页面展示 3 个本机扫描实例，Goose 调查为禁用，Hook 为未安装；未混入模拟成功状态。
+
+插件部署与事件接收的绝对路径：工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；插件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；事件文件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。接收器 URL 为 `http://127.0.0.1:52708`、PID `24804`，真实绑定实例为 `5297:1789006943.640438`，事件 `3` 条有效、`0` 条无效。接收器当前健康为 `stale/healthy=false`，因为事件超过 TTL；这项状态保持诚实。
+
+验证摘要同时确认 8080 无监听，生产指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/runtime/fingerprints.json` SHA256 为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`，与此前记录一致。当前运行的看板环境使用隔离指纹库 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/authorized-goose/fingerprints.json`、`ASG_RUN_DIR` 指向上述 run 目录、`ASG_AUTONOMOUS_ANALYSIS=0`；没有设置真实调查外发或自动安装授权变量。
+
+停止只处理本任务 PID `33217`（看板）或 `24804`（接收器），先核对命令归属，不按进程名批量终止。保留当前真实 Agent 和 active manifest，等待 review。
