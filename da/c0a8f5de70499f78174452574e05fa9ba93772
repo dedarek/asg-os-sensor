@@ -1,0 +1,39 @@
+test_onboarding.py
+  s_655532ed3c4512::t_78b1ae6fa0f6ac 305-327
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_f54400e329236d 418-425
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_f54400e329236d 130-135
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_f54400e329236d 131-134
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_f957e9c92b2086 19-22
+WORKLOG.md
+  s_655532ed3c4512::t_f54400e329236d 191-235
+PLAN.md
+  s_655532ed3c4512::t_f54400e329236d 29-34
+REVIEW.md
+  s_655532ed3c4512::t_f54400e329236d 160-190
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_f957e9c92b2086 17-18,93-94
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_25845fddfe4f4f 431-432
+  s_655532ed3c4512::t_9edc078d0d1d37 184,187-188
+  s_655532ed3c4512::t_f957e9c92b2086 11,179-183,185-186,189-306,466-472,519
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "dac0a8f5de70499f78174452574e05fa9ba93772",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
