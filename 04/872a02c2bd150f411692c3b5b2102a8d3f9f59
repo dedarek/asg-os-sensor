@@ -1,0 +1,23 @@
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_f57deb50e7dfd5 270-275
+WORKLOG.md
+  s_655532ed3c4512::t_f57deb50e7dfd5 669-675
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_f57deb50e7dfd5 820-826
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "04872a02c2bd150f411692c3b5b2102a8d3f9f59",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
