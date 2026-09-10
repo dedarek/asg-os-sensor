@@ -34,6 +34,7 @@ from runtime.analyst_evidence import (  # noqa: E402
     read_related_file,
 )
 from runtime import investigation_findings
+from runtime.recipe_schema import RECIPE_SCHEMA
 AUDIT_DIR = Path(os.environ.get("ASG_AUDIT_DIR", ROOT / "e2e" / "artifacts"))
 EVIDENCE_DIR = AUDIT_DIR / "evidence"
 RECIPE_DIR = Path(os.environ.get("ASG_RECIPE_DIR", AUDIT_DIR / "recipes"))
@@ -499,7 +500,11 @@ def _submit_investigation_finding(args: dict[str, Any]) -> dict[str, Any]:
         status = args.get("status", "unknown")
         # The advertised schema and prompt allow identity.value. Preserve its
         # role conclusion instead of silently dropping it in the flattened API.
-        supplied = args.get("value") if isinstance(args.get("value"), dict) else {}
+        supplied = args.get("value", {})
+        if isinstance(supplied, str):
+            supplied = json.loads(supplied)  # Some compatible providers stringify nested tool values.
+        if not isinstance(supplied, dict):
+            raise ValueError('identity.value must be an object or JSON-encoded object')
         value = {
             "name": str(args.get("name") or supplied.get("name") or "unidentified-agent")[:240],
             "runtime": str(args.get("runtime") or supplied.get("runtime") or "unknown")[:160],
@@ -714,7 +719,11 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError('select must be a JSON pointer')
             for part in pointer[1:].split('/'):
                 key = part.replace('~1', '/').replace('~0', '~')
-                value = value[int(key)] if isinstance(value, list) else value[key]
+                try:
+                    value = value[int(key)] if isinstance(value, list) else value[key]
+                except (KeyError, IndexError, TypeError, ValueError) as exc:
+                    fields = list(value) if isinstance(value, dict) else 'array indices' if isinstance(value, list) else 'scalar value'
+                    raise ValueError('Unknown evidence selector; available fields: ' + str(fields)) from exc
         offset = args.get('offset', 0)
         if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
             raise ValueError('offset must be a non-negative integer')
@@ -864,7 +873,7 @@ TOOLS = [
     {"name": "inspect_entry_surface", "description": "Read raw and resolved executable/entry paths, parent/child identities, package metadata candidates, sources, and conflicts. This is evidence only; it never chooses an Agent identity.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "find_related_files", "description": "Enumerate process-related files, at most 20 per page. Scope may be a returned root token or an evidence-derived absolute subdirectory inside a returned root (e.g. a package directory named in a manifest). Follow specific package/import leads rather than enumerating unrelated dependencies. Pass next_offset as offset for further pages. Secret-like files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "read_related_file", "description": "Read one file previously found below a process-derived root. Content is bounded, parsed when possible, and redacted; arbitrary paths and credentials are rejected.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "submit_investigation_finding", "description": "Persist one evidence-backed identity or asset finding without proposing or installing a Hook. Findings are partial, versioned and bounded.", "inputSchema": {"type": "object", "required": ["kind", "status", "evidence_refs"], "properties": {"kind": {"type": "string", "enum": ["identity", "asset"]}, "asset": {"type": "string", "enum": ["model_gateway", "mcp", "skills", "rules"]}, "status": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "entry": {"type": "string"}, "version": {"type": "string"}, "value": {}, "summary": {}, "details": {}, "uncertainty": {"type": "array", "items": {"type": "string"}}, "open_questions": {"type": "array", "items": {"type": "string"}}, "evidence_refs": {"type": "array", "items": {"type": "string"}}}}},
+    {"name": "submit_investigation_finding", "description": "Persist one evidence-backed identity or asset finding without proposing or installing a Hook. Findings are partial, versioned and bounded.", "inputSchema": {"type": "object", "required": ["kind", "status", "evidence_refs"], "properties": {"kind": {"type": "string", "enum": ["identity", "asset"]}, "asset": {"type": "string", "enum": ["model_gateway", "mcp", "skills", "rules"]}, "status": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}, "role_reasoning": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "entry": {"type": "string"}, "version": {"type": "string"}, "value": {}, "summary": {}, "details": {}, "uncertainty": {"type": "array", "items": {"type": "string"}}, "open_questions": {"type": "array", "items": {"type": "string"}}, "evidence_refs": {"type": "array", "items": {"type": "string"}}}}},
     {"name": "get_saved_investigation", "description": "On an explicit continuation, read only the previous bounded lifecycle summary, partial findings, open questions and evidence ids. Previous stdout is never replayed.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_tree", "description": "Observe only the target process and descendants within the supervisor scope.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "observe_runtime_surface", "description": "Inspect generic runtime, files, network shape, children, and stream capabilities; no secrets are returned.", "inputSchema": {"type": "object", "properties": {}}},
@@ -878,7 +887,7 @@ TOOLS = [
     {"name": "search_target_image", "description": "Literal (case-sensitive, non-regex) search inside the bound process's actual executable file. Use context_bytes up to 2048 to inspect surrounding loader code, not just a short hit. Returns bounded printable context, hit offsets, next_offset for paging, size/mtime and target identity. Never reads process memory, executes the file, or returns the whole binary.", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "maxLength": 256}, "offset": {"type": "integer", "minimum": 0}, "context_bytes": {"type": "integer", "minimum": 0, "maximum": 2048}}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_experience", "description": "Read bounded prior lifecycle outcomes for this compatible runtime; corrupt history is an explicit error and private paths are omitted.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "propose_recipe", "description": "Write a typed candidate recipe for Supervisor verification; cannot activate hooks or execute commands.", "inputSchema": {"type": "object", "required": ["recipe"], "properties": {"recipe": {"type": "object"}}}},
+    {"name": "propose_recipe", "description": "Write a typed candidate recipe for Supervisor verification; cannot activate hooks or execute commands.", "inputSchema": {"type": "object", "required": ["recipe"], "properties": {"recipe": RECIPE_SCHEMA}}},
 ]
 
 
@@ -888,6 +897,11 @@ def send(message: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    selected = {name.strip() for name in os.environ.get('ASG_ANALYST_TOOL_ALLOWLIST', '').split(',') if name.strip()}
+    known = {tool['name'] for tool in TOOLS}
+    if selected - known:
+        raise ValueError('Unknown phase tool names: ' + ', '.join(sorted(selected - known)))
+    available = [tool for tool in TOOLS if not selected or tool['name'] in selected]
     for line in sys.stdin:
         try:
             req = json.loads(line)
@@ -902,10 +916,12 @@ def main() -> None:
             elif method == "notifications/initialized":
                 continue
             elif method == "tools/list":
-                send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": TOOLS}})
+                send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": available}})
             elif method == "tools/call":
                 params = req.get("params") or {}
                 name = params.get("name")
+                if selected and name not in selected:
+                    raise ValueError('Tool not enabled in this task phase: ' + str(name))
                 args = params.get("arguments") or {}
                 result = call_tool(name, args)
                 evidence_id = record(method, request_id, name, args, result)

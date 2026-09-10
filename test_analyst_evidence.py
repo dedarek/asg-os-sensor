@@ -254,6 +254,10 @@ class AnalystEvidenceTests(unittest.TestCase):
                 saved = at._submit_investigation_finding({'kind': 'identity', 'status': 'identified',
                     'value': {'name': 'neutral-fixture', 'roles': ['model_gateway'], 'role_reasoning': 'fixture forwards requests'},
                     'evidence_refs': [ref]})
+                encoded = at._submit_investigation_finding({'kind': 'identity', 'status': 'identified',
+                    'value': json.dumps({'name': 'neutral-fixture', 'roles': ['model_gateway']}),
+                    'evidence_refs': [ref]})
+                self.assertEqual(encoded['finding']['value']['roles'], ['model_gateway'])
             self.assertEqual(saved['finding']['value']['roles'], ['model_gateway'])
             self.assertEqual(saved['finding']['value']['name'], 'neutral-fixture')
 

@@ -11,6 +11,7 @@ class ToolContextTests(unittest.TestCase):
   p=self.fixture();original=copy.deepcopy(p);out,stats=compact(p,3)
   self.assertEqual(p,original);self.assertTrue(stats['applied'])
   self.assertEqual(out['messages'][:2],p['messages'][:2]);self.assertEqual(out['messages'][-6:],p['messages'][-6:])
+  self.assertEqual(out['messages'][2]['role'],'assistant')
   self.assertIn('ev-0',out['messages'][2]['content']);self.assertLess(len(json.dumps(out)),len(json.dumps(p)))
   calls={c['id'] for m in out['messages'] for c in m.get('tool_calls',[])}
   replies={m['tool_call_id'] for m in out['messages'] if m['role']=='tool'}

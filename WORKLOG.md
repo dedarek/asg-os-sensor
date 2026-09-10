@@ -461,3 +461,11 @@ test_goose_stage1 新增 test_install_plan_positive_and_negative：正例含三�
 - 实际确认容量声明及分页仍不能阻止此次Goose长工具循环超限。新增显式路由 tool_context_window：只替换旧的完整工具调用/返回组为可回读证据索引，系统/用户原指令与近期完整工具组不变；模型已保存的分项结论原样保留，不由程序编造语义摘要。原始证据未删除，不限制总调查时间/调用数。
 - 当前模型路由启用4条近期工具结果窗口，应用前后请求字节数/条数记入隔离llm_context.jsonl，不记录请求正文或凭据。该兼容路径仍需真实多轮验收，单测不是成功声明。
 - 执行者a79e398经实读review后，顾问修正unknown/missing被显示alive的语义并接入Goose子进程监测：曾确认存活的MCP连续三次明确缺失后终止无效模型循环，保留失败和续查依据。这不是给正常调查设置总时限。
+
+## 2026-09-10 advisor hands-on MVP continuation (22:55 local)
+- Independently reproduced the target-binary mmap MCP crash (-9); bounded buffered read replays the same four real MCP requests successfully. No target product branch.
+- Real tool loop exposed 32K context rejection, exhausted all-thinking output, and malformed-tool retry loops. These are not HTTP connectivity successes. Selected route now explicitly configures context/output and request_options.chat_template_kwargs.enable_thinking=false; direct real function-call probe HTTP200/tool_calls/0 reasoning chars. Other route defaults unchanged.
+- Older completed tool pairs retain retrievable evidence; proposal JSON schema and optional task-phase tool allowlist expose an explicit output contract. Findings accept nested JSON-encoded identity values rather than silently losing roles.
+- 8081 actually restarted on PID70858 with preserved dashboard-review-vIbGLtFEA store, analysis enabled, no global hook auto-install. Reproducible start script and nonsecret settings are in that run. Subsequent schema changes still need final deployment review.
+- Isolated real installed CLI PID44187, run learned-demo/run-20260910-203924 remains separate from user desktop. Stock SDK copied; no human ASG Hook copied. Multiple retained autonomous investigations collected build/SDK/loader evidence but did not produce a usable file plan. Supervisor now explicitly splits proposal completion from discovery; this MUST be labeled supervisor-guided, not a new independent blind success.
+- At this checkpoint no generated Hook installed, no new real tool event pair, no new-instance reuse verified. Do not call this MVP complete. User's existing untracked handoff document preserved; no merge/push, no production fingerprint writes.

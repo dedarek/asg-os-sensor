@@ -13,7 +13,12 @@ routes:
     timeout_s: 30
     # Confirmed by this gateway's context-length error; set independently per model.
     context_limit: 32768
-    max_output_tokens: 4096
+    max_output_tokens: 8192
+    # Selected gateway: real function-call probe returned tool_calls with this mode.
+    # A provider-specific knob in config, not model/host branching in the engine.
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: false
     # Retain recent complete tool pairs; archived observations remain retrievable.
     # This bounds request context, not total investigation duration or tool count.
     tool_context_window: 4

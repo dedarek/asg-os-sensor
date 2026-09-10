@@ -50,6 +50,9 @@ def compact(payload: dict, window: int) -> tuple[dict, dict]:
                 note[field] = args[field][:400]
         if content.get('status'):
             note['status'] = content['status']
+        view = content.get('value', content)
+        if isinstance(view, dict):
+            note['available_fields'] = view.get('available_keys', list(view))[:30]
         notes.append(note)
         finding = content.get('finding')
         if isinstance(finding, dict):
@@ -62,7 +65,7 @@ def compact(payload: dict, window: int) -> tuple[dict, dict]:
     memory = {'archived_observations': notes[-48:], 'saved_model_findings': findings,
               'instruction': 'Older completed tool outputs were removed from this request to fit the configured model context. Their original evidence remains on disk. Retrieve specific evidence with read_evidence, not a full rescan. These are references, not proof of hook activation. Recent tool pairs are unchanged.'}
     result = copy.deepcopy(payload)
-    result['messages'] = preserved + [{'role': 'user', 'content': '[Supervisor evidence index]\n' + json.dumps(memory, ensure_ascii=False)}] + copy.deepcopy(messages[cutoff:])
+    result['messages'] = preserved + [{'role': 'assistant', 'content': '[Archived tool data, not a new user request. Continue the original task; do not read this index sequentially.]\n' + json.dumps(memory, ensure_ascii=False)}] + copy.deepcopy(messages[cutoff:])
     return result, {'applied': True, 'elided_tool_results': len(responses),
                     'retained_tool_results': sum(m.get('role') == 'tool' for m in messages[cutoff:]),
                     'input_messages': len(messages), 'output_messages': len(result['messages'])}

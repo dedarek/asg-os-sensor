@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import json
 import time
+import copy
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -21,6 +22,17 @@ from urllib.parse import urlsplit
 _LOCK = threading.Lock()
 _SERVER: ThreadingHTTPServer | None = None
 _STATE: dict[str, Any] = {}
+
+
+def apply_request_options(payload: dict, options: dict) -> dict:
+    """Route-specific provider knobs, never replacement tasks or tool contracts."""
+    if not isinstance(payload, dict) or not isinstance(options, dict):
+        raise ValueError('request payload/options must be objects')
+    if set(options) & {'messages', 'tools', 'model', 'stream', 'tool_choice'}:
+        raise ValueError('request_options cannot replace the task or tool contract')
+    result = copy.deepcopy(payload)
+    result.update(copy.deepcopy(options))
+    return result
 
 
 class _ProxyHandler(BaseHTTPRequestHandler):
@@ -40,6 +52,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length)
+        options = _STATE.get('request_options') or {}
+        if options and self.path.endswith('/chat/completions'):
+            body = json.dumps(apply_request_options(json.loads(body), options), ensure_ascii=False).encode('utf-8')
         window = _STATE.get('tool_context_window')
         if window and self.path.endswith('/chat/completions'):
             from runtime.tool_context import compact
@@ -106,6 +121,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 def ensure_proxy(route: dict[str, Any], key: str) -> str:
     """Start/update the process-local proxy and return its OpenAI base URL."""
     global _SERVER
+    options = route.get('request_options', {})
+    apply_request_options({}, options)  # Reject invalid config before serving.
     base = str(route.get('base_url', '')).rstrip('/')
     parsed = urlsplit(base)
     if parsed.scheme.lower() != 'https' or not parsed.netloc or parsed.query or parsed.fragment:
@@ -121,6 +138,7 @@ def ensure_proxy(route: dict[str, Any], key: str) -> str:
             extra_headers=dict(route.get("extra_headers") or {}),
             timeout_s=float(route.get("timeout_s") or 30),
             tool_context_window=route.get('tool_context_window'),
+            request_options=copy.deepcopy(options),
         )
         from runtime.llm_config import tls_exception_enabled
         _STATE['verify_tls'] = not tls_exception_enabled(route)
