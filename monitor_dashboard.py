@@ -143,6 +143,28 @@ def _record_investigation_result(instance_id: str, pid: int, create_time: float 
         INVESTIGATION_RESULTS[instance_id] = result
 
 
+def _record_onboarding_outcome(instance_id: str, pid: int, create_time: float | None,
+                               status: str, reason: str, run_dir: Path | None = None) -> None:
+    """Persist investigation failures/deferments for the next Goose context.
+
+    This is advisory history only; an experience-store error must not hide the
+    primary investigation result or change the scanner's state.
+    """
+    if create_time is None:
+        return
+    payload: dict[str, Any] = {"status": status, "reason": reason}
+    if run_dir is not None:
+        payload["run_dir"] = str(run_dir)
+    try:
+        onboarding.record_transition(
+            {"pid": pid, "create_time": create_time},
+            "investigation_failed" if status in ("failed", "blocked", "unavailable") else "investigation_deferred",
+            payload,
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"[Onboarding Experience] unable to record {instance_id}: {type(exc).__name__}", file=sys.stderr)
+
+
 def now() -> float:
     return time.time()
 
@@ -355,6 +377,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
     if not goose_bin:
         message = f"未找到 Goose CLI（当前解析值: {GOOSE}）。请安装 block-goose-cli 或设置 ASG_GOOSE_BIN。"
         _record_investigation_result(instance_id, pid, create_time, "unavailable", message)
+        _record_onboarding_outcome(instance_id, pid, create_time, "unavailable", message)
         with INVESTIGATION_LOCK:
             INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
             INVESTIGATING_INSTANCES.pop(instance_id, None)
@@ -368,6 +391,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             INVESTIGATING_INSTANCES.pop(instance_id, None)
         if force:
             _record_investigation_result(instance_id, pid, create_time, "busy", "分析器并发槽位已满，请稍后重试")
+            _record_onboarding_outcome(instance_id, pid, create_time, "deferred", "分析器并发槽位已满，请稍后重试")
         return
 
     try:
@@ -393,11 +417,13 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             if not key:
                 message = "LLM 凭据缺失: " + str(route.get("key_env", "?"))
                 _record_investigation_result(instance_id, pid, create_time, "failed", message, run_dir)
+                _record_onboarding_outcome(instance_id, pid, create_time, "failed", message, run_dir)
                 print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
                 return
             if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
                 message = "上游 TLS 证书无效；已阻止深度数据外发。修复证书，或明确设置 ASG_ALLOW_INSECURE_ANALYST=1"
                 _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir)
+                _record_onboarding_outcome(instance_id, pid, create_time, "blocked", message, run_dir)
                 print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)
                 return
 
@@ -450,20 +476,13 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                     current = analyzer.analyze(pid)
                     if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
                         raise ValueError('Target changed during investigation')
-                    entry = matcher.remember_verified(struct, recipe, evidence, elapsed_ms)
+                    entry = matcher.remember_verified(struct, recipe, evidence, elapsed_ms, source='goose')
                     target = {'pid': pid, 'create_time': create_time}
                     onboarding_plan = onboarding.record_investigation(
                         target, struct, recipe, evidence, entry, match_status='miss',
                         source='goose', run_dir=str(run_dir))
-                    install_result = None
-                    verification_result = None
-                    if ONBOARDING_AUTO_INSTALL_ENABLED:
-                        authorization = onboarding.authorization_from_environment(
-                            onboarding_plan.get('workspace'))
-                        install_result = onboarding.execute_install(
-                            onboarding_plan, target, authorization)
-                        if install_result.get('status') == 'installed_pending_activation':
-                            verification_result = onboarding.verify_activation(install_result, target)
+                    install_result, verification_result = _auto_execute_onboarding(
+                        onboarding_plan, target)
                     hook_text = "接入点 proposed/unverified（未核对接入点证据）"
                     onboarding_details = {
                         'onboarding': {
@@ -480,6 +499,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
                     _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
+                    _record_onboarding_outcome(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
             else:
                 stderr_tail = ''
@@ -493,13 +513,18 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 if stderr_tail:
                     reason += "；stderr 尾部: " + stderr_tail
                 _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
+                _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir)
                 print(f"[Analyst] 接管完成但未产生有效 Recipe; returncode={cp.returncode}; stderr_tail={stderr_tail[:200]}", file=sys.stderr)
 
         except subprocess.TimeoutExpired:
-            _record_investigation_result(instance_id, pid, create_time, "failed", f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)", run_dir)
+            reason = f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)"
+            _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
+            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir)
             print(f"[Analyst Error PID={pid}] Goose timeout after {GOOSE_TIMEOUT_S}s", file=sys.stderr)
         except Exception as exc:
-            _record_investigation_result(instance_id, pid, create_time, "failed", f"{type(exc).__name__}: {exc}", run_dir)
+            reason = f"{type(exc).__name__}: {exc}"
+            _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
+            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir)
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:
             with INVESTIGATION_LOCK:
@@ -624,6 +649,15 @@ def scan_agents_once():
                             onboarding_view.get('plan', {}))
                         onboarding_view = onboarding.view_for_instance(
                             f"{pid}:{pinfo.get('create_time')}", struct, match_result)
+                    install_result, verification_result = _auto_execute_onboarding(
+                        onboarding_view.get("plan", {}),
+                        {"pid": pid, "create_time": pinfo.get("create_time")},
+                        onboarding_view,
+                    )
+                    if install_result is not None:
+                        onboarding_view["install"] = install_result
+                    if verification_result is not None:
+                        onboarding_view["verification"] = verification_result
                 except (OSError, ValueError, TypeError):
                     onboarding_view = {
                         'status': 'experience_unavailable',
@@ -855,6 +889,26 @@ def _update_onboarding_view(pid: int, install_result: dict[str, Any] | None = No
             if verification_result is not None:
                 view["verification"] = deepcopy(verification_result)
             return
+
+
+def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
+                             current: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Run the same authorization/idempotency/verification path for exact and new plans."""
+    if not ONBOARDING_AUTO_INSTALL_ENABLED or plan.get("status") != "plan_pending_authorization":
+        return None, None
+    existing = current.get("install") if isinstance(current, dict) else None
+    if isinstance(existing, dict) and existing.get("status") != "pending_authorization":
+        # A later scan must not reinstall or repeatedly append verification events for
+        # the same instance. A new PID+create_time has a new view and is checked anew.
+        return None, None
+    authorization = onboarding.authorization_from_environment(plan.get("workspace"))
+    if isinstance(existing, dict) and not authorization.get("approved"):
+        return None, None
+    install_result = onboarding.execute_install(plan, target, authorization)
+    verification_result = None
+    if install_result.get("status") in ("installed_pending_activation", "already_installed"):
+        verification_result = onboarding.verify_activation(install_result, target)
+    return install_result, verification_result
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -1397,7 +1451,9 @@ async function updateUI() {
       const install = onboarding.install || {};
       const verification = onboarding.verification || {};
       const onboardingText = verification.status === 'events_verified'
-        ? '接入链: 事件已验证（仅观测，阻断未支持）'
+        ? '接入链: 加载与工具事件已验证（仅观测，阻断未支持）'
+        : verification.status === 'loaded_verified'
+          ? '接入链: 插件已加载，尚无工具事件（未完成观测验证）'
         : install.status === 'installed_pending_activation'
           ? '接入链: 已安装，待引擎启动/重载'
           : install.status === 'pending_authorization'

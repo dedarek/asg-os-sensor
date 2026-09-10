@@ -224,6 +224,12 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return stream_tail()
     if name == "get_prior_recipe":
         return load_prior()
+    if name == "get_prior_experience":
+        from runtime import onboarding
+        instance_id = None
+        if TARGET_PID > 0 and TARGET_CREATE_TIME is not None:
+            instance_id = onboarding.make_instance_id(TARGET_PID, TARGET_CREATE_TIME)
+        return onboarding.load_prior_experience(instance_id=instance_id)
     if name == "propose_recipe":
         target_process()
         recipe = redact(args.get("recipe", {}))
@@ -258,7 +264,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "get_target_context":
         from runtime.collection import collect
         return {"target": {'pid': p.pid, 'create_time': p.create_time()},
-                "local_evidence": collect(p), "prior_memory": load_prior()}
+                "local_evidence": collect(p), "prior_memory": load_prior(),
+                "prior_experience": call_tool("get_prior_experience", {})}
     if name == "observe_runtime_surface":
         from runtime.collection import collect
         return {'local_evidence': collect(p), 'runtime': 'unknown',
@@ -300,6 +307,7 @@ TOOLS = [
     {"name": "probe_help", "description": "Run only --help and --version against the observed executable, without a shell or arbitrary arguments.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_stream", "description": "Inspect a supervisor-exposed output stream and return structure samples after redaction.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_prior_experience", "description": "Read bounded prior investigation/install/verification outcomes for this exact PID+create_time; corrupt history is an explicit error.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "propose_recipe", "description": "Write a typed candidate recipe for Supervisor verification; cannot activate hooks or execute commands.", "inputSchema": {"type": "object", "required": ["recipe"], "properties": {"recipe": {"type": "object"}}}},
 ]
 

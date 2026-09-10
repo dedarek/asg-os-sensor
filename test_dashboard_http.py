@@ -21,6 +21,7 @@ from urllib.error import HTTPError
 from unittest.mock import patch
 
 import monitor_dashboard as dashboard
+from runtime import onboarding
 
 ROOT = Path(__file__).resolve().parent
 GHOST = ROOT / "runtime" / "opencode" / "ghost_install.py"
@@ -166,7 +167,10 @@ class DashboardHttpRegressionTests(unittest.TestCase):
             "status": "plan_pending_authorization",
             "action": "install_reused_recipe",
             "match_status": "exact",
+            "adapter": onboarding.SUPPORTED_ADAPTER,
             "workspace": tempfile.gettempdir(),
+            "install": {"installer": "runtime.opencode.ghost_install",
+                        "plugin_name": "asg-observe.js"},
         }
         dashboard.SCAN_STATE["agents"] = [{
             "pid": pid,
@@ -196,6 +200,59 @@ class DashboardHttpRegressionTests(unittest.TestCase):
                 self.assertEqual(payload["install"]["status"], "pending_authorization")
                 self.assertFalse((workspace / ".opencode" / "plugins" /
                                   "asg-observe.js").exists())
+
+    def test_exact_scan_uses_authorized_onboarding_executor(self):
+        from types import SimpleNamespace
+        pid = 1234567
+        create_time = 123.0
+        plan = {
+            "status": "plan_pending_authorization",
+            "adapter": onboarding.SUPPORTED_ADAPTER,
+            "workspace": tempfile.gettempdir(),
+        }
+        info = {"pid": pid, "ppid": 1, "name": "runtime-bin",
+                "exe": "/synthetic/runtime-bin", "cmdline": ["/synthetic/runtime-bin"],
+                "create_time": create_time}
+        sensor = unittest.mock.Mock()
+        sensor.identity_catalog = {}
+        sensor.agent_score.return_value = (70, ["synthetic behavior"])
+        recipe = {"agent_identity_name": "runtime-bin", "hook": {
+            "adapter": onboarding.SUPPORTED_ADAPTER,
+            "method": "workspace-plugin", "scope": "project",
+            "installer": "runtime.opencode.ghost_install",
+            "plugin_name": "asg-observe.js", "activation_event": "hook.loaded",
+            "restart_required": True,
+        }}
+        entry = {"id": "harness-01", "name": "runtime-bin", "revision": 1,
+                 "hook_recipe": recipe, "recipe_source": "goose"}
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {
+                "ASG_EXPERIENCE_DB": str(Path(tmp) / "experience.json"),
+                "ASG_ONBOARDING_AUTHORIZED": "1",
+                "ASG_ONBOARDING_AUTO_INSTALL": "1",
+                "ASG_ONBOARDING_SCOPE": "project",
+        }, clear=False), patch.object(dashboard, "ONBOARDING_AUTO_INSTALL_ENABLED", True), \
+                patch.object(dashboard, "Sensor", return_value=sensor), \
+                patch.object(dashboard.psutil, "process_iter", return_value=[SimpleNamespace(info=info)]), \
+                patch.object(dashboard, "identify", return_value={}), \
+                patch.object(dashboard, "metadata_identity", return_value={}), \
+                patch.object(dashboard, "ownership", return_value={pid: [pid]}), \
+                patch.object(dashboard.analyzer, "analyze", return_value={
+                    "pid": pid, "create_time": create_time, "exe": "runtime-bin",
+                    "runtime": "native", "argv_shape": [], "cwd": tempfile.gettempdir(),
+                    "compatibility": {"executable": "x"}}), \
+                patch.object(dashboard.matcher, "classify", return_value={
+                    "status": "exact", "entry": entry, "match_ms": 1, "reason": "test"}), \
+                patch.object(dashboard.matcher, "record_hit"), \
+                patch.object(dashboard.onboarding, "execute_install", return_value={
+                    "status": "already_installed", "adapter": onboarding.SUPPORTED_ADAPTER,
+                    "runid": "run-1"}) as execute, \
+                patch.object(dashboard.onboarding, "verify_activation", return_value={
+                    "status": "loaded_verified"}) as verify:
+            dashboard.scan_agents_once()
+        execute.assert_called_once()
+        verify.assert_called_once()
+        self.assertEqual(dashboard.SCAN_STATE["agents"][0]["adapter"]["onboarding"]
+                         ["install"]["status"], "already_installed")
 
     def test_isolated_install_uninstall_revokes_observer_and_dashboard_state(self):
         """真实 ghost CLI + 观测 HTTP 子进程 + 原看板 HTTP，完整验证撤销语义。"""

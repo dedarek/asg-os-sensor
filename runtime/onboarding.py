@@ -33,14 +33,21 @@ from runtime.stream_parser import redact
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIENCE_VERSION = 1
 SUPPORTED_ADAPTER = "opencode-workspace-plugin"
-SUPPORTED_CONTRACT = {
-    "adapter": SUPPORTED_ADAPTER,
-    "method": "workspace-plugin",
-    "scope": "project",
-    "installer": "runtime.opencode.ghost_install",
-    "plugin_name": "asg-observe.js",
-    "activation_event": "hook.loaded",
+ADAPTER_REGISTRY = {
+    SUPPORTED_ADAPTER: {
+        "adapter": SUPPORTED_ADAPTER,
+        "method": "workspace-plugin",
+        "scope": "project",
+        "installer": "runtime.opencode.ghost_install",
+        "plugin_name": "asg-observe.js",
+        "activation_event": "hook.loaded",
+        "observing_events": ("tool.execute.before", "tool.execute.after"),
+        "install": ghost_install.install,
+    },
 }
+# Compatibility alias for callers that only need to display the current backend.
+SUPPORTED_CONTRACT = {k: v for k, v in ADAPTER_REGISTRY[SUPPORTED_ADAPTER].items()
+                      if k not in ("install", "observing_events")}
 
 
 def experience_path() -> Path:
@@ -137,6 +144,50 @@ def instance_state(instance_id: str) -> dict[str, Any] | None:
     return copy.deepcopy(value) if isinstance(value, dict) else None
 
 
+def _analyst_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Return only lifecycle facts useful to Goose; never expose recipe/install secrets."""
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    item = {
+        "event_id": event.get("event_id"),
+        "event_type": event.get("event_type"),
+        "ts": event.get("ts"),
+        "instance_id": event.get("instance_id"),
+    }
+    for key in ("match_status", "fingerprint_id", "fingerprint_revision", "recipe_source", "reason"):
+        if key in payload:
+            item[key] = payload[key]
+    for key in ("plan", "install", "verification"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            summary = {}
+            for field in ("status", "action", "match_status", "fingerprint_id", "fingerprint_revision",
+                          "reason", "activation_status", "health_status", "valid_events",
+                          "invalid_events", "hook_loaded", "observing", "hook_verified"):
+                if field in value:
+                    summary[field] = value[field]
+            if summary:
+                item[key] = summary
+    return item
+
+
+def load_prior_experience(instance_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+    """读取调查生命周期经验的窄投影；损坏经验库向 MCP 调用方显式报错。"""
+    data = load_experience()
+    events = [event for event in data.get("events", [])
+              if isinstance(event, dict) and (not instance_id or event.get("instance_id") == instance_id)]
+    events = events[-max(1, min(int(limit), 50)):]
+    candidate = data.get("instances", {}).get(instance_id) if instance_id else None
+    summary = candidate if isinstance(candidate, dict) else None
+    return {
+        "available": True,
+        "instance_id": instance_id,
+        "instance": {key: summary[key] for key in ("last_event", "updated_at", "match_status",
+                    "fingerprint_id", "fingerprint_revision", "recipe_source") if summary and key in summary},
+        "recent": [_analyst_event(event) for event in events],
+        "note": "仅生命周期状态摘要；配方、路径、凭据和 nonce 不作为 prior 读取返回",
+    }
+
+
 def _workspace(struct: dict[str, Any]) -> str | None:
     cwd = struct.get("cwd")
     if not isinstance(cwd, str) or not cwd:
@@ -144,15 +195,25 @@ def _workspace(struct: dict[str, Any]) -> str | None:
     return cwd
 
 
+def _trusted_source(source: str | None) -> bool:
+    if source == "goose":
+        return True
+    return source == "goose-simulated" and os.environ.get("ASG_TEST_SIMULATED", "0") == "1"
+
+
 def _contract_error(recipe: dict[str, Any], source: str | None = None) -> str | None:
-    provenance = recipe.get("provenance")
-    source = source or (provenance.get("source") if isinstance(provenance, dict) else None)
-    if source not in ("goose", "goose-simulated"):
+    if not _trusted_source(source):
         return "历史配方来源为 manual/legacy，未证明来自本次 Goose 调查"
     hook = recipe.get("hook")
     if not isinstance(hook, dict):
         return "配方没有 hook 契约"
-    for key, expected in SUPPORTED_CONTRACT.items():
+    adapter = hook.get("adapter")
+    contract = ADAPTER_REGISTRY.get(adapter)
+    if not contract:
+        return "配方接入适配器未登记: %s" % (adapter or "unknown")
+    for key, expected in contract.items():
+        if key in ("install", "observing_events"):
+            continue
         if hook.get(key) != expected:
             return "配方接入契约不支持或未证实: %s" % key
     if hook.get("restart_required") not in (True, "unknown"):
@@ -160,19 +221,12 @@ def _contract_error(recipe: dict[str, Any], source: str | None = None) -> str | 
     return None
 
 
-def _recipe_with_provenance(recipe: dict[str, Any], source: str) -> dict[str, Any]:
-    result = copy.deepcopy(recipe)
-    if source in ("goose", "goose-simulated"):
-        provenance = result.get("provenance")
-        if not isinstance(provenance, dict) or not provenance.get("source"):
-            result["provenance"] = {"source": source, "verified_by": "supervisor"}
-    return result
-
-
 def _common_plan(struct: dict[str, Any], match_status: str, entry: dict[str, Any] | None,
                  recipe: dict[str, Any], recipe_source: str) -> dict[str, Any]:
     iid = make_instance_id(struct["pid"], struct["create_time"])
     hook = recipe.get("hook", {})
+    adapter = hook.get("adapter")
+    contract = ADAPTER_REGISTRY.get(adapter, {})
     workspace = _workspace(struct)
     return {
         "plan_version": 1,
@@ -184,21 +238,22 @@ def _common_plan(struct: dict[str, Any], match_status: str, entry: dict[str, Any
         "fingerprint_revision": entry.get("revision") if entry else None,
         "recipe_source": recipe_source,
         "recipe_identity": recipe.get("agent_identity_name", "unknown"),
-        "adapter": SUPPORTED_ADAPTER,
-        "scope": "project",
+        "adapter": adapter or "unregistered",
+        "scope": hook.get("scope", "unknown"),
         "workspace": workspace,
         "install": {
-            "installer": SUPPORTED_CONTRACT["installer"],
-            "plugin_name": SUPPORTED_CONTRACT["plugin_name"],
+            "installer": contract.get("installer"),
+            "plugin_name": contract.get("plugin_name"),
         },
         "activation": {
             "status": "pending_restart",
-            "event_type": SUPPORTED_CONTRACT["activation_event"],
+            "event_type": contract.get("activation_event"),
             "restart_required": hook.get("restart_required"),
         },
         "verification": {
             "binding": "pid+create_time",
-            "event_type": SUPPORTED_CONTRACT["activation_event"],
+            "event_type": contract.get("activation_event"),
+            "observing_events": list(contract.get("observing_events", ())),
             "blocking": "unsupported",
         },
         "authorization": {
@@ -261,8 +316,7 @@ def plan_from_match(struct: dict[str, Any], match_result: dict[str, Any]) -> dic
 def plan_from_recipe(struct: dict[str, Any], recipe: dict[str, Any], match_status: str,
                      entry: dict[str, Any] | None = None, recipe_source: str = "goose") -> dict[str, Any]:
     """将已通过 recipe_validation 的候选配方转换为受控安装计划。"""
-    recipe = _recipe_with_provenance(recipe, recipe_source)
-    reason = _contract_error(recipe)
+    reason = _contract_error(recipe, recipe_source)
     if reason:
         return {
             "plan_version": 1,
@@ -308,6 +362,11 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
     """执行唯一登记的安装器；失败关闭且不运行模型提供的命令。"""
     if plan.get("status") != "plan_pending_authorization":
         return {"status": plan.get("status", "invalid_plan"), "reason": plan.get("reason", "计划不可执行")}
+    contract = ADAPTER_REGISTRY.get(plan.get("adapter"))
+    if not contract:
+        result = {"status": "unsupported", "reason": "计划使用了未登记的接入适配器"}
+        record_transition(target, "install_rejected", {"plan": plan, "install": result})
+        return result
     auth = authorization or {}
     if not auth.get("approved"):
         result = {"status": "pending_authorization", "reason": "等待一次授权范围内的自动安装授权"}
@@ -331,7 +390,7 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
         return result
 
     name = plan.get("install", {}).get("plugin_name")
-    if name != SUPPORTED_CONTRACT["plugin_name"]:
+    if name != contract["plugin_name"] or plan.get("install", {}).get("installer") != contract["installer"]:
         result = {"status": "unsupported", "reason": "安装器名称不在登记契约中"}
         record_transition(target, "install_rejected", {"plan": plan, "install": result})
         return result
@@ -346,6 +405,7 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
             events_path = resolve_events_file(ws, existing["runid"])
             result = {
                 "status": "already_installed",
+                "adapter": plan.get("adapter"),
                 "workspace": str(ws),
                 "plugin_path": str(dest),
                 "runid": existing["runid"],
@@ -368,7 +428,7 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
     try:
         # ghost_install 的 CLI 输出包含 nonce；直接调用并吞掉 stdout，避免进入日志/API。
         with contextlib.redirect_stdout(io.StringIO()):
-            ghost_install.install(ws, name, nonce)
+            contract["install"](ws, name, nonce)
         manifest, error = load_manifest(ws, expected_workspace=ws)
         if error or not manifest or manifest.get("name") != name:
             raise ValueError(error or "installed manifest invalid")
@@ -376,6 +436,7 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
         events_path = resolve_events_file(ws, runid)
         result = {
             "status": "installed_pending_activation",
+            "adapter": plan.get("adapter"),
             "workspace": str(ws),
             "plugin_path": str(ws / ".opencode" / "plugins" / name),
             "runid": runid,
@@ -393,28 +454,56 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
 
 def verify_activation(install_result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
     """使用已有事件校验器确认激活；没有事件只返回 pending_restart。"""
-    if install_result.get("status") not in ("installed_pending_activation", "already_installed", "events_verified"):
+    if install_result.get("status") not in ("installed_pending_activation", "already_installed", "loaded_verified", "events_verified"):
         return {"status": install_result.get("status", "not_installed"),
                 "reason": install_result.get("reason", "没有可验证的安装结果")}
+    contract = ADAPTER_REGISTRY.get(install_result.get("adapter", SUPPORTED_ADAPTER))
+    if not contract:
+        result = {"status": "unsupported", "reason": "安装结果使用了未登记的接入适配器",
+                  "hook_verified": False, "blocking": "unsupported"}
+        record_transition(target, "activation_verification", {"install": install_result, "verification": result})
+        return result
     try:
         _target_is_live(target)
         ws = Path(install_result["workspace"])
         manifest, error = load_manifest(ws, expected_workspace=ws)
         if error or not manifest:
             raise ValueError(error or "manifest unavailable")
+        if manifest.get("runid") != install_result.get("runid"):
+            raise ValueError("active manifest runid differs from the install plan")
+        if manifest.get("active") is not True:
+            result = {
+                "status": "revoked",
+                "health_status": "revoked",
+                "healthy": False,
+                "reason": "原安装 runid 的 manifest 已撤销；历史事件不再证明当前 Hook 生效",
+                "valid_events": 0,
+                "invalid_events": 0,
+                "hook_loaded": False,
+                "loaded_verified": False,
+                "observing": False,
+                "observing_verified": False,
+                "hook_verified": False,
+                "blocking": "unsupported",
+                "instance_id": make_instance_id(target["pid"], target["create_time"]),
+            }
+            record_transition(target, "activation_verification", {"install": install_result, "verification": result})
+            return result
         events_path = resolve_events_file(ws, manifest["runid"])
         verifier = EventVerifier(manifest["nonce"], target["pid"], target["create_time"],
                                  ttl_s=60.0, active=manifest.get("active") is True)
         rows = verifier.read_raw(events_path)
         valid, invalid = verifier.bound_events(rows)
         health = verifier.current_health(rows)
-        has_loaded = any(e.get("event_type") == SUPPORTED_CONTRACT["activation_event"] for e in valid)
+        has_loaded = any(e.get("event_type") == contract["activation_event"] for e in valid)
+        has_observing = any(e.get("event_type") in contract["observing_events"] for e in valid)
         if has_loaded:
-            status = "events_verified"
-            reason = "已收到绑定实例 hook.loaded；阻断仍未支持"
-        elif not rows:
+            status = "events_verified" if has_observing else "loaded_verified"
+            reason = ("已收到绑定实例 hook.loaded 和真实工具事件；阻断仍未支持"
+                      if has_observing else "已收到绑定实例 hook.loaded，但尚无真实工具事件")
+        elif not valid:
             status = "pending_restart"
-            reason = "安装完成但尚无激活事件，需要引擎重载/下次启动"
+            reason = "安装完成但尚无绑定实例事件，需要引擎重载/下次启动"
         else:
             status = "verification_failed"
             reason = "收到事件但没有绑定的 hook.loaded 激活握手"
@@ -426,7 +515,10 @@ def verify_activation(install_result: dict[str, Any], target: dict[str, Any]) ->
             "valid_events": len(valid),
             "invalid_events": len(invalid),
             "hook_loaded": has_loaded,
-            "hook_verified": has_loaded,
+            "loaded_verified": has_loaded,
+            "observing": has_observing,
+            "observing_verified": has_loaded and has_observing,
+            "hook_verified": has_loaded and has_observing,
             "blocking": "unsupported",
             "instance_id": make_instance_id(target["pid"], target["create_time"]),
         }
@@ -440,7 +532,6 @@ def verify_activation(install_result: dict[str, Any], target: dict[str, Any]) ->
 def record_investigation(instance: dict[str, Any], struct: dict[str, Any], recipe: dict[str, Any],
                          evidence: list[dict[str, Any]], entry: dict[str, Any],
                          match_status: str, source: str = "goose", run_dir: str | None = None) -> dict[str, Any]:
-    recipe = _recipe_with_provenance(recipe, source)
     plan = plan_from_recipe(struct, recipe, match_status, entry=entry, recipe_source=source)
     payload = {
         "match_status": match_status,

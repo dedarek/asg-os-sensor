@@ -322,7 +322,7 @@ def _family_identity_matches(observed, prior) -> bool:
     return False
 
 
-def remember_verified(struct, recipe, evidence, mount_ms=0):
+def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose'):
     """Supervisor-only entry: evidence validated before a revision may be reusable.
 
     演进（evolves_prior_harness）必须通过入口/包身份证据门禁：先比较可执行文件 digest
@@ -335,10 +335,7 @@ def remember_verified(struct, recipe, evidence, mount_ms=0):
         raise ValueError('Invalid investigation recipe')
     f = features_of(struct)
     stored_recipe = deepcopy(recipe)
-    provenance = stored_recipe.get('provenance')
-    recipe_source = provenance.get('source') if isinstance(provenance, dict) else None
-    if not recipe_source:
-        recipe_source = 'goose'
+    recipe_source = source if source in ('goose', 'manual') else 'manual'
 
     def mutate(db):
         target = stored_recipe.get('match_features', {}).get('evolves_prior_harness')
