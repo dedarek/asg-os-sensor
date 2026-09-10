@@ -1,0 +1,62 @@
+runtime/matcher.py
+  s_655532ed3c4512::t_d60ba3983c6f15 337-338,344,366,369
+  s_655532ed3c4512::t_1b6cf51d748fbd 339-341,368,370-371
+PLAN.md
+  s_655532ed3c4512::t_034291ab7f2b09 7-12
+WORKLOG.md
+  s_655532ed3c4512::t_034291ab7f2b09 38-42,44-62
+  s_655532ed3c4512::t_c06e4597d003d2 43
+test_dashboard_http.py
+  s_655532ed3c4512::t_6e3114c0d4c58f 158-175,191,199
+  s_655532ed3c4512::t_5cc5c758930245 176-190,192-198
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_39858ac906d2b3 111-114,116
+  s_655532ed3c4512::t_c06e4597d003d2 115
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_4e72e76cede81a 28-34
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_c06e4597d003d2 385
+  s_655532ed3c4512::t_39858ac906d2b3 380-384,386-391
+runtime/onboarding.py
+  s_655532ed3c4512::t_52bc560e015eeb 1-14,16-146,152-162,172-247,249-263,265-337,367-395,397-442,444-483
+  s_655532ed3c4512::t_1b6cf51d748fbd 147,149-150,248
+  s_655532ed3c4512::t_b40c7210de2200 15,338-366,396
+  s_655532ed3c4512::t_a66ebdf4b6f730 163-171,264,443
+  s_655532ed3c4512::t_d60ba3983c6f15 148,151
+REVIEW.md
+  s_655532ed3c4512::t_c06e4597d003d2 49
+  s_655532ed3c4512::t_034291ab7f2b09 46-48,50-69
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_c06e4597d003d2 89
+  s_655532ed3c4512::t_39858ac906d2b3 86-88,90-103
+monitor_dashboard.py
+  s_655532ed3c4512::t_5c42a3d04bdee8 33,72,120,135-136
+  s_655532ed3c4512::t_6bf488e23c8cb9 1605-1622,1634-1677
+  s_655532ed3c4512::t_dd1ef874b853ee 454-466,468-474,476-479
+  s_655532ed3c4512::t_f283ca01659790 138-142
+  s_655532ed3c4512::t_837d8c5151f42d 615-633,700
+  s_655532ed3c4512::t_2214b3ba9b4b7f 824-859
+  s_655532ed3c4512::t_6a763cdb16141d 1395-1411,1414
+test_onboarding.py
+  s_655532ed3c4512::t_4d0c059e46406e 1-81,83,95-164,171-177,180-195
+  s_655532ed3c4512::t_b40c7210de2200 165-170
+  s_655532ed3c4512::t_1b6cf51d748fbd 82
+  s_655532ed3c4512::t_d03ea56a41e849 178-179
+  s_655532ed3c4512::t_d60ba3983c6f15 84-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "7dec3037f5b073b4b0ac6398807977dd6c649b10",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
