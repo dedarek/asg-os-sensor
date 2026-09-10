@@ -26,6 +26,9 @@
 - 8081 的根页面恢复为原 `monitor_dashboard.py` 多 Agent 看板；`/api/state` 保留
   多 Agent 列表和扫描状态。看板通过 `ASG_OBSERVE_URL` 读取观测契约；当前证据绑定
   5297，而扫描卡片主 PID 4970，因此 4970 及其他 Agent 不显示已观测成功。
+- 当前隔离演示：看板 `http://127.0.0.1:8081/`（PID 24825），观测接收器
+  `http://127.0.0.1:52708`（PID 24804）；运行记录与停止方式见 WORKLOG，摘要在
+  `artifacts/stage1/dashboard-review-1kJT3b/verification.json`。
 
 ## 待办（受控卸载验收）
 - 未执行卸载；步骤已写入 WORKLOG。等待顾问协调用户再次只读调用后执行。
