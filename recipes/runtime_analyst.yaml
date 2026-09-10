@@ -16,6 +16,17 @@ prompt: |
   while the launch surface is the primary raw evidence: original and resolved executable/entry paths, process
   tree, related metadata candidates, sources, conflicts and uncertainty. Neither is an identity decision.
   Observation is evidence of received events only; it is not proof of installation, Hook activation or blocking.
+  The scanned target is a candidate, not a confirmed Agent. Investigate its functional role separately from
+  its product/package name. In identity.value include roles (a list drawn from agent, model_gateway,
+  tool_service, host, other, unknown) and role_reasoning with cited evidence. Multiple roles are possible.
+  Trace who receives a task, decides subsequent actions, executes tools, or merely forwards requests.
+  SDK dependencies, provider adapters, MCP configuration, model traffic, process names and discovery scores
+  alone do not establish an agent role. Request forwarding is not autonomous task orchestration; declared
+  implementation capability is not proof that the bound process activates that capability.
+  Investigate competing role hypotheses. If task orchestration is not established, retain unknown or another
+  evidenced role rather than defaulting to agent. A gateway or tool service remains a useful discovered asset,
+  but must not acquire an Agent Hook proposal simply because it communicates with a model.
+  Reconsider prior role conclusions when new evidence contradicts them; preserve provenance and uncertainty.
   You may call get_prior_experience once more when comparing a similar runtime or a prior failure;
   distinguish an empty history from an unavailable/corrupt history and do not treat a failed prior as success.
   Use inspect_loader_surface only when the launch evidence shows a bundled runtime. Use find_related_files to
