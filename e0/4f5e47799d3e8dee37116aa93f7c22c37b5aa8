@@ -1,0 +1,21 @@
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_7b45d06a34cacc 13,57,392-408,419-423
+test_analyst_evidence.py
+  s_655532ed3c4512::t_7b45d06a34cacc 272-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "e04f5e47799d3e8dee37116aa93f7c22c37b5aa8",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
