@@ -109,9 +109,7 @@ def analyst_key(route: dict) -> str:
 def mask_key(key: str) -> str:
     if not key:
         return 'missing'
-    if len(key) <= 8:
-        return 'present(len=hidden)'
-    return 'present(len=' + str(len(key)) + ',tail=...' + key[-4:] + ')'
+    return 'present(len=hidden)'
 def goose_env(route: dict, key: str, pid: int = 0) -> dict:
     base = str(route.get('base_url', '')).rstrip('/')
     env = {}

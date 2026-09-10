@@ -10,6 +10,7 @@ from runtime import matcher
 from runtime.compatibility import observe
 from runtime.collection import collect
 from runtime.recipe_validation import validate
+from runtime.llm_config import mask_key
 
 
 class GooseStageTests(unittest.TestCase):
@@ -30,6 +31,11 @@ class GooseStageTests(unittest.TestCase):
 
     def tearDown(self):
         self.env.stop(); self.tmp.cleanup()
+
+    def test_credential_mask_never_exposes_suffix(self):
+        masked = mask_key('secret-value-with-sensitive-suffix')
+        self.assertEqual(masked, 'present(len=hidden)')
+        self.assertNotIn('suffix', masked)
 
     def _write_evidence(self, tool='get_target_context', result=None, target=None):
         ev = {'tool': tool, 'error': None,
