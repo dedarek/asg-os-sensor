@@ -1,0 +1,19 @@
+recipes/runtime_analyst.yaml
+  s_1512a994888af5::t_eade0bd8548bcd 25-28,35-38,55-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "17ef78764a590c3db9decdbc7f4814fd0a5021e0",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
