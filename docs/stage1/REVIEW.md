@@ -117,3 +117,13 @@
 ## 真实 Goose 复核追加：run 6UDd4Dsj
 
 此前凭据阻塞已按主仓库 `.env` 内存加载方式解除。真实 Goose 两轮成功，中间真实 MCP 读取隔离 prior，第二轮上下文证据确认收到 prior；目标配方接入方式为 `unsupported`，无 Hook 安装。全量 84 项通过。完整结果见根目录 `REVIEW.md` 和 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/real_goose_result.json`。本轮仍不是 Stage1 闭环完成。
+
+## 2026-09-10 review milestone：兼容历史与真实 OpenCode 观测证据
+
+本轮补强兼容条件下跨实例 prior、脚本启动的隔离读取和只读回环观测证据。新 PID 只有完整 executable/entry/build、平台、运行时和 launch 条件相同才读取历史；入口或构建变化不会复用。MCP 错误显式返回，显式隔离配置不回退默认库；原生二进制保持 `entry=native`，不要求脚本 entry token。Goose dossier 现在包含绑定 PID+create_time 的观测健康和事件类型，并明确观测不等于安装、生效或阻断。
+
+真实 Goose 总结：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/real_goose_result.json`；现有 OpenCode helper `5297:1789006943.640438` 被只读调查，Goose 读取真实观测证据并输出 OpenCode workspace-plugin 候选，自动安装关闭。候选：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/pid_5297_1789017233/recipes/candidate.json`。接收器 `http://127.0.0.1:52708` 当前 `3/0` 有效/无效事件且 `stale/healthy=false`；不宣称当前 Hook 生效。
+
+原有回归 84 项保持通过；新增兼容跨实例/版本拒绝、MCP 子进程兼容 prior 和显式隔离 recipe 测试后全量为 86 项通过。Node 事件链仍为 `goose-simulated` 机制集成。8081 新验收工作区：`http://127.0.0.1:8081/`，PID `48028`，运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA`，日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/server.log`，摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/verification.json`。8080、生产指纹库、现用 Agent 和 active manifest 未动；macOS 锁屏导致自动化截图未取得，HTTP/API 已核对。
+
+本轮是兼容历史和真实观测证据补强，不是 Stage1 闭环完成，不具备进入 Hook 安装与防控阶段的条件。

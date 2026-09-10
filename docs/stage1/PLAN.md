@@ -122,3 +122,9 @@
 ## 2026-09-10 真实 Goose 复核追加
 
 已按顾问要求从 `/Users/mac/个人项目/asg-os-sensor/.env` 内存加载配置，在隔离目标上完成真实 Goose 两轮调查和中间 prior MCP 回读。结果目录为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/`；自动安装、全局配置、8080 和现用 Agent 均保持不变。详细结果见根目录 `WORKLOG.md`。
+
+## 2026-09-10 review milestone：兼容历史与真实 OpenCode 观测证据
+
+本次基线为 `8dc06d9`，范围仅包含兼容条件下的跨实例 prior 查询、回环观测证据工具、脚本启动的隔离路径边界及对应回归；使用现有真实 OpenCode 实例进行只读 Goose 调查。自动安装保持关闭，不重启或重新安装现用 Agent，不操作 8080。交付后停在 review 点，完整 exact/similar/miss 调度和 revision 演进留待下一步。
+
+验收标准：兼容 executable/entry/build/launch 的新 PID 可读历史并保留 revision/source；入口或构建变化不命中；MCP 子进程不回退默认 recipe/fingerprint 库；Goose 可看到绑定 PID+create_time 的观测健康和事件类型，但不会把 stale 或事件历史当作当前 Hook 生效；原生二进制仍不要求脚本 entry token。

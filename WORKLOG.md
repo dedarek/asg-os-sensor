@@ -145,3 +145,46 @@
 - 8081 看板仍为 `http://127.0.0.1:8081/`、PID `38258`；观测接收器仍为 `http://127.0.0.1:52708`、PID `24804`。8080 无监听，现用 Agent PID `5297` 未重启或触碰。
 
 这两轮是受控真实调查和 prior 传递验收，不是 Stage1 闭环完成；强制第二轮用于验证 prior 链路，不替代后续 exact 命中去重、版本演进和真实 Hook 生效验收。
+
+## 2026-09-10 review milestone：兼容历史、观测证据与真实 OpenCode 调查
+
+### 字段 → 来源 → 缺失含义
+
+| 字段 | 来源 | 缺失或异常含义 |
+| --- | --- | --- |
+| 运行时兼容 prior | `runtime.analyzer` 的 `compatibility`，包含 executable/entry/build、平台、运行时和 launch 条件 | 没有兼容快照时不跨实例复用；旧记录只保留同实例 legacy 可见性 |
+| prior 匹配方式 | `runtime.onboarding.load_prior_experience` | `compatibility` 表示可跨 PID 复用的历史参考；`instance_id_legacy` 只兼容旧格式；`none` 表示没有历史 |
+| 观测健康 | `runtime.analyst_tools.inspect_observation` 读取配置的 `127.0.0.1` 接收器 | `not_configured`/`unbound`/`mismatch` 或读取错误不表示 Hook 生效；`stale` 只表示历史事件过期 |
+| 观测事件 | 接收器 `/events` 的绑定 PID+create_time 投影 | `valid=0` 是没有观测事件，不能推断没有子进程、没有连接或安全 |
+| Goose 候选配方 | Goose `propose_recipe` 输出，经 `recipe_validation` 和 Supervisor 质量门禁保存 | 候选配方、结构校验和指纹命中均不表示安装、当前加载或阻断生效 |
+| prior recipe/fingerprint 库 | 子进程继承的 `ASG_RECIPE_DIR`、`ASG_FINGERPRINT_DB`；脚本启动显式加入仓库根 | 显式隔离配置下只读隔离路径；导入、读取或 JSON 损坏直接报错，不回退默认库 |
+
+### 本次实施
+
+- `runtime/onboarding.py` 在调查生命周期记录中保存脱敏兼容快照；prior 查询优先按完整兼容条件跨实例匹配，同时保留 revision/source 摘要，不返回私有路径、配方原文或 nonce。入口、构建或 launch 改变时不会命中该历史。
+- `runtime/analyst_tools.py` 增加只读 `inspect_observation` 工具，拒绝非回环地址、重定向和超大响应，并把接收器健康与事件类型放入 `get_target_context`。脚本方式启动显式加入项目根；显式指纹库与 recipe 目录发生错误时向 MCP 返回错误，禁止静默读默认库。
+- `recipes/runtime_analyst.yaml` 明确要求 Goose 把观测作为证据而不是安装或阻断证明。没有向候选配方注入 Hook 字段；本次 OpenCode 配方中的 workspace-plugin 选择来自 Goose 读取的真实 bundle/观测证据，并由程序校验后保存。
+
+### 测试分类与结果
+
+- 原有回归：前轮 84 项 matcher、发现、状态/API、插件事务和 onboarding 测试保持通过；现有 MCP 子进程用例改为真实 native `sleep` 目标，验证跨进程按兼容条件读 prior。
+- 新增/扩展回归：`test_onboarding.py` 增加新 PID 兼容历史命中与构建变化拒绝；`test_matcher_stage1.py` 增加显式隔离指纹库不读取默认 `committed.json`。针对性 3 项通过；最终全量 `86` 项通过。
+- 模拟集成：既有 Node 子进程加载仓库真实观测插件并通过事件校验器，来源仍为 `goose-simulated`，不计为真实 Goose 或真实 OpenCode 闭环。
+- 真实运行：`real-goose-opencode-live-8eCFRnwK` 使用现有真实 OpenCode helper PID `5297` 做一次只读调查，Goose 实际调用 `get_target_context` 后保存候选；目标配置、凭据和事件原文没有进入报告，密钥仅在授权进程内存中使用。
+
+### 真实调查与隔离证据
+
+- 总结：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/real_goose_result.json`
+- Goose 运行目录：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/pid_5297_1789017233/`
+- 候选配方：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/pid_5297_1789017233/recipes/candidate.json`
+- 证据目录：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/pid_5297_1789017233/evidence/`
+- 隔离指纹库和经验库：上述 run 根目录下的 `fingerprints.json`、`experience.json`。
+- Goose 结果为 `succeeded`，身份 `OpenCode`、置信度 `0.65`，候选接入方式为 `opencode-workspace-plugin/workspace-plugin`，`restart_required=unknown`；计划保存为待授权，自动安装为关闭。接收器证据绑定 `5297:1789006943.640438`，事件 `3` 条有效、`0` 条无效；当前健康为 `stale/healthy=false`，不宣称当前生效。
+
+### 现有隔离部署核对与边界
+
+- 观测接收器：`http://127.0.0.1:52708`；工作区 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；插件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；事件 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`。
+- 这些部署和 3 条真实事件来自此前已打开的隔离 OpenCode 工作区；本次没有重装、卸载或重启它。Node callback 用例只证明机制集成；真实 OpenCode 的既有事件证明一次加载和工具事件接收，不能替代下一次启动后的完整安装/生效验收。
+- 本轮实现已作为当前分支独立提交交付；8081 看板使用新的隔离运行目录运行，8080、全局配置、生产指纹库和现用 Agent 保持不动。
+
+本轮是兼容历史和真实观测证据补强，不是 Stage1 闭环完成；完整 exact/similar/miss、版本演进、跨 Agent 通用后端和 Hook 安装/生效验证仍停在下一 review 点。

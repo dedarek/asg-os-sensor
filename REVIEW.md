@@ -133,3 +133,27 @@ echo $!
 页面、插件、接收器和保护状态保持不变：8081 页面 PID `38258`；接收器 PID `24804`；manifest、plugin、events 的绝对路径见前文；8080 无监听；生产库哈希仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent PID `5297` 未重启或触碰。
 
 **本轮补充证明真实 Goose 调查和 prior 传递链路，不是 Stage1 闭环完成。**
+
+## 2026-09-10 review milestone：兼容历史与真实 OpenCode 观测证据
+
+本轮是状态真实性与调查证据补强，不是 Stage1 闭环完成。基线为 `8dc06d9`，已作为当前分支独立提交交付。
+
+实现重点：`runtime/onboarding.py` 按完整兼容快照跨实例读取 prior，保留 revision/source，入口或构建变化拒绝历史复用；`runtime/analyst_tools.py` 修复脚本启动路径，显式隔离库错误不回退默认库，并把配置回环接收器的绑定健康/事件类型作为只读证据提供给 Goose；`recipes/runtime_analyst.yaml` 明确观测、安装和阻断的边界。原生二进制继续允许 `entry=native`，不要求脚本 entry token。
+
+状态口径保持独立：调查来自调度器/真实 Goose 结果；资产来自带来源的采集器；Hook 来自安装 manifest 和绑定事件验证。指纹命中或候选配方保存不升级 Hook 状态，接收器 `stale` 不升级为当前生效。
+
+### 真实 Goose 结果
+
+真实运行总结：`/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/real_goose_result.json`。目标为现有 OpenCode helper `5297:1789006943.640438`，只读调查使用授权配置的内存副本，Goose 实际读取 `get_target_context` 中的真实回环观测证据，识别 `OpenCode`，输出并保存 workspace-plugin 候选计划；候选配方路径为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/pid_5297_1789017233/recipes/candidate.json`。自动安装关闭，未注入 Hook 字段，未重启或重新安装现用 Agent。
+
+候选计划的接入方式为 `opencode-workspace-plugin/workspace-plugin`，`restart_required=unknown`，但接收器当前 `stale/healthy=false`；这代表需要未来新鲜加载事件才能验证激活，不代表已经安装或生效。真实隔离接收器的既有部署和事件路径为：workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`，manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`，plugin `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`，events `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`，接收器 `http://127.0.0.1:52708`；当前 `3` 条有效、`0` 条无效。
+
+### 测试与审阅边界
+
+- 原有回归 84 项保持通过；新增兼容跨实例/版本拒绝、MCP 子进程兼容 prior 和显式隔离 recipe 测试后，全量为 86 项通过。
+- 模拟集成仍明确标为 `goose-simulated`：Node 子进程加载仓库真实插件并验证事件链，只证明机制集成。
+- 真实 OpenCode 的既有事件证明一次插件加载和工具事件接收；本轮不对正在使用的桌面实例执行 plan→auth→install 或重启，因此不把它写成新的真实安装闭环。
+- 8081 看板使用全新的隔离运行目录 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA`，地址为 `http://127.0.0.1:8081/`，PID `48028`，日志 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/server.log`，摘要 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/dashboard-review-vIbGLtFEA/verification.json`。页面/API 已验证真实扫描结果、调查 `disabled`、观测 `connected` 但健康 `stale`；指纹、事件、审计和 recipe 目录均为该 run 独立路径。
+- 保护核对：8080 无监听；生产指纹库 SHA256 仍为 `627c0d83b50b592a2b08a34901549402e43f36f553424e803ec4626daf07e2f2`；现用 Agent PID `5297`、接收器 PID `24804` 和 active manifest 未动。macOS 当前锁屏，无法从自动化界面取得截图；页面已通过本机 HTTP 200 和 `/api/state` 核对，解锁后可直接打开上述地址。
+
+本轮不具备进入 Hook 安装与防控阶段的条件：通用 Agent backend、完整资产采集、exact/similar/miss 闭环去重、版本演进、真实新实例复用和 Hook 生效/撤销的全量验收仍未完成。停在 review，不合并、不推送、不部署 8080。

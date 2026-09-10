@@ -205,54 +205,102 @@ const fs = require('node:fs');
                 proc.stderr.close()
 
     def test_experience_mcp_subprocess_reads_isolated_history(self):
-        onboarding.record_transition(self.target, "investigation_failed", {
-            "match_status": "similar",
-            "reason": "isolated-experience-marker",
-        })
-        onboarding.record_transition(self.target, "activation_verification", {
-            "verification": {
-                "status": "loaded_verified",
-                "hook_loaded": True,
-                "observing": False,
-                "hook_verified": False,
-            },
-        })
-        audit = self.root / "mcp-audit"
-        env = dict(os.environ,
-                   ASG_EXPERIENCE_DB=str(self.root / "experience.json"),
-                   ASG_FINGERPRINT_DB=str(self.root / "different-fingerprint.json"),
-                   ASG_AUDIT_DIR=str(audit),
-                   ASG_RECIPE_DIR=str(self.root / "mcp-recipes"),
-                   ASG_TARGET_PID=str(self.target["pid"]),
-                   ASG_TARGET_CREATE_TIME=str(self.target["create_time"]))
-        env.pop("PYTHONPATH", None)
-        messages = [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
-            {"jsonrpc": "2.0", "method": "notifications/initialized"},
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-             "params": {"name": "get_prior_experience", "arguments": {}}},
-        ]
-        proc = subprocess.Popen(
-            [sys.executable, "-B", str(ROOT / "runtime" / "analyst_tools.py")],
-            cwd=str(self.root), env=env, stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
+        from runtime import analyzer as runtime_analyzer
+        target_proc = subprocess.Popen([shutil.which("sleep") or "/bin/sleep", "20"],
+                                       cwd=str(self.root), stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
         try:
-            stdout, stderr = proc.communicate(
-                "\n".join(json.dumps(message) for message in messages) + "\n", timeout=5)
+            target = {"pid": target_proc.pid, "create_time": psutil.Process(target_proc.pid).create_time()}
+            compatibility = runtime_analyzer.analyze(target["pid"])["compatibility"]
+            self.assertIsInstance(compatibility, dict)
+            onboarding.record_transition(target, "investigation_failed", {
+                "match_status": "similar",
+                "reason": "isolated-experience-marker",
+                "compatibility": compatibility,
+            })
+            onboarding.record_transition(target, "activation_verification", {
+                "compatibility": compatibility,
+                "verification": {
+                    "status": "loaded_verified",
+                    "hook_loaded": True,
+                    "observing": False,
+                    "hook_verified": False,
+                },
+            })
+            audit = self.root / "mcp-audit"
+            env = dict(os.environ,
+                       ASG_EXPERIENCE_DB=str(self.root / "experience.json"),
+                       ASG_FINGERPRINT_DB=str(self.root / "different-fingerprint.json"),
+                       ASG_AUDIT_DIR=str(audit),
+                       ASG_RECIPE_DIR=str(self.root / "mcp-recipes"),
+                       ASG_TARGET_PID=str(target["pid"]),
+                       ASG_TARGET_CREATE_TIME=str(target["create_time"]))
+            env.pop("PYTHONPATH", None)
+            messages = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                 "params": {"name": "get_prior_experience", "arguments": {}}},
+            ]
+            proc = subprocess.Popen(
+                [sys.executable, "-B", str(ROOT / "runtime" / "analyst_tools.py")],
+                cwd=str(self.root), env=env, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            try:
+                stdout, stderr = proc.communicate(
+                    "\n".join(json.dumps(message) for message in messages) + "\n", timeout=5)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=3)
+            self.assertEqual(proc.returncode, 0, stderr)
+            replies = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+            reply = next(item for item in replies if item.get("id") == 2)
+            text = reply["result"]["content"][0]["text"]
+            self.assertIn("isolated-experience-marker", text)
+            self.assertIn("loaded_verified", text)
+            self.assertIn('"matched_by": "compatibility"', text)
+            self.assertIn(str(target["pid"]), text)
+            self.assertNotIn(str(self.root), text, "prior projection must not expose artifact paths")
+            self.assertTrue((audit / "analyst_tool_calls.jsonl").exists())
         finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait(timeout=3)
-        self.assertEqual(proc.returncode, 0, stderr)
-        replies = [json.loads(line) for line in stdout.splitlines() if line.strip()]
-        reply = next(item for item in replies if item.get("id") == 2)
-        text = reply["result"]["content"][0]["text"]
-        self.assertIn("isolated-experience-marker", text)
-        self.assertIn("loaded_verified", text)
-        self.assertIn(str(self.target["pid"]), text)
-        self.assertNotIn(str(self.root), text, "prior projection must not expose artifact paths")
-        self.assertTrue((audit / "analyst_tool_calls.jsonl").exists())
+            if target_proc.poll() is None:
+                target_proc.terminate()
+                target_proc.wait(timeout=3)
+
+    def test_prior_experience_matches_compatible_new_instance_only(self):
+        """兼容运行时可读家族历史；入口/构建变化不得借同名或同 PID 复用。"""
+        first = {"pid": 4101, "create_time": 100.0}
+        second = {"pid": 4102, "create_time": 200.0}
+        compatibility = {
+            "executable": "digest-a", "entry": "native", "platform": "Darwin",
+            "architecture": "arm64", "runtime": "native", "launch": "launch-a",
+            "entry_path": "/private/isolated/runtime-a",
+        }
+        onboarding.record_transition(first, "investigation_recipe_saved", {
+            "match_status": "miss", "fingerprint_id": "family-1", "fingerprint_revision": 3,
+            "recipe_source": "goose", "compatibility": compatibility,
+            "plan": {"status": "investigation_required", "action": "goose_investigate"},
+        })
+        prior = onboarding.load_prior_experience(
+            instance_id=onboarding.make_instance_id(second["pid"], second["create_time"]),
+            compatibility=compatibility,
+        )
+        self.assertEqual(prior["matched_by"], "compatibility")
+        self.assertEqual(prior["matched_instances"], ["4101:100.0"])
+        self.assertEqual(prior["recent"][0]["fingerprint_revision"], 3)
+        self.assertEqual(prior["recent"][0]["recipe_source"], "goose")
+        self.assertNotIn("entry_path", json.dumps(prior))
+
+        incompatible = dict(compatibility, executable="digest-b")
+        rejected = onboarding.load_prior_experience(
+            instance_id=onboarding.make_instance_id(second["pid"], second["create_time"]),
+            compatibility=incompatible,
+        )
+        self.assertEqual(rejected["matched_by"], "none")
+        self.assertEqual(rejected["matched_instances"], [])
+        self.assertEqual(rejected["recent"], [])
 
     @unittest.skipUnless(NODE, "node unavailable; set ASG_TEST_NODE")
     def test_existing_install_rebinds_to_new_pid_and_create_time(self):

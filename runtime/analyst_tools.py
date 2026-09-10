@@ -12,6 +12,9 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -36,6 +39,16 @@ try:
 except (TypeError, ValueError):
     TARGET_CREATE_TIME = None
 MAX_OUTPUT = 6000
+OBSERVE_URL = os.environ.get("ASG_OBSERVE_URL", "").strip().rstrip("/")
+MAX_OBSERVE_RESPONSE_BYTES = 64 * 1024
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OBSERVE_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 
 SECRET_RE = re.compile(r"(?i)(authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|password|secret|private[_-]?key|bearer)\s*[:=]\s*[^\s,;]+")
 TOKEN_RE = re.compile(r"(?i)\b(?:sk|rk|ghp|xoxb|xoxp)-[A-Za-z0-9._-]+\b")
@@ -219,6 +232,56 @@ def stream_tail() -> dict[str, Any]:
     return {"available": True, "path_class": "supervisor-exposed-stream", "line_count": len(lines), "json_line_count": len(parsed), "samples": parsed[-10:]}
 
 
+def inspect_observation() -> dict[str, Any]:
+    """Read only the configured loopback receiver; never discover or follow another URL."""
+    if not OBSERVE_URL:
+        return {"available": False, "status": "not_configured", "reason": "ASG_OBSERVE_URL 未配置"}
+    parsed = urllib.parse.urlparse(OBSERVE_URL)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
+        return {"available": False, "status": "rejected", "reason": "观测地址必须是本机 HTTP 回环地址"}
+
+    def fetch(path: str) -> tuple[int | None, dict[str, Any] | None, str | None]:
+        try:
+            with OBSERVE_OPENER.open(urllib.request.Request(OBSERVE_URL + path), timeout=2) as response:
+                raw = response.read(MAX_OBSERVE_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_OBSERVE_RESPONSE_BYTES:
+                    return response.status, None, "response_too_large"
+                return response.status, json.loads(raw.decode("utf-8")), None
+        except urllib.error.HTTPError as exc:
+            try:
+                body = json.loads(exc.read().decode("utf-8"))
+            except (OSError, ValueError):
+                body = None
+            return exc.code, body, "http_error"
+        except (OSError, ValueError) as exc:
+            return None, None, type(exc).__name__
+
+    health_code, health, health_error = fetch("/health")
+    events_code, events, events_error = fetch("/events")
+    health = health if isinstance(health, dict) else {}
+    events = events if isinstance(events, dict) else {}
+    expected_instance = None
+    if TARGET_PID > 0 and TARGET_CREATE_TIME is not None:
+        expected_instance = f"{TARGET_PID}:{TARGET_CREATE_TIME}"
+    observed_instance = health.get("instance_id")
+    bound = bool(expected_instance and observed_instance == expected_instance)
+    return {
+        "available": bool(health or events),
+        "status": "bound" if bound else "mismatch" if observed_instance else "unbound",
+        "source": OBSERVE_URL,
+        "expected_instance": expected_instance,
+        "observed_instance": observed_instance,
+        "health_http_status": health_code,
+        "health_error": health_error,
+        "health": {key: health.get(key) for key in ("status", "healthy", "reason", "loaded_observed", "capabilities")},
+        "events_http_status": events_code,
+        "events_error": events_error,
+        "events": {"valid": events.get("valid"), "invalid": events.get("invalid"),
+                   "event_types": sorted({item.get("event_type") for item in events.get("events", [])
+                                           if isinstance(item, dict) and item.get("event_type")})},
+    }
+
+
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "inspect_stream":
         return stream_tail()
@@ -226,10 +289,16 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return load_prior()
     if name == "get_prior_experience":
         from runtime import onboarding
+        from runtime import analyzer
         instance_id = None
         if TARGET_PID > 0 and TARGET_CREATE_TIME is not None:
             instance_id = onboarding.make_instance_id(TARGET_PID, TARGET_CREATE_TIME)
-        return onboarding.load_prior_experience(instance_id=instance_id)
+        compatibility = None
+        if TARGET_PID > 0:
+            compatibility = analyzer.analyze(TARGET_PID).get("compatibility")
+        return onboarding.load_prior_experience(instance_id=instance_id, compatibility=compatibility)
+    if name == "inspect_observation":
+        return inspect_observation()
     if name == "propose_recipe":
         target_process()
         recipe = redact(args.get("recipe", {}))
@@ -265,7 +334,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         from runtime.collection import collect
         return {"target": {'pid': p.pid, 'create_time': p.create_time()},
                 "local_evidence": collect(p), "prior_memory": load_prior(),
-                "prior_experience": call_tool("get_prior_experience", {})}
+                "prior_experience": call_tool("get_prior_experience", {}),
+                "observation": call_tool("inspect_observation", {})}
     if name == "observe_runtime_surface":
         from runtime.collection import collect
         return {'local_evidence': collect(p), 'runtime': 'unknown',
@@ -285,7 +355,13 @@ def _prior_db() -> Path:
 
 
 def load_prior() -> dict[str, Any]:
-    candidates = [RECIPE_DIR / "committed.json", _prior_db()]
+    # An explicitly isolated fingerprint DB must not be combined with a default
+    # committed recipe file. A caller may still opt into an isolated committed
+    # recipe by setting ASG_RECIPE_DIR alongside ASG_FINGERPRINT_DB.
+    candidates = []
+    if os.environ.get("ASG_RECIPE_DIR", "").strip() or not os.environ.get("ASG_FINGERPRINT_DB", "").strip():
+        candidates.append(RECIPE_DIR / "committed.json")
+    candidates.append(_prior_db())
     for path in candidates:
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
@@ -306,8 +382,9 @@ TOOLS = [
     {"name": "inspect_execution_trace", "description": "Inspect sensitive files accessed and active child command lines spawned by the agent.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "probe_help", "description": "Run only --help and --version against the observed executable, without a shell or arbitrary arguments.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_stream", "description": "Inspect a supervisor-exposed output stream and return structure samples after redaction.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "inspect_observation", "description": "Read the configured loopback observation receiver health and event types, bound to the target PID+create_time.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_prior_recipe", "description": "Read prior committed generic memory for candidate validation.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "get_prior_experience", "description": "Read bounded prior investigation/install/verification outcomes for this exact PID+create_time; corrupt history is an explicit error.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_prior_experience", "description": "Read bounded prior lifecycle outcomes for this compatible runtime; corrupt history is an explicit error and private paths are omitted.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "propose_recipe", "description": "Write a typed candidate recipe for Supervisor verification; cannot activate hooks or execute commands.", "inputSchema": {"type": "object", "required": ["recipe"], "properties": {"recipe": {"type": "object"}}}},
 ]
 

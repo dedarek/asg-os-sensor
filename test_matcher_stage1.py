@@ -18,6 +18,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 
@@ -370,6 +371,22 @@ class MatcherStage1Tests(unittest.TestCase):
             str(res["result"]["path"]).endswith("runtime/fingerprints.json"),
             res["result"],
         )
+
+    def test_explicit_fingerprint_isolation_skips_default_committed_recipe(self):
+        """显式隔离指纹库时，不叠加读取默认 committed.json。"""
+        import importlib.util
+        mod_path = str(Path(__file__).resolve().parent / "runtime" / "analyst_tools.py")
+        spec = importlib.util.spec_from_file_location("asg_analyst_tools_isolation", mod_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        default_like = Path(self._tmp.name) / "default-like-recipes"
+        default_like.mkdir()
+        (default_like / "committed.json").write_text(
+            json.dumps({"marker": "DEFAULT-RECIPE"}), encoding="utf-8")
+        with patch.object(mod, "RECIPE_DIR", default_like), \
+             patch.dict(os.environ, {"ASG_FINGERPRINT_DB": str(Path(self._tmp.name) / "isolated.json")}, clear=False):
+            os.environ.pop("ASG_RECIPE_DIR", None)
+            self.assertEqual(mod.load_prior(), {"empty": True})
 
 
 if __name__ == "__main__":

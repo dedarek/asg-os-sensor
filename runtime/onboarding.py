@@ -130,7 +130,7 @@ def record_transition(instance: dict[str, Any], event_type: str, payload: dict[s
             "updated_at": event["ts"],
         })
         for key in ("match_status", "fingerprint_id", "fingerprint_revision", "recipe_source",
-                    "recipe", "plan", "install", "verification"):
+                    "recipe", "plan", "install", "verification", "compatibility"):
             if key in payload:
                 summary[key] = _safe_payload(payload[key])
         return event
@@ -170,21 +170,49 @@ def _analyst_event(event: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-def load_prior_experience(instance_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+def _compatibility_equal(left: Any, right: Any) -> bool:
+    """Compatibility prior is exact and opaque; private paths never leave this module."""
+    return isinstance(left, dict) and isinstance(right, dict) and left == right
+
+
+def load_prior_experience(instance_id: str | None = None, compatibility: dict[str, Any] | None = None,
+                          limit: int = 20) -> dict[str, Any]:
     """读取调查生命周期经验的窄投影；损坏经验库向 MCP 调用方显式报错。"""
     data = load_experience()
-    events = [event for event in data.get("events", [])
-              if isinstance(event, dict) and (not instance_id or event.get("instance_id") == instance_id)]
+    all_events = [event for event in data.get("events", []) if isinstance(event, dict)]
+    matched_by = "none"
+    if compatibility is not None:
+        events = [event for event in all_events
+                  if _compatibility_equal((event.get("payload") or {}).get("compatibility"), compatibility)]
+        if events:
+            matched_by = "compatibility"
+        elif instance_id:
+            # Preserve visibility for old same-instance records that predate compatibility snapshots.
+            events = [event for event in all_events if event.get("instance_id") == instance_id]
+            if events:
+                matched_by = "instance_id_legacy"
+    else:
+        events = [event for event in all_events
+                  if not instance_id or event.get("instance_id") == instance_id]
+        if events:
+            matched_by = "instance_id" if instance_id else "all"
     events = events[-max(1, min(int(limit), 50)):]
     candidate = data.get("instances", {}).get(instance_id) if instance_id else None
     summary = candidate if isinstance(candidate, dict) else None
+    matched_instances = []
+    for event in events:
+        value = event.get("instance_id")
+        if value and value not in matched_instances:
+            matched_instances.append(value)
     return {
         "available": True,
         "instance_id": instance_id,
+        "matched_by": matched_by,
+        "matched_instances": matched_instances[:20],
         "instance": {key: summary[key] for key in ("last_event", "updated_at", "match_status",
                     "fingerprint_id", "fingerprint_revision", "recipe_source") if summary and key in summary},
         "recent": [_analyst_event(event) for event in events],
-        "note": "仅生命周期状态摘要；配方、路径、凭据和 nonce 不作为 prior 读取返回",
+        "note": "仅生命周期状态摘要；配方、路径、凭据、兼容性原文和 nonce 不作为 prior 读取返回",
     }
 
 
@@ -540,6 +568,7 @@ def record_investigation(instance: dict[str, Any], struct: dict[str, Any], recip
         "recipe_source": source,
         "recipe": recipe,
         "evidence_refs": [e.get("evidence_id") for e in evidence if e.get("evidence_id")],
+        "compatibility": copy.deepcopy(struct.get("compatibility")),
         "plan": plan,
     }
     if run_dir:

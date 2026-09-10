@@ -405,3 +405,13 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 ## 2026-09-10 真实 Goose 复核追加
 
 真实 Goose 两轮均 `succeeded`，中间真实 MCP 读取到同一 PID+create_time 的 prior，第二轮 Goose 的 `get_target_context` 收到 1 条 prior。目标是随机本地监听的 Python runtime，模型提出身份 `Python` 和 `unsupported` 接入方式；没有安装 Hook。完整回归为 84 项通过。总结果、候选、审计和隔离指纹库均位于 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-live-6UDd4Dsj/`，密钥未复制或输出。根目录 `WORKLOG.md` 记录字段映射和准确绝对路径。
+
+## 2026-09-10 review milestone：兼容历史与真实 OpenCode 观测证据
+
+本轮新增 `runtime.onboarding` 的兼容快照跨实例 prior 查询：完整 executable/entry/build、平台、运行时和 launch 条件相同才提供历史参考，入口或构建变化返回空历史；revision/source 保留在窄投影中，私有路径、配方原文和 nonce 不外发。`runtime.analyst_tools` 的脚本启动显式加入项目根，显式隔离库读取错误直接返回 MCP 错误；新增只读 `inspect_observation`，把绑定 PID+create_time 的回环接收器健康和事件类型提供给 Goose。recipe prompt 明确观测不等于安装或阻断证明。
+
+原有回归基线 84 项保持通过；新增兼容跨实例/版本拒绝和显式 recipe 隔离测试后，全量为 86 项通过。Node 子进程插件测试仍标为 `goose-simulated`。真实 Goose 运行总结为 `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/real-goose-opencode-live-8eCFRnwK/real_goose_result.json`，绑定现有 OpenCode helper `5297:1789006943.640438`，Goose 读取真实观测证据并产生 workspace-plugin 候选计划；自动安装关闭，接收器仍为 `3/0` 有效/无效事件且当前 `stale/healthy=false`。
+
+隔离部署绝对路径：workspace `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe`；manifest `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/manifest.json`；plugin `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/asg-observe.js`；events `/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe/.opencode/plugins/.asg-observe/runs/660ad5f492e7ab91/events.jsonl`；接收器 `http://127.0.0.1:52708`。本轮没有重装、卸载或重启现用 Agent；Node callback 仅为机制集成，不能冒充真实 Agent 闭环。
+
+本轮是兼容历史和真实观测证据补强，不是 Stage1 闭环完成。

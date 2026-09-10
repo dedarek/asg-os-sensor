@@ -20,3 +20,9 @@
 ## 2026-09-10 真实 Goose 复核追加
 
 在已授权配置源 `/Users/mac/个人项目/asg-os-sensor/.env` 做内存加载后，使用 `ASG_INSECURE_SSL=1` 与 `ASG_ALLOW_INSECURE_ANALYST=1` 仅对指定 Lenovo gateway 的隔离调查完成两轮真实 Goose 调查。目标、指纹库、经验、审计和证据均位于新的 `artifacts/stage1/real-goose-live-6UDd4Dsj/`；自动安装保持关闭，现用 Agent、全局配置和 8080 不动。第一轮成功保存候选配方，中间真实 MCP 读取到同一实例 prior，第二轮在相同 PID+create_time 上成功读取 prior 后再次完成调查。此结果证明真实调查和 prior 读取链路，不等于通用 Agent 或 Hook 闭环完成。
+
+## 2026-09-10 review milestone：兼容历史与真实 OpenCode 观测证据
+
+本次基线为 `8dc06d9`，范围仅包含兼容条件下的跨实例 prior 查询、回环观测证据工具、脚本启动的隔离路径边界及对应回归；使用现有真实 OpenCode 实例进行只读 Goose 调查。自动安装保持关闭，不重启或重新安装现用 Agent，不操作 8080。交付后停在 review 点，完整 exact/similar/miss 调度和 revision 演进留待下一步。
+
+验收标准：兼容 executable/entry/build/launch 的新 PID 可读历史并保留 revision/source；入口或构建变化不命中；MCP 子进程不回退默认 recipe/fingerprint 库；Goose 可看到绑定 PID+create_time 的观测健康和事件类型，但不会把 stale 或事件历史当作当前 Hook 生效；原生二进制仍不要求脚本 entry token。

@@ -144,7 +144,8 @@ def _record_investigation_result(instance_id: str, pid: int, create_time: float 
 
 
 def _record_onboarding_outcome(instance_id: str, pid: int, create_time: float | None,
-                               status: str, reason: str, run_dir: Path | None = None) -> None:
+                               status: str, reason: str, run_dir: Path | None = None,
+                               compatibility: dict[str, Any] | None = None) -> None:
     """Persist investigation failures/deferments for the next Goose context.
 
     This is advisory history only; an experience-store error must not hide the
@@ -155,6 +156,8 @@ def _record_onboarding_outcome(instance_id: str, pid: int, create_time: float | 
     payload: dict[str, Any] = {"status": status, "reason": reason}
     if run_dir is not None:
         payload["run_dir"] = str(run_dir)
+    if compatibility is not None:
+        payload["compatibility"] = deepcopy(compatibility)
     try:
         onboarding.record_transition(
             {"pid": pid, "create_time": create_time},
@@ -377,7 +380,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
     if not goose_bin:
         message = f"未找到 Goose CLI（当前解析值: {GOOSE}）。请安装 block-goose-cli 或设置 ASG_GOOSE_BIN。"
         _record_investigation_result(instance_id, pid, create_time, "unavailable", message)
-        _record_onboarding_outcome(instance_id, pid, create_time, "unavailable", message)
+        _record_onboarding_outcome(instance_id, pid, create_time, "unavailable", message, compatibility=struct.get("compatibility"))
         with INVESTIGATION_LOCK:
             INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
             INVESTIGATING_INSTANCES.pop(instance_id, None)
@@ -391,7 +394,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             INVESTIGATING_INSTANCES.pop(instance_id, None)
         if force:
             _record_investigation_result(instance_id, pid, create_time, "busy", "分析器并发槽位已满，请稍后重试")
-            _record_onboarding_outcome(instance_id, pid, create_time, "deferred", "分析器并发槽位已满，请稍后重试")
+            _record_onboarding_outcome(instance_id, pid, create_time, "deferred", "分析器并发槽位已满，请稍后重试", compatibility=struct.get("compatibility"))
         return
 
     try:
@@ -417,13 +420,13 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
             if not key:
                 message = "LLM 凭据缺失: " + str(route.get("key_env", "?"))
                 _record_investigation_result(instance_id, pid, create_time, "failed", message, run_dir)
-                _record_onboarding_outcome(instance_id, pid, create_time, "failed", message, run_dir)
+                _record_onboarding_outcome(instance_id, pid, create_time, "failed", message, run_dir, struct.get("compatibility"))
                 print("[Analyst] route=" + route.get("route", "?") + " model=" + str(route.get("model", "?")) + " base=" + str(route.get("base_url", "?")) + " key=" + mask_analyst_key(key) + " (" + str(route.get("key_env", "?")) + ")", file=sys.stderr)
                 return
             if os.environ.get("ASG_INSECURE_SSL", "").strip() == "1" and os.environ.get("ASG_ALLOW_INSECURE_ANALYST", "").strip() != "1":
                 message = "上游 TLS 证书无效；已阻止深度数据外发。修复证书，或明确设置 ASG_ALLOW_INSECURE_ANALYST=1"
                 _record_investigation_result(instance_id, pid, create_time, "blocked", message, run_dir)
-                _record_onboarding_outcome(instance_id, pid, create_time, "blocked", message, run_dir)
+                _record_onboarding_outcome(instance_id, pid, create_time, "blocked", message, run_dir, struct.get("compatibility"))
                 print(f"[Analyst Blocked PID={pid}] {message}", file=sys.stderr)
                 return
 
@@ -499,7 +502,7 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
                     _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
-                    _record_onboarding_outcome(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
+                    _record_onboarding_outcome(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir, struct.get("compatibility"))
                     print(f"[Analyst] 逆向目标在调查期间已退出或不可达 (identity={identity}, confidence={recipe.get('confidence')})，放弃生成无效指纹。")
             else:
                 stderr_tail = ''
@@ -513,18 +516,18 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                 if stderr_tail:
                     reason += "；stderr 尾部: " + stderr_tail
                 _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
-                _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir)
+                _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
                 print(f"[Analyst] 接管完成但未产生有效 Recipe; returncode={cp.returncode}; stderr_tail={stderr_tail[:200]}", file=sys.stderr)
 
         except subprocess.TimeoutExpired:
             reason = f"Goose 执行超时 ({GOOSE_TIMEOUT_S}s)"
             _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
-            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir)
+            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
             print(f"[Analyst Error PID={pid}] Goose timeout after {GOOSE_TIMEOUT_S}s", file=sys.stderr)
         except Exception as exc:
             reason = f"{type(exc).__name__}: {exc}"
             _record_investigation_result(instance_id, pid, create_time, "failed", reason, run_dir)
-            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir)
+            _record_onboarding_outcome(instance_id, pid, create_time, "failed", reason, run_dir, struct.get("compatibility"))
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:
             with INVESTIGATION_LOCK:
