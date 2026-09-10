@@ -1,0 +1,67 @@
+test_goose_stage1.py
+  s_655532ed3c4512::t_7c22bf0ea21325 14,198-199,203,206,210
+  s_655532ed3c4512::t_1dc275a8da89a9 194
+  s_655532ed3c4512::t_9e9bd38728ffcf 200-202,204-205,207-209,211-225
+test_onboarding.py
+  s_655532ed3c4512::t_c67aa3af9e2c50 129-132,336-339
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_91bb21cb587741 136-143
+llm.yaml
+  s_655532ed3c4512::t_9e9bd38728ffcf 14-16
+  s_655532ed3c4512::t_f5687576bfbc0a 17-19
+runtime/opencode/asg-observe.js
+  s_655532ed3c4512::t_869ef200243f68 74,86-91
+  s_655532ed3c4512::t_1a4ad9f22071bc 8-9,85
+  s_655532ed3c4512::t_3487d178bde343 10,12
+  s_655532ed3c4512::t_29f50396536961 2
+verify_llm.py
+  s_655532ed3c4512::t_f5687576bfbc0a 13,55,66,69,77,83
+  s_655532ed3c4512::t_9e9bd38728ffcf 15-18
+  s_655532ed3c4512::t_29f50396536961 84
+  s_655532ed3c4512::t_7c22bf0ea21325 85
+PLAN.md
+  s_655532ed3c4512::t_96a7c361c5fe57 35-42
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_a5260c1d858967 135-138
+monitor_dashboard.py
+  s_655532ed3c4512::t_f5687576bfbc0a 43,427
+  s_655532ed3c4512::t_29f50396536961 428
+runtime/llm_config.py
+  s_655532ed3c4512::t_f5687576bfbc0a 12-21,23,27-28,31-32,48-50,52,62-64,155
+  s_655532ed3c4512::t_9e9bd38728ffcf 4,22,24-26,29-30,33-35,150-154
+e2e/e2e_unknown.py
+  s_655532ed3c4512::t_f5687576bfbc0a 58,175
+  s_655532ed3c4512::t_7db3f61aab901b 12,177,179-182,184
+  s_655532ed3c4512::t_29f50396536961 176,193
+  s_655532ed3c4512::t_654433b650e2cb 178,183
+test_real_cli.py
+  s_655532ed3c4512::t_db53997cce699e 126-129,164
+WORKLOG.md
+  s_655532ed3c4512::t_7dac10f4178463 236-273
+test_opencode_plugin.py
+  s_655532ed3c4512::t_d8f8698c8b3974 32-34,213
+runtime/llm_proxy.py
+  s_655532ed3c4512::t_f5687576bfbc0a 3,64,95,104
+  s_655532ed3c4512::t_29f50396536961 4-5
+  s_655532ed3c4512::t_9e9bd38728ffcf 16-17,47-49,96-98,100-102,105
+REVIEW.md
+  s_655532ed3c4512::t_d955ed03ca3dfb 191-228
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_a5260c1d858967 426-433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "246078c0fd9d0600c06cbce59f9eb89752a58ecb",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
