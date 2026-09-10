@@ -108,3 +108,9 @@
 - 基于 `cd47ea2`，只修正观测撤销、状态投影和隔离验收路径；不推进 exact/similar/miss、版本演进、Hook 安装或 8080。
 - 验收重点：撤销后保留已知 PID/create_time 但不返回 healthy；看板与 API 使用同一观测语义；回环适配不跟随重定向并限制响应大小；异常事件计数降级且不中断全局扫描。
 - 完成后停在 review 点，保留独立 8081 看板和随机回环观测端口供查看。
+
+## 7. 本轮增量（受控 onboarding 纵向切片）
+
+- 基线 `f8af00e`；只把已有发现实例、exact 复用或 Goose 调查计划、固定 project workspace-plugin 安装事务、真实事件验证和隔离经验持久化串成最小闭环。
+- 指纹条目/revision 的来源元数据为 `recipe_source=goose` 才能进入可复用调查配方；无来源旧配方标为 manual/legacy，不能自动安装。安装需 `ASG_ONBOARDING_AUTHORIZED=1`、`ASG_ONBOARDING_AUTO_INSTALL=1`、`ASG_ONBOARDING_SCOPE=project` 和匹配 workspace。
+- 计划、安装、激活和验证状态始终独立；本轮不启用真实 Goose 外发、不触碰现用 Agent/全局配置、不操作 8080。通过隔离临时 workspace 和现有真实观测接收器验证，交付后停在 review。

@@ -25,6 +25,13 @@ prompt: |
     fallback: string
     confidence: number between 0 and 1
   Include any known version and unknown items. Do not invent working Hook access from a product name.
+  For the one executable mechanism currently registered by the supervisor, only when the observed
+  evidence supports a project-scoped OpenCode workspace plugin, include these exact hook fields:
+    adapter="opencode-workspace-plugin", method="workspace-plugin", scope="project",
+    installer="runtime.opencode.ghost_install", plugin_name="asg-observe.js",
+    activation_event="hook.loaded". This is a startup/reload mechanism and must use
+    restart_required=true or "unknown". If evidence does not support it, use method="unsupported"
+  and explain the limitation; never select an installer or shell command from model output.
   After propose_recipe succeeds, finish with a short report. The supervisor validates evidence and compatibility,
   saves the recipe and may reuse it; this does NOT install or verify a Hook.
 settings:

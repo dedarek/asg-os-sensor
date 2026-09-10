@@ -155,6 +155,48 @@ class DashboardHttpRegressionTests(unittest.TestCase):
             obs_server.server_close()
             obs_worker.join(timeout=3)
 
+    def test_onboarding_api_exposes_plan_and_requires_process_authorization(self):
+        pid = os.getpid()
+        create_time = __import__("psutil").Process(pid).create_time()
+        plan = {
+            "plan_version": 1,
+            "instance_id": "%s:%s" % (pid, create_time),
+            "pid": pid,
+            "create_time": create_time,
+            "status": "plan_pending_authorization",
+            "action": "install_reused_recipe",
+            "match_status": "exact",
+            "workspace": tempfile.gettempdir(),
+        }
+        dashboard.SCAN_STATE["agents"] = [{
+            "pid": pid,
+            "instance_id": "%s:%s" % (pid, create_time),
+            "adapter": {"onboarding": {"plan": plan}},
+        }]
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            plan["workspace"] = str(workspace)
+            with patch.dict(os.environ, {
+                    "ASG_EXPERIENCE_DB": str(Path(tmp) / "experience.json"),
+                    "ASG_ONBOARDING_AUTHORIZED": "0",
+                    "ASG_ONBOARDING_AUTO_INSTALL": "0",
+                    "ASG_ONBOARDING_SCOPE": "",
+            }, clear=False):
+                status, content_type, body = self._get("/api/onboarding?pid=%d" % pid)
+                self.assertEqual(status, 200)
+                self.assertIn("application/json", content_type)
+                self.assertEqual(json.loads(body)["onboarding"]["plan"]["status"],
+                                 "plan_pending_authorization")
+
+                request = Request("http://127.0.0.1:%d/api/onboarding/execute?pid=%d" %
+                                  (self.server.server_port, pid), method="POST")
+                with urlopen(request, timeout=3) as response:
+                    payload = json.loads(response.read())
+                self.assertEqual(payload["install"]["status"], "pending_authorization")
+                self.assertFalse((workspace / ".opencode" / "plugins" /
+                                  "asg-observe.js").exists())
+
     def test_isolated_install_uninstall_revokes_observer_and_dashboard_state(self):
         """真实 ghost CLI + 观测 HTTP 子进程 + 原看板 HTTP，完整验证撤销语义。"""
         pid = os.getpid()

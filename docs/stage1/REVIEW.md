@@ -83,3 +83,21 @@
 - 受控卸载验收仍未执行；下一步需顾问协调用户再次做无敏感目录调用，之后验证调用成功、
   旧 run 无新增事件、接收器即时 revoked 三项同时成立。
 - Hook 安装、生效验证、阻断算法、完整资产采集和其他 Agent 支持仍未完成，不能进入下一阶段。
+
+## 受控 onboarding 纵向切片（基线 f8af00e）
+
+本轮新增 onboarding 协调层和 dashboard API，使计划、安装、激活和经验记录共用实例身份与状态语义。固定适配器只允许隔离 project workspace-plugin；安装仍需明确授权，事件验证成功也只表示观测 Hook 已收到绑定事件，阻断能力保持 unsupported。旧无来源配方显示 manual/legacy，不计为 Goose 从零调查成功；新保存的指纹条目/revision 带有 `recipe_source=goose` 元数据。
+
+| 验收项 | 结果 | 证据边界 |
+| --- | --- | --- |
+| 行为发现、随机命名、实例归属 | 部分真实 | 本机真实扫描与既有回归；跨 Agent 盲测及误报/漏检统计未完成 |
+| 自动 Goose 调查 | 未完成/未验证 | 调度入口已接通；本轮调查禁用，无真实模型外发 |
+| MCP/Skill/规则/网络采集 | 未完成 | API/UI 保持尚未采集，不把空值当未发现 |
+| 指纹学习与 exact 复用 | 模拟/单测验证 | 5 项 onboarding 回归覆盖；未用新真实 Agent 验证跨启动复用 |
+| 授权安装计划与执行 | 隔离真实路径 | 临时目录使用真实 ghost_install；未触碰现用工作区 |
+| 下次启动激活 | 模拟事件验证 | Node 加载真实插件并产生 `hook.loaded`；不等于真实 OpenCode 下次启动 |
+| 真实事件/API | 既有真实证据 + 新 API 模拟 | 隔离 OpenCode 已有 3 条绑定事件；新 onboarding API 在隔离 HTTP 测试验证 |
+| 撤销/回滚 | 隔离真实路径 | 既有 install→uninstall→revoked 回归；未卸载当前 active 插件 |
+| 阻断/平台授权/平台注册 | 未实现 | 后续范围 |
+
+本轮是状态真实性修复和最小受控 onboarding 切片，不是 Stage1 闭环完成；通用主流 Agent 接入、真实 Goose 配方、真实目标安装和 Hook 生效验收仍未完成。完成后停在 review，不合并、不推送、不部署 8080。

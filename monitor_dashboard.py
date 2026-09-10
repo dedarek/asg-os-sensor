@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
-from runtime import analyzer, matcher
+from runtime import analyzer, matcher, onboarding
 from runtime.status import presentation, DISABLED_REASON
 from runtime.recipe_validation import validate as validate_recipe
 from runtime.identity import identify, ownership, metadata_identity
@@ -69,6 +69,7 @@ GOOSE_MAX_TURNS = _env_int("ASG_GOOSE_MAX_TURNS", 12)
 GOOSE_TIMEOUT_S = _env_int("ASG_GOOSE_TIMEOUT", 180)
 GOOSE_RETRY_COOLDOWN_S = _env_int("ASG_GOOSE_RETRY_COOLDOWN", 300)
 AUTONOMOUS_ANALYSIS_ENABLED = os.environ.get("ASG_AUTONOMOUS_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
+ONBOARDING_AUTO_INSTALL_ENABLED = os.environ.get("ASG_ONBOARDING_AUTO_INSTALL", "0").strip() == "1"
 OBSERVE_URL = os.environ.get("ASG_OBSERVE_URL", "").strip().rstrip("/")
 try:
     OBSERVE_TIMEOUT_S = float(os.environ.get("ASG_OBSERVE_TIMEOUT", "1.0") or "1.0")
@@ -116,7 +117,7 @@ def _goose_executable() -> str | None:
     return shutil.which(value)
 
 
-def _record_investigation_result(instance_id: str, pid: int, create_time: float | None, status: str, message: str, run_dir: Path | None = None) -> None:
+def _record_investigation_result(instance_id: str, pid: int, create_time: float | None, status: str, message: str, run_dir: Path | None = None, details: dict[str, Any] | None = None) -> None:
     # Persist investigation outcome bound to the frozen instance (pid:create_time).
     # create_time is frozen by the caller at investigation start; we never re-read
     # psutil at completion, so a reused PID cannot hijack the result. All lifecycle
@@ -131,11 +132,14 @@ def _record_investigation_result(instance_id: str, pid: int, create_time: float 
     }
     if run_dir is not None:
         result["log_dir"] = str(run_dir)
-        path = run_dir / 'result.json'
-        temporary = path.with_suffix('.tmp')
-        temporary.write_text(json.dumps(result, ensure_ascii=False))
-        os.replace(temporary, path)
+    if details:
+        result.update(deepcopy(details))
     with INVESTIGATION_LOCK:
+        if run_dir is not None:
+            path = run_dir / 'result.json'
+            temporary = path.with_suffix('.tmp')
+            temporary.write_text(json.dumps(result, ensure_ascii=False))
+            os.replace(temporary, path)
         INVESTIGATION_RESULTS[instance_id] = result
 
 
@@ -447,9 +451,32 @@ def run_autonomous_investigation(pid: int, struct: dict[str, Any], force: bool =
                     if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
                         raise ValueError('Target changed during investigation')
                     entry = matcher.remember_verified(struct, recipe, evidence, elapsed_ms)
+                    target = {'pid': pid, 'create_time': create_time}
+                    onboarding_plan = onboarding.record_investigation(
+                        target, struct, recipe, evidence, entry, match_status='miss',
+                        source='goose', run_dir=str(run_dir))
+                    install_result = None
+                    verification_result = None
+                    if ONBOARDING_AUTO_INSTALL_ENABLED:
+                        authorization = onboarding.authorization_from_environment(
+                            onboarding_plan.get('workspace'))
+                        install_result = onboarding.execute_install(
+                            onboarding_plan, target, authorization)
+                        if install_result.get('status') == 'installed_pending_activation':
+                            verification_result = onboarding.verify_activation(install_result, target)
                     hook_text = "接入点 proposed/unverified（未核对接入点证据）"
+                    onboarding_details = {
+                        'onboarding': {
+                            'plan': onboarding_plan,
+                            'install': install_result,
+                            'verification': verification_result,
+                        }
+                    }
                     _record_investigation_result(instance_id, pid, create_time, "succeeded",
-                                                 f"已保存候选配方 {entry.get('id')}（{hook_text}），未安装／未验证", run_dir)
+                                                 f"已保存候选配方 {entry.get('id')}（{hook_text}），未安装／未验证"
+                                                 if install_result is None
+                                                 else f"已保存候选配方 {entry.get('id')}（{hook_text}），接入链状态: {install_result.get('status')}",
+                                                 run_dir, onboarding_details)
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
                     _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir)
@@ -585,6 +612,25 @@ def scan_agents_once():
             match_result = matcher.classify(struct)
             matched_fp = match_result['entry'] if match_result['status'] == 'exact' else None
             match_ms = match_result['match_ms']
+            onboarding_view = onboarding.view_for_instance(
+                f"{pid}:{pinfo.get('create_time')}", struct, match_result)
+            if match_result['status'] == 'exact' and matched_fp:
+                # classify() remains pure; the scanner explicitly records a reusable exact hit.
+                try:
+                    matcher.record_hit(matched_fp.get('id', ''))
+                    if onboarding_view.get('last_event') is None:
+                        onboarding.record_reuse(
+                            {'pid': pid, 'create_time': pinfo.get('create_time')},
+                            onboarding_view.get('plan', {}))
+                        onboarding_view = onboarding.view_for_instance(
+                            f"{pid}:{pinfo.get('create_time')}", struct, match_result)
+                except (OSError, ValueError, TypeError):
+                    onboarding_view = {
+                        'status': 'experience_unavailable',
+                        'reason': '经验持久化失败，未改变匹配结果',
+                        'match_status': match_result.get('status'),
+                        'plan': onboarding.plan_from_match(struct, match_result),
+                    }
             print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
             
             # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
@@ -651,6 +697,7 @@ def scan_agents_once():
             adapter_info['fingerprint_revision'] = matched_fp.get('revision') if matched_fp else None
             adapter_info['recipe_status'] = 'structure_validated_hook_unverified' if matched_fp else 'not_available'
             adapter_info['historical_recipe'] = recipe_obj
+            adapter_info['onboarding'] = onboarding_view
             adapter_info['observation_evidence'] = observation_for_instance(
                 observation_snapshot, pid, pinfo.get('create_time'))
             for field in adapter_info['assets']:
@@ -772,6 +819,42 @@ def background_scanner_loop():
         except Exception as e:
             print(f"[Scanner Error] {e}", file=sys.stderr)
         time.sleep(SCAN_INTERVAL_S)
+
+
+def _query_pid(path: str) -> int | None:
+    try:
+        values = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query).get("pid", [])
+        return int(values[0]) if values else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _onboarding_target(pid: int) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    with STATE_LOCK:
+        agent = next((deepcopy(a) for a in SCAN_STATE.get("agents", []) if a.get("pid") == pid), None)
+    if not agent:
+        return None, None
+    instance = agent.get("instance_id", "")
+    try:
+        _, ct = instance.split(":", 1)
+        target = {"pid": int(pid), "create_time": float(ct)}
+    except (AttributeError, TypeError, ValueError):
+        return agent, None
+    return agent, target
+
+
+def _update_onboarding_view(pid: int, install_result: dict[str, Any] | None = None,
+                            verification_result: dict[str, Any] | None = None) -> None:
+    with STATE_LOCK:
+        for agent in SCAN_STATE.get("agents", []):
+            if agent.get("pid") != pid:
+                continue
+            view = agent.setdefault("adapter", {}).setdefault("onboarding", {})
+            if install_result is not None:
+                view["install"] = deepcopy(install_result)
+            if verification_result is not None:
+                view["verification"] = deepcopy(verification_result)
+            return
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -1309,9 +1392,26 @@ async function updateUI() {
       const observationText = observationEvidence.status === 'observed'
         ? `观测证据: ${observationEvidence.label} · 当前=${observationEvidence.health_status || 'unknown'} · 有效事件=${observationEvidence.recent_events || 0} · 阻断=${(observationEvidence.blocking || {}).label || '未支持'}`
         : `观测证据: ${observationEvidence.label || '未绑定观测证据'}${observationEvidence.reason ? ' · ' + observationEvidence.reason : ''}`;
+      const onboarding = (a.adapter && a.adapter.onboarding) || {};
+      const plan = onboarding.plan || {};
+      const install = onboarding.install || {};
+      const verification = onboarding.verification || {};
+      const onboardingText = verification.status === 'events_verified'
+        ? '接入链: 事件已验证（仅观测，阻断未支持）'
+        : install.status === 'installed_pending_activation'
+          ? '接入链: 已安装，待引擎启动/重载'
+          : install.status === 'pending_authorization'
+            ? '接入链: 计划待授权'
+            : plan.status === 'investigation_required'
+              ? '接入链: 等待 Goose 调查'
+              : plan.status === 'unsupported'
+                ? '接入链: 不支持 · ' + (plan.reason || '')
+                : plan.status === 'plan_pending_authorization'
+                  ? '接入链: 计划待授权'
+                  : '接入链: ' + (plan.status || '尚未生成计划');
       
       const statusHtml = escapeHtml(investigation.label + ' · ' + (investigation.message || '') +
-        ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText);
+        ' | ' + ({exact:'精确匹配（Hook 待验证）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText + ' | ' + onboardingText);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
 
@@ -1502,6 +1602,24 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif self.path.startswith("/api/onboarding"):
+            pid = _query_pid(self.path)
+            agent, target = _onboarding_target(pid) if pid else (None, None)
+            if not agent or not target:
+                payload = {"status": "invalid_request", "reason": "需要当前扫描中的有效 pid"}
+                code = 400
+            else:
+                payload = {
+                    "status": "ok",
+                    "target": target,
+                    "onboarding": agent.get("adapter", {}).get("onboarding", {}),
+                    "source": "current_scan_and_experience_store",
+                }
+                code = 200
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -1513,6 +1631,50 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status": "scanning"}')
+        elif self.path.startswith("/api/onboarding/execute"):
+            pid = _query_pid(self.path)
+            agent, target = _onboarding_target(pid) if pid else (None, None)
+            if not agent or not target:
+                payload = {"status": "invalid_request", "reason": "需要当前扫描中的有效 pid"}
+                code = 400
+            else:
+                plan = agent.get("adapter", {}).get("onboarding", {}).get("plan", {})
+                auth = onboarding.authorization_from_environment(plan.get("workspace"))
+                install_result = onboarding.execute_install(plan, target, auth)
+                verification_result = None
+                if install_result.get("status") == "installed_pending_activation":
+                    verification_result = onboarding.verify_activation(install_result, target)
+                _update_onboarding_view(pid, install_result, verification_result)
+                payload = {"status": "ok", "plan": plan, "install": install_result,
+                           "verification": verification_result}
+                code = 200
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif self.path.startswith("/api/onboarding/verify"):
+            pid = _query_pid(self.path)
+            agent, target = _onboarding_target(pid) if pid else (None, None)
+            if not agent or not target:
+                payload = {"status": "invalid_request", "reason": "需要当前扫描中的有效 pid"}
+                code = 400
+            else:
+                install_result = agent.get("adapter", {}).get("onboarding", {}).get("install")
+                if not isinstance(install_result, dict):
+                    try:
+                        saved = onboarding.instance_state(
+                            onboarding.make_instance_id(target["pid"], target["create_time"])) or {}
+                        install_result = saved.get("install")
+                    except (OSError, ValueError):
+                        install_result = None
+                verification_result = onboarding.verify_activation(install_result or {}, target)
+                _update_onboarding_view(pid, verification_result=verification_result)
+                payload = {"status": "ok", "verification": verification_result}
+                code = 200
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         elif self.path.startswith("/api/reinvestigate"):
             # 允许手动触发重新让 Goose 深度逆向某个 PID
             import urllib.parse

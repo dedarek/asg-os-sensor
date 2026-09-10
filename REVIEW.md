@@ -43,3 +43,27 @@ echo $!
 - 未做匹配兼容分档、revision 演进、真实 Goose 调查和 Hook 安装/验证。TLS 外发权限保持原边界，未启用 ASG_ALLOW_INSECURE_ANALYST。
 
 **本轮是状态真实性修复，不是 Stage1 闭环完成。** 停在 review 点；不具备宣称 Hook 安装验证阶段已就绪的依据，不合并、不推送、不动 8080。
+
+## 受控 onboarding 纵向切片（本次独立提交）
+
+本次以 `f8af00e` 为基线，新增 `runtime/onboarding.py`，把发现实例、精确指纹复用/调查所需计划、固定安装器、事件验证和隔离经验持久化串起来。`monitor_dashboard.py` 提供 `/api/onboarding`、`/api/onboarding/execute`、`/api/onboarding/verify`，页面追加接入链状态；`recipes/runtime_analyst.yaml` 明确固定适配器契约；`matcher.py` 给新保存的调查指纹条目和 revision 写入 Goose 来源元数据。旧手写/无来源配方显示为 manual/legacy 并拒绝自动安装。
+
+状态语义：调查来自开关和调度器记录（禁用=disabled、运行=running、成功/失败按真实结果）；资产来自实例采集凭据（缺失=尚未采集，成功空结果才=未发现，失败不转空）；Hook 来自 ghost_install 和 EventVerifier（未安装、待重启、事件已验证、验证失败），指纹命中和配方结构通过均不会升级 Hook 状态。关联 PID 来自扫描 ownership，执行事件来自观测采集，两者没有互相推断；网络无证据保持尚未采集；宿主无本地证据保持未知。
+
+验收矩阵：
+
+| 能力 | 状态 | 证据与边界 |
+| --- | --- | --- |
+| 行为发现、随机命名和实例归属 | 部分真实 | 本机 8081 扫描和既有 discovery 回归；尚未完成跨 Agent 盲测与系统误报/漏检统计 |
+| 自动 Goose 调查 | 未完成/未验证 | 调度和候选配方保存路径已接通；本轮 `ASG_AUTONOMOUS_ANALYSIS=0`，没有真实模型外发 |
+| MCP/Skill/规则/网络采集 | 未完成 | 页面/API 诚实返回尚未采集；没有把空字段当未发现 |
+| 指纹学习与 exact 复用 | 模拟/单测验证 | matcher 与 onboarding 回归覆盖；未以新的真实 Agent 做跨启动复用验收 |
+| 授权范围安装计划与执行 | 隔离真实代码路径 | 临时 workspace 执行真实 ghost_install；仅支持 project + 固定插件，未触碰现用工作区 |
+| 下次启动激活 | 模拟事件验证 | plan 明确 pending_restart；Node 子进程加载真实插件并产生 `hook.loaded`，不等于真实 OpenCode 下一次启动 |
+| 真实事件/API | 已有真实证据，新增链路未实测 | 隔离 OpenCode 接收器已有 3 条绑定事件；onboarding 新 API 在测试中验证，未对现用 Agent 执行安装 |
+| 撤销/回滚 | 隔离真实代码路径 | 既有 install→uninstall→HTTP revoked 回归通过；未卸载当前 active 插件 |
+| 阻断、平台授权、平台注册 | 未实现 | 明确为后续范围 |
+
+关键限制：当前自动安装适配器只覆盖已经登记的 OpenCode project workspace-plugin；通用主流 Agent 的发现和调查入口尚未完成真实盲测。真实 Goose 仍受本轮隔离看板禁用和 TLS 外发边界限制。配方来源、授权范围、激活时机和事件验证记录会写入隔离 `experience.json`，但这不代表安装已生效或具备阻断能力。
+
+本轮是状态真实性修复和一条受控 onboarding 纵向切片，不是 Stage1 闭环完成；完成后停在 review，不合并、不推送、不部署到 8080、不进入 Hook 安装阶段。

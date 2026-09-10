@@ -334,9 +334,14 @@ def remember_verified(struct, recipe, evidence, mount_ms=0):
     if not isinstance(recipe.get('hook'), dict) or not recipe.get('agent_identity_name'):
         raise ValueError('Invalid investigation recipe')
     f = features_of(struct)
+    stored_recipe = deepcopy(recipe)
+    provenance = stored_recipe.get('provenance')
+    recipe_source = provenance.get('source') if isinstance(provenance, dict) else None
+    if not recipe_source:
+        recipe_source = 'goose'
 
     def mutate(db):
-        target = recipe.get('match_features', {}).get('evolves_prior_harness')
+        target = stored_recipe.get('match_features', {}).get('evolves_prior_harness')
         entry = next((e for e in db.get('fingerprints', []) if e['id'] == target), None) if target else None
         if target and entry is not None:
             prior_compat = None
@@ -358,12 +363,12 @@ def remember_verified(struct, recipe, evidence, mount_ms=0):
             entry['revisions'] = [{'revision': 0, 'recipe': deepcopy(entry['hook_recipe']), 'compatibility': None,
                                    'evidence': [], 'status': 'legacy-unverified'}]
         revision = max((r['revision'] for r in entry['revisions']), default=0) + 1
-        entry['revisions'].append({'revision': revision, 'recipe': deepcopy(recipe),
+        entry['revisions'].append({'revision': revision, 'recipe': deepcopy(stored_recipe),
                                   'compatibility': deepcopy(struct['compatibility']), 'evidence': deepcopy(evidence),
-                                  'status': 'recipe_validated_hook_unverified'})
-        entry.update(name=recipe['agent_identity_name'], hook_recipe=deepcopy(recipe), revision=revision,
-                     investigation_verified=True, hook_verified=False, mount_ms=mount_ms)
+                                  'status': 'recipe_validated_hook_unverified', 'source': recipe_source})
+        entry.update(name=stored_recipe['agent_identity_name'], hook_recipe=deepcopy(stored_recipe), revision=revision,
+                     investigation_verified=True, hook_verified=False, mount_ms=mount_ms,
+                     recipe_source=recipe_source)
         return deepcopy(entry)
 
     return _locked_update(mutate)
-

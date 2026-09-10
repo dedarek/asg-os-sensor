@@ -377,3 +377,15 @@ test_goose_stage1/HOOK_INSTALL_PLAN.md），基线复跑 40 tests OK。8081 演�
 
 - `ASG_AUTONOMOUS_ANALYSIS=0` 只注入当前隔离 8081 看板进程，用于本轮如实展示“调查禁用”；没有修改 `.env`、`llm.yaml` 或其他全局配置。恢复隔离看板调查时，将同一启动命令的该值改为 `1`，仍不添加 `ASG_ALLOW_INSECURE_ANALYST`；本轮不执行恢复。
 - 受控卸载仅在顾问协调用户确认后执行：先复核 manifest `active=true`、PID 5297/create_time `1789006943.640438`、事件计数 `3/0`，再运行隔离工作区的 `runtime/opencode/ghost_install.py --uninstall --workspace /Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/opencode-observe --name asg-observe.js`。卸载后必须同时确认旧 run 事件计数不变、observer `/health` 与 `/events` 为 revoked、看板 API 为 revoked；当前不运行该命令。
+
+## 2026-09-10 受控 onboarding 纵向切片
+
+基线 `f8af00e`。新增 `runtime/onboarding.py` 编排：发现实例 → exact 复用或 similar/miss 调查计划 → 固定适配器配方 → 授权范围内隔离安装 → PID+create_time 绑定的 `hook.loaded` 验证 → `experience.json` 经验记录。默认只出计划，不安装；仅支持登记的 project `opencode-workspace-plugin`，模型不能提供安装命令。
+
+配方来源门禁：`matcher.remember_verified` 为新调查指纹条目/revision 写入 `recipe_source=goose` 元数据；无来源旧配方视为 `manual/legacy`，不被自动复用。重复安装检查 active manifest 和插件 hash，返回 `already_installed` 而不覆盖。经验库沿用 matcher 的线程锁+跨进程锁，读取异常抛错，不能清库替换。
+
+原有测试与新增测试分开：原有 74 项状态真实性/观测/插件/matcher/发现回归继续通过；新增 `test_onboarding.py` 5 项及 `test_dashboard_http.py` 1 项。最终全量命令及结果在本轮提交后记录；Node 事件链使用真实仓库插件但配方来源为 `goose-simulated`，不冒充真实 Goose。真实 Goose 外发保持关闭。
+
+字段语义：调查来自开关和调度记录，禁用就是 `disabled`；资产来自实例采集凭据，缺失就是 `not_collected`，成功空结果才是未发现；Hook 来自安装事务和 EventVerifier，指纹命中/配方保存不改变 `not_installed`。关联进程来自 ownership，执行事件来自观测；网络无证据不作无连接/安全判断；宿主无本地证据就是未知。
+
+代码提交后仅重启本任务自己的 8081 看板以加载新代码，沿用独立观测接收器和已有隔离 OpenCode workspace。新的看板运行目录、日志、隔离指纹库和验证摘要使用 `artifacts/stage1/dashboard-review-<run-id>/`；不删除旧证据。最终绝对路径与 8080/生产库核对结果在 review 交付前补录。
