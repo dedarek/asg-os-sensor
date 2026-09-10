@@ -1,0 +1,33 @@
+test_activity_ui.py
+  s_655532ed3c4512::t_5a7876c4307808 26,28-32
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_18d2686541213b 199-213
+runtime/investigation_activity.py
+  s_655532ed3c4512::t_c70dbd96f9ee03 59-127,154-156,164-167,175-177,180-182,184,187,198-200,203,205,210
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_5699b1513e99db 116-125
+monitor_dashboard.py
+  s_655532ed3c4512::t_eda81282352c33 1973-1981,1984-1985,1988-1990
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_62fd6d5f64b630 163-166
+test_investigation_activity.py
+  s_655532ed3c4512::t_5a7876c4307808 21-56
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_8baed12964f957 517-541
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "302b2b98e6ca4d50c97065cb2611d44a7e176c4f",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
