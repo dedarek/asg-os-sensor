@@ -1,0 +1,31 @@
+docs/stage1/LEARNED_INSTALL.md
+  s_1512a994888af5::t_5e0c65c84db019 1-18
+runtime/learned_install.py
+  s_b0143c6f6e2ba8::t_e1dda88d6c2a54 1-206
+test_learned_install.py
+  s_b0143c6f6e2ba8::t_4a042979577013 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "30c23e4278f5a05f6b48f522bca60c861ad7dbb5",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
