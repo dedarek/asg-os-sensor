@@ -1,0 +1,31 @@
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_b6be48ce17ef94 185-193
+PLAN.md
+  s_655532ed3c4512::t_e014d7999adb30 82-87
+REVIEW.md
+  s_655532ed3c4512::t_5c46886db73b78 328-336
+WORKLOG.md
+  s_655532ed3c4512::t_b6b5d3df0f0ddb 559-576
+docs/stage1/PLAN.md
+  s_655532ed3c4512::t_98db36db65005c 217-222
+docs/stage1/REVIEW.md
+  s_655532ed3c4512::t_905a305b376743 344-352
+docs/stage1/WORKLOG.md
+  s_655532ed3c4512::t_6e98a8cfbda3b6 710-727
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "207c93bf8e138112b3eac7f1e5e9cc9290dca7c4",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
