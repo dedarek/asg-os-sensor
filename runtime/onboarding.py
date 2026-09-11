@@ -345,6 +345,21 @@ def plan_from_match(struct: dict[str, Any], match_result: dict[str, Any]) -> dic
     plan["status"] = "plan_pending_authorization"
     plan["action"] = "install_reused_recipe"
     plan["reason"] = "精确兼容指纹复用；仍需授权、激活和事件验证"
+    if plan.get("adapter") == "file_plan":
+        # Exact reuse must carry the ORIGINAL provenance: the reused recipe, the
+        # original build snapshot and the original evidence references. The new
+        # instance is never allowed to inherit the old evidence binding, and a
+        # missing source is reported instead of being silently skipped.
+        matched = next((r for r in reversed(entry.get("revisions") or [])
+                        if isinstance(r, dict) and r.get("revision") == entry.get("revision")
+                        and r.get("compatibility") == struct.get("compatibility")),
+                       None)
+        refs = [e.get("evidence_id") for e in ((matched or {}).get("evidence") or [])
+                if isinstance(e, dict) and e.get("evidence_id")]
+        plan["reuse_recipe"] = copy.deepcopy(recipe)
+        plan["reuse_evidence_refs"] = refs
+        plan["reuse_source"] = "fingerprint_revision"
+        plan["observed_compatibility"] = copy.deepcopy((matched or {}).get("compatibility"))
     return plan
 
 
@@ -622,6 +637,8 @@ def _execute_file_plan(plan, target, auth):
     workspace = plan.get('workspace')
     if auth.get('scope') != 'project' or not workspace or auth.get('workspace') != workspace:
         return {'status': 'failed', 'reason': 'file_plan authorization scope/workspace mismatch'}
+    if plan.get('action') == 'install_reused_recipe':
+        return _execute_reused_file_plan(plan, target, auth)
     try:
         _target_is_live(target)
         run = Path(plan['investigation_run_dir']).resolve(strict=True)
@@ -641,3 +658,106 @@ def _execute_file_plan(plan, target, auth):
         result = {'status': 'failed', 'reason': str(exc)}
         record_transition(target, 'install_failed', {'plan': plan, 'install': result})
         return result
+
+
+def _reuse_run_root() -> Path:
+    """Run root that holds investigation run directories (state and evidence)."""
+    override = os.environ.get("ASG_RUN_DIR", "").strip()
+    return Path(override) if override else ROOT / "artifacts" / "stage1" / "dashboard"
+
+
+def _locate_reuse_material(plan_digest: str, workspace: str, refs: list[str]) -> dict[str, str] | None:
+    """Find the original install record and the original evidence files.
+
+    Exact reuse must be validated against the ORIGINAL instance, so both the
+    installer record (it keeps the original target and build snapshot) and the
+    original evidence files have to still exist. Nothing is synthesised when
+    either is absent: the caller reports the gap instead of guessing.
+    """
+    root = _reuse_run_root()
+    if not root.is_dir():
+        return None
+    try:
+        runs = sorted(item for item in root.iterdir() if item.is_dir())
+    except OSError:
+        return None
+    for run in runs:
+        state = run / "coordinator-state"
+        if not (state / "prepared_install.json").is_file():
+            state = run / "installer-state"  # Earlier generic installer state layout.
+        record = state / "prepared_install.json"
+        if not record.is_file():
+            continue
+        try:
+            prepared = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(prepared, dict):
+            continue
+        if prepared.get("plan_digest") != plan_digest or prepared.get("workspace") != workspace:
+            continue
+        evidence_dir = run / "evidence"
+        if not all((evidence_dir / (ref + ".json")).is_file() for ref in refs):
+            continue
+        return {"run_dir": str(run), "state_dir": str(state), "evidence_dir": str(evidence_dir)}
+    return None
+
+
+def _reuse_blocked(missing: str, reason: str) -> dict[str, Any]:
+    return {"status": "reuse_requires_validation", "action": "install_reused_recipe",
+            "missing": missing, "reason": reason, "restart_required": None,
+            "hook_verified": False, "blocking": "unsupported",
+            "activation_status": "not_started"}
+
+
+def _execute_reused_file_plan(plan: dict[str, Any], target: dict[str, Any],
+                              auth: dict[str, Any]) -> dict[str, Any]:
+    """Install an exact-reuse file plan from the ORIGINAL investigation record.
+
+    The original evidence is validated against the original instance and build;
+    the new target is used only for liveness and for the rebind that coordinate
+    performs against the stored record. A missing original record or a missing
+    original evidence file is reported as reuse_requires_validation rather than
+    raising, and the old evidence is never re-bound to the new pid.
+    """
+    from runtime import learned_install, learned_onboarding
+    workspace = plan.get("workspace")
+    recipe = plan.get("reuse_recipe")
+    if not isinstance(recipe, dict) or not recipe:
+        return _reuse_blocked("original_recipe_missing", "缺少原调查配方；需重新调查")
+    refs = [ref for ref in (plan.get("reuse_evidence_refs") or []) if isinstance(ref, str) and ref]
+    if not refs:
+        return _reuse_blocked("original_evidence_missing", "缺少原调查证据引用；需重新调查")
+    try:
+        _target_is_live(target)
+        expected_plan = learned_install.plan_digest(recipe.get("install_plan"))
+    except (OSError, ValueError, psutil.Error) as exc:
+        result = {"status": "failed", "reason": "复用前置检查失败: %s" % type(exc).__name__}
+        record_transition(target, "install_failed", {"plan": plan, "install": result})
+        return result
+    located = _locate_reuse_material(expected_plan, workspace, refs)
+    if not located:
+        result = _reuse_blocked(
+            "original_install_record_or_evidence",
+            "未找到原安装记录或原调查证据文件；需要迁移或重新调查，不能把旧证据绑定到新实例")
+        record_transition(target, "reuse_requires_validation", {"plan": plan, "install": result})
+        return result
+    # The exact fingerprint match itself is the program's build verification:
+    # the observed build was already proven equal to the recorded revision.
+    reuse_evidence = ["exact reuse: fingerprint=%s revision=%s; observed build equals recorded build"
+                      % (plan.get("fingerprint_id"), plan.get("fingerprint_revision"))]
+    try:
+        result = learned_onboarding.coordinate(
+            recipe, Path(located["evidence_dir"]), target, workspace=Path(workspace),
+            state_dir=Path(located["state_dir"]),
+            authorization=learned_onboarding.authorization_scope(
+                approved_workspace=workspace, allow_install=True,
+                allow_rebind=os.environ.get("ASG_ONBOARDING_REBIND", "0") == "1"),
+            observed_compatibility=plan.get("observed_compatibility"),
+            evidence=reuse_evidence,
+            reason="authorized exact file_plan reuse against the original record")
+    except (OSError, ValueError, KeyError, psutil.Error) as exc:
+        result = {"status": "failed", "reason": str(exc),
+                  "action": "install_reused_recipe", "reuse_requires_validation": True}
+    record_transition(target, "learned_file_plan_reuse", {"plan": plan, "install": result})
+    return result
