@@ -74,6 +74,13 @@ def now() -> str:
 
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
+        # A key/value record carries a field NAME, not an API credential.
+        # Keep that label as field, but redact the paired value when the label
+        # names a secret. Do not globally exempt the key field from redaction.
+        if set(value) == {'key', 'value'} and isinstance(value['key'], str):
+            label = value['key']
+            secret = re.search(r"(?i)(key|token|secret|password|cookie|authorization)", label)
+            return {'field': redact(label), 'value': '[REDACTED]' if secret else redact(value['value'])}
         return {str(k): ("[REDACTED]" if re.search(r"(?i)(key|token|secret|password|cookie|authorization)", str(k)) else redact(v)) for k, v in value.items()}
     if isinstance(value, list):
         return [redact(v) for v in value]
