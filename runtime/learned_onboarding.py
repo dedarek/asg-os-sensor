@@ -6,14 +6,18 @@ workspace. Generated files still require separate real-runtime activation tests.
 """
 from __future__ import annotations
 import hashlib
+import math
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import psutil
 from runtime import learned_install
+from runtime import matcher
 from runtime import observation_source
 from runtime.recipe_validation import validate
 
 OBSERVATION_FILE = 'observation_source.json'
+ACTIVATION_HISTORY_FILE = 'activation_bindings.json'
 
 
 def _prepare_observation(recipe: dict, root: Path, target: dict) -> dict:
@@ -31,7 +35,8 @@ def _prepare_observation(recipe: dict, root: Path, target: dict) -> dict:
     return {'status': 'configured', 'config': config}
 
 
-def prepare(recipe: dict, evidence_dir: Path, target: dict, workspace: Path) -> dict:
+def prepare(recipe: dict, evidence_dir: Path, target: dict, workspace: Path,
+            compatibility: dict | None = None) -> dict:
     checked = validate(recipe, evidence_dir, target=target)
     hook = recipe['hook']
     if hook.get('method') != 'file_plan':
@@ -47,6 +52,7 @@ def prepare(recipe: dict, evidence_dir: Path, target: dict, workspace: Path) -> 
             'plan': plan, 'plan_digest': learned_install.plan_digest(plan),
             'candidate_digest': hashlib.sha256(content).hexdigest(),
             'observation': observation,
+            'compatibility': dict(compatibility) if isinstance(compatibility, dict) else None,
             'evidence': checked['evidence'],
             'activation': 'unverified', 'blocking': 'not_implemented'}
 
@@ -94,4 +100,120 @@ def execute(prepared: dict, state_dir: Path, *, approved_workspace: Path,
     observation = _persist_observation(prepared, state_dir)
     return {**result, 'target': dict(target), 'candidate_digest': prepared['candidate_digest'],
             'source': 'supervisor_approved_candidate', 'activation': 'unverified',
+            'workspace': prepared.get('workspace'), 'compatibility': prepared.get('compatibility'),
             'observation': observation}
+
+
+def _normalize_target(target: dict) -> dict:
+    if not isinstance(target, dict) or target.get('pid') is None or target.get('create_time') is None:
+        raise ValueError('target requires pid and create_time')
+    try:
+        pid = int(target['pid'])
+        create_time = float(target['create_time'])
+    except (TypeError, ValueError) as exc:
+        raise ValueError('target pid/create_time must be numeric') from exc
+    if pid <= 0 or not math.isfinite(create_time) or create_time <= 0:
+        raise ValueError('target pid and create_time must be finite and positive')
+    return {'pid': pid, 'create_time': create_time}
+
+
+def _same_build(observed, recorded) -> tuple[bool, str]:
+    """A restart of the same program, not an upgrade or a different program.
+
+    Requires the observed executable bytes and entry identity to be identical to
+    what was recorded at install time, plus the shared family-identity check for
+    path/bundle consistency. Family-only similarity is deliberately not enough:
+    that would let an upgrade silently inherit an existing activation binding.
+    """
+    if not isinstance(observed, dict) or not isinstance(recorded, dict):
+        return False, '缺少可核对的构建兼容性快照'
+    for field in ('executable', 'entry'):
+        o, r = observed.get(field), recorded.get(field)
+        if not o or not r:
+            return False, '构建兼容性缺少 %s' % field
+        if o != r:
+            return False, '构建身份不一致（%s 变化），这不是同一构建的重启' % field
+    if not matcher._family_identity_matches(observed, recorded):
+        return False, '入口/包身份不一致，属于不同家族'
+    return True, 'same-build'
+
+
+def rebind_activation(prepared: dict, state_dir: Path, *, approved_workspace: Path,
+                      new_target: dict, observed_compatibility, evidence, reason=None) -> dict:
+    """Rebind an installed activation to a restarted instance of the same build.
+
+    This never reinstalls and never edits the candidate or the install manifest.
+    It rewrites only the installer observation binding and appends a migration
+    record. A bare new pid is refused: the caller must supply a build snapshot
+    that matches the one recorded at install time plus explicit evidence.
+    """
+    if not isinstance(prepared, dict) or not prepared.get('workspace'):
+        raise ValueError('prepared install record required')
+    recorded = prepared.get('compatibility')
+    if not isinstance(recorded, dict) or not recorded.get('executable'):
+        raise ValueError('no recorded build compatibility; refusing to rebind without evidence')
+    root = Path(prepared['workspace']).resolve(strict=True)
+    if Path(approved_workspace).resolve(strict=True) != root:
+        raise PermissionError('rebind workspace differs from the approved install workspace')
+
+    target = _normalize_target(new_target)
+    previous_target = _normalize_target(prepared['target'])
+    if abs(psutil.Process(target['pid']).create_time() - target['create_time']) >= .001:
+        raise ValueError('new target instance changed before rebinding')
+
+    valid_evidence = (isinstance(evidence, list) and bool(evidence)
+                      and all(isinstance(item, str) and item for item in evidence))
+    if not valid_evidence:
+        raise ValueError('rebind requires explicit caller verification evidence, not a bare pid')
+    same, detail = _same_build(observed_compatibility, recorded)
+    if not same:
+        raise ValueError('refusing activation rebind: ' + detail)
+
+    config_path = Path(state_dir) / OBSERVATION_FILE
+    if not config_path.is_file():
+        raise ValueError('no observation binding to rebind')
+    current = observation_source.load_config(config_path)
+    history_path = Path(state_dir) / ACTIVATION_HISTORY_FILE
+    history = {}
+    if history_path.is_file():
+        try:
+            history = json.loads(history_path.read_text(encoding='utf-8'))
+        except ValueError as exc:
+            raise ValueError('activation history unreadable') from exc
+    if not history_path.is_file():
+        # Preserve the original install-time binding so the pre-restart target
+        # record survives the migration.
+        history = {'bindings': [{'kind': 'initial', 'target': dict(previous_target),
+                                 'compatibility': recorded, 'bound_at': None}]}
+    if not isinstance(history, dict) or not isinstance(history.get('bindings'), list):
+        raise ValueError('activation history must contain a bindings list')
+    previous_target = _normalize_target(current['target'])
+    if target == previous_target:
+        return {'status': 'already_bound', 'target': dict(target)}
+    payload = {key: current[key] for key in
+               ('version', 'mapping_mode', 'log_path', 'fields', 'event_names')}
+    payload['target'] = dict(target)
+    learned_install._atomic(config_path, json.dumps(payload, ensure_ascii=False, indent=2,
+                                                    sort_keys=True).encode('utf-8'))
+    reloaded = observation_source.load_config(config_path)
+    for key in ('mapping_mode', 'log_path', 'fields', 'event_names'):
+        if reloaded[key] != current[key]:
+            raise ValueError('rebound observation config does not round-trip: ' + key)
+    if reloaded['target'] != target:
+        raise ValueError('rebound observation config did not adopt the new target')
+
+    record = {'kind': 'activation_rebind', 'target': dict(target),
+              'previous_target': dict(previous_target),
+              'compatibility': dict(observed_compatibility),
+              'evidence': list(evidence), 'reason': reason,
+              'bound_at': datetime.now(timezone.utc).isoformat()}
+    history.setdefault('bindings', []).append(record)
+    learned_install._atomic(history_path, json.dumps(history, ensure_ascii=False, indent=2,
+                                                     sort_keys=True).encode('utf-8'))
+    return {'status': 'activation_rebound', 'workspace': str(root), 'target': dict(target),
+            'previous_target': dict(previous_target), 'config_path': str(config_path),
+            'history_path': str(history_path),
+            'build': {'executable': observed_compatibility.get('executable'),
+                      'entry': observed_compatibility.get('entry')},
+            'evidence': list(evidence), 'reason': reason,
+            'activation': 'unverified', 'blocking': 'not_implemented'}
