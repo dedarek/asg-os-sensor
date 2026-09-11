@@ -812,7 +812,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         _validate_investigation_summary(recipe)
         from runtime.recipe_validation import validate
         validate(recipe, EVIDENCE_DIR,
-                 target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME})
+                 target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
+                 known_harness_ids=_known_harness_ids(recipe))
         RECIPE_DIR.mkdir(parents=True, exist_ok=True)
         path = RECIPE_DIR / "candidate.json"
         payload = {"status": "candidate", "created_at": now(), "recipe": recipe,
@@ -882,6 +883,30 @@ def load_prior() -> dict[str, Any]:
             raise ValueError("Invalid prior: expected object")
         return {"path": str(path), "value": value}
     return {"empty": True}
+
+
+def _known_harness_ids(recipe: dict[str, Any]) -> set[str] | None:
+    """Known prior harness ids, read only when the recipe declares an evolution.
+
+    Returns None when ``evolves_prior_harness`` is absent/null/empty, so the
+    common new-family path performs no prior read at all. When the field does
+    carry a value the ids come from the same isolated prior the matcher uses;
+    a corrupt prior stays an explicit error instead of silently passing.
+    """
+    features = recipe.get("match_features") if isinstance(recipe, dict) else None
+    if not isinstance(features, dict):
+        return None
+    target = features.get("evolves_prior_harness")
+    if not isinstance(target, str) or not target.strip():
+        return None
+    prior = load_prior()
+    value = prior.get("value") if isinstance(prior, dict) else None
+    ids: set[str] = set()
+    if isinstance(value, dict):
+        for entry in value.get("fingerprints") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry["id"]:
+                ids.add(entry["id"])
+    return ids
 
 
 TOOLS = [

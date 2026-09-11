@@ -13,6 +13,60 @@ from pathlib import Path
 
 from runtime.learned_install import validate_plan
 
+# Fingerprint entry ids look like ``harness-01`` or ``harness-<hex>``. The
+# pattern is intentionally strict: this field is an id selector for the prior
+# fingerprint database, so prose, lists and sentences must never pass.
+HARNESS_ID_RE = re.compile(r'harness-[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+MAX_EVOLVES_EXCERPT = 120
+
+
+def _excerpt(value) -> str:
+    text = value if isinstance(value, str) else repr(value)
+    text = ' '.join(text.split())
+    if len(text) > MAX_EVOLVES_EXCERPT:
+        text = text[:MAX_EVOLVES_EXCERPT - 3] + '...'
+    return text
+
+
+def validate_evolution_target(recipe, known_harness_ids=None):
+    """Contracted check for ``match_features.evolves_prior_harness``.
+
+    Absent, null or empty means "this is not declared as an evolution of a
+    prior family"; a non-empty value must be exactly one prior harness id.
+    When ``known_harness_ids`` is supplied the id must also exist in the prior
+    fingerprint database. The recipe is never modified and the field is never
+    silently dropped: a bad value is reported back so the model can correct it
+    inside the same tool interaction.
+    """
+    if not isinstance(recipe, dict):
+        return
+    features = recipe.get('match_features')
+    if not isinstance(features, dict) or 'evolves_prior_harness' not in features:
+        return
+    target = features.get('evolves_prior_harness')
+    if target is None:
+        return
+    if not isinstance(target, str):
+        raise ValueError(
+            'match_features.evolves_prior_harness must be a string harness id, null, or omitted; got '
+            + type(target).__name__ + '. Omit it to propose a new family.')
+    if target != target.strip():
+        raise ValueError('match_features.evolves_prior_harness must be an exact id without surrounding whitespace; use null or omit for a new family')
+    if not target:
+        return
+    if not HARNESS_ID_RE.fullmatch(target):
+        raise ValueError(
+            'match_features.evolves_prior_harness must be exactly one prior harness id such as "harness-01" '
+            '(letters/digits/._- only), or omitted/null when this is a new family. It is an id selector, not a '
+            'place for reasoning; put explanations in observation/fallback. Received: "' + _excerpt(target) + '"')
+    if known_harness_ids is not None:
+        known = {item for item in known_harness_ids if isinstance(item, str)}
+        if target not in known:
+            listed = ', '.join(sorted(known)[:10]) if known else 'none'
+            raise ValueError(
+                'match_features.evolves_prior_harness "' + target + '" is not a known prior harness id; known ids: '
+                + listed + '. Omit the field to propose a new family, or use an exact id returned by get_prior_recipe.')
+
 OBSERVATION_TOOLS = ('get_target_context', 'inspect_config_surface',
                      'observe_tree', 'observe_runtime_surface',
                      'inspect_network_peers', 'inspect_execution_trace',
@@ -42,12 +96,13 @@ def _real_success(item) -> bool:
     return True
 
 
-def validate(recipe, evidence_dir, target=None):
+def validate(recipe, evidence_dir, target=None, known_harness_ids=None):
     """校验配方结构 + 证据质量 + 目标实例绑定。
 
     target: {'pid': int, 'create_time': float} 调查启动时冻结的实例身份。
     证据文件必须带 target 字段且与之完全一致; 证据缺失绑定或绑定不一致即拒绝
     (PID 复用 / 跨实例混用历史证据)。
+    known_harness_ids: 可选, 已知先验家族 id 集合; 提供时核对演进目标确实存在。
     返回 {'evidence': [...], 'hook_evidence_supported': bool}。
     """
     if not isinstance(recipe, dict):
@@ -81,6 +136,10 @@ def validate(recipe, evidence_dir, target=None):
             raise ValueError('Invalid install_plan: ' + str(exc)) from exc
         if hook['method'] not in ('file_plan', 'unsupported'):
             raise ValueError('install_plan requires hook.method="file_plan" or "unsupported"')
+
+    # Field contract for the evolution selector: checked before evidence is read
+    # so the model gets an actionable, fixable error inside the tool call.
+    validate_evolution_target(recipe, known_harness_ids)
 
     refs = recipe['evidence_refs']
     evidence = []
