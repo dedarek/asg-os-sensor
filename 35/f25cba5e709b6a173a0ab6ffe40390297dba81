@@ -1,0 +1,26 @@
+tools/stage1_mcp_asset_smoke.py
+  s_655532ed3c4512::t_073748893ad355 493,516-521,540
+  s_655532ed3c4512::t_72ab64c807666a 306-450
+  s_655532ed3c4512::t_9a243e02fae994 550-560
+  s_655532ed3c4512::t_fcad47ce3a2c54 454-455,466,481-484,504
+test_stage1_mcp_asset.py
+  s_655532ed3c4512::t_89a837a21c8bfa 1-69
+WORKLOG.md
+  s_655532ed3c4512::t_0de100ae30c4c7 1041-1056
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "35f25cba5e709b6a173a0ab6ffe40390297dba81",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
