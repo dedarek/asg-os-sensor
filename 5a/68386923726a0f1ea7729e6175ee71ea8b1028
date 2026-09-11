@@ -1,0 +1,36 @@
+test_recipe_evolution_contract.py
+  s_655532ed3c4512::t_059d59c971a1de 1-7,9-59,61-86,100-102,104-106,115,118,121-122,150-167,173-176,178-198,200-208,210-221
+  s_655532ed3c4512::t_8f54d013f70991 87-99,103,107-114,116-117,119-120
+  s_655532ed3c4512::t_c3d4ef17dad179 60,168,199
+  s_655532ed3c4512::t_6d990f10342503 123-149
+  s_655532ed3c4512::t_8666c5e5b17d7c 8,169-172,177,209
+recipes/runtime_analyst.yaml
+  s_655532ed3c4512::t_900222a2337511 58-61
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_8f27a326cd2e57 16-68
+  s_655532ed3c4512::t_f0c0df8ec3dca6 98,104,139-141
+  s_655532ed3c4512::t_7b41a830c9bfee 142
+runtime/analyst_tools.py
+  s_655532ed3c4512::t_66c459f37fdaed 862-863
+  s_655532ed3c4512::t_e3c361e741d6c6 935-958
+WORKLOG.md
+  s_655532ed3c4512::t_b720a956777ace 1057-1073
+recipes/runtime_hook_analyst.yaml
+  s_655532ed3c4512::t_900222a2337511 28-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "5a68386923726a0f1ea7729e6175ee71ea8b1028",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
