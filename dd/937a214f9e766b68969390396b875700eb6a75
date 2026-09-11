@@ -1,0 +1,26 @@
+REVIEW.md
+  s_655532ed3c4512::t_9a65ba03e8edef 655-661
+docs/stage1/REPRODUCE.md
+  s_655532ed3c4512::t_9a65ba03e8edef 103
+WORKLOG.md
+  s_655532ed3c4512::t_9a65ba03e8edef 1005-1012
+MORNING_HANDOFF.md
+  s_655532ed3c4512::t_0bc330a227097b 394,419
+  s_655532ed3c4512::t_9a65ba03e8edef 17,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "dd937a214f9e766b68969390396b875700eb6a75",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
