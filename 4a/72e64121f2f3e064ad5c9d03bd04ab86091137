@@ -1,0 +1,25 @@
+runtime/onboarding.py
+  s_655532ed3c4512::t_aadb7ba50f41f0 660-760
+  s_655532ed3c4512::t_799fe62f05cceb 348-361
+  s_655532ed3c4512::t_f1f110cfa718c6 639-640
+test_reuse_exact_fileplan.py
+  s_655532ed3c4512::t_cf863795bb1f1f 43-44,176,187,198
+  s_655532ed3c4512::t_02667668f15879 141-143
+  s_655532ed3c4512::t_39e636e9c05006 1-42,45-140,144-175,177-186,188-197,199-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4a72e64121f2f3e064ad5c9d03bd04ab86091137",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
