@@ -190,7 +190,7 @@ class AssetPassOutcomeTests(unittest.TestCase):
                                            "message": result["message"],
                                            "log_dir": str(self.run_dir)})
         self.assertEqual(state["investigation"]["status"], "assets_collected")
-        self.assertIn("非 Hook 接入", state["investigation"]["label"])
+        self.assertEqual(state["investigation"]["label"], "资产初查完成")
         self.assertEqual(state["hook_state"]["status"], "not_installed")
         self.assertFalse(state["hook_state"]["verified"])
         self.assertTrue(all(item["status"] == "not_collected" for item in state["assets"].values()))

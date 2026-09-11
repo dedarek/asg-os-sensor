@@ -115,6 +115,7 @@ class AnalystEvidenceTests(unittest.TestCase):
             "exe": lambda self: "/usr/bin/runtime",
             "cmdline": lambda self: ["runtime"],
             "cwd": lambda self: "/",
+            "environ": lambda self: {},
             "parent": lambda self: None,
             "children": lambda self, recursive=False: [],
             "open_files": lambda self: [],

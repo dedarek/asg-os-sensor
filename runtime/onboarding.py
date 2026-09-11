@@ -389,8 +389,17 @@ def plan_from_recipe(struct: dict[str, Any], recipe: dict[str, Any], match_statu
 
 
 def authorization_from_environment(workspace: str | None) -> dict[str, Any]:
+    roots = os.environ.get('ASG_ONBOARDING_WORKSPACE_ROOTS', '').strip()
+    in_scope = True
+    if roots:
+        in_scope = False
+        if workspace:
+            resolved = Path(workspace).resolve()
+            for root in roots.split(os.pathsep):
+                if root and (resolved == Path(root).resolve() or Path(root).resolve() in resolved.parents):
+                    in_scope = True
     return {
-        "approved": os.environ.get("ASG_ONBOARDING_AUTHORIZED", "0").strip() == "1"
+        "approved": in_scope and os.environ.get("ASG_ONBOARDING_AUTHORIZED", "0").strip() == "1"
         and os.environ.get("ASG_ONBOARDING_AUTO_INSTALL", "0").strip() == "1",
         "scope": os.environ.get("ASG_ONBOARDING_SCOPE", "").strip(),
         "workspace": workspace,

@@ -32,7 +32,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
-from runtime import analyzer, matcher, onboarding, investigation_findings
+from runtime import analyzer, matcher, onboarding, investigation_findings, autonomous_pipeline
+from runtime.observation_registry import Registry
 from runtime.status import presentation, DISABLED_REASON
 from runtime.learned_presentation import hook_state as learned_hook_state
 from runtime.tool_transport_health import ToolTransportHealth
@@ -593,6 +594,10 @@ def _read_file_observation_snapshot() -> dict[str, Any]:
                 "message": "观测文件源读取失败: %s" % type(exc).__name__}
 
 
+def _observation_registry():
+    return Registry(Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard'))))
+
+
 def _observation_pointer_path():
     return Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard'))) / 'active_observation.json'
 
@@ -615,6 +620,7 @@ def _wire_observe_config(result, target, *, persist=True):
         pointer = _observation_pointer_path()
         pointer.parent.mkdir(parents=True, exist_ok=True)
         _atomic(pointer, json.dumps({'config_path': path, 'target': expected}).encode())
+    _observation_registry().register(path, expected)
     OBSERVE_CONFIG = path
     OBSERVE_CONFIG_ERROR = ''
     return True
@@ -854,6 +860,17 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
         print(f"[Analyst Unavailable PID={pid}] {message}", file=sys.stderr)
         return
 
+    phase = os.environ.get('ASG_INVESTIGATION_PHASE', '')
+    if autonomous_pipeline.enabled():
+        exact = matcher.classify(struct).get('status') == 'exact'
+        phase = autonomous_pipeline.next_phase(instance_id, exact=exact)
+        if force and phase is None:
+            phase = 'assets'
+        if phase is None:
+            with INVESTIGATION_LOCK:
+                INVESTIGATING_INSTANCES.pop(instance_id, None)
+            return
+    selected_recipe = (ROOT / 'recipes' / ('runtime_assets.yaml' if phase == 'assets' else 'runtime_hook_analyst.yaml')) if autonomous_pipeline.enabled() else RECIPE
     lifecycle: dict[str, Any] = {}
     try:
         run_dir = Path(os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard"))) / f"pid_{pid}_{int(time.time() * 1000)}"
@@ -868,6 +885,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
         stream_file.touch()
         lifecycle = {
             "status": "running",
+            "phase": phase,
             "started_at": iso(),
             "ended_at": None,
             "target": {"pid": int(pid), "create_time": create_time},
@@ -882,7 +900,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             "resume": ({
                 "status": "continuing",
                 "source": str(resume_from),
-                "automatic_continuation": False,
+                "automatic_continuation": autonomous_pipeline.enabled() and not force,
                 "details": resume_details,
             } if resume_from is not None else {
                 "status": "available_from_saved_evidence",
@@ -928,7 +946,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             extension = 'asg-runtime-tools:' + shlex.join([sys.executable, '-B', str(ROOT / 'runtime' / 'analyst_tools.py')])
             cmd = [
                 goose_bin, "run", "--no-profile", "--no-session",
-                "--recipe", str(RECIPE),
+                "--recipe", str(selected_recipe),
                 "--params", f"target_pid={pid}",
                 "--provider", route["provider"],
                 "--model", route["model"],
@@ -942,7 +960,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
 
             env = os.environ.copy()
             env.update(build_goose_env(route, key, pid))
-            env.update(ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
+            env.update(ASG_INVESTIGATION_PHASE=phase or "", ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
                        ASG_AUDIT_DIR=str(run_dir), ASG_RECIPE_DIR=str(recipes_dir),
                        ASG_TARGET_STREAM_FILE=str(stream_file),
                        ASG_FINDINGS_FILE=str(run_dir / "investigation_findings.json"))
@@ -1077,7 +1095,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             elapsed_ms = int((time.time() - t0) * 1000)
 
             # 检查是否成功产出 candidate.json
-            if (os.environ.get('ASG_INVESTIGATION_PHASE') == 'assets'
+            if (phase == 'assets'
                     and lifecycle.get('end_reason') == 'completed'):
                 from runtime.asset_pass import outcome as asset_pass_outcome
                 checkpoint = asset_pass_outcome(run_dir, {'pid': pid, 'create_time': create_time}, cp.returncode)
@@ -1091,6 +1109,10 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                         {'pid': pid, 'create_time': create_time}, 'asset_checkpoint_saved',
                         {'run_dir': str(run_dir), 'status': checkpoint['status'],
                          'compatibility': struct.get('compatibility')})
+                    if autonomous_pipeline.enabled():
+                        identity = checkpoint['partial_findings'].get('findings', {}).get('identity')
+                        autonomous_pipeline.save(instance_id, 'assets', run_dir,
+                            infrastructure=_agent_classification(identity)['status'] == 'infrastructure')
                     return
 
             candidate_file = recipes_dir / "candidate.json"
@@ -1135,6 +1157,8 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                                                  else f"已保存候选配方 {entry.get('id')}（{hook_text}），接入链状态: {install_result.get('status')}",
                                                  run_dir, {**onboarding_details, "lifecycle": deepcopy(lifecycle),
                                                            **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
+                    if autonomous_pipeline.enabled():
+                        autonomous_pipeline.save(instance_id, 'hook', run_dir, fingerprint_id=entry.get('id'))
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
                     _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir,
@@ -1177,7 +1201,8 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             print(f"[Analyst Error PID={pid}] {exc}", file=sys.stderr)
         finally:
             with INVESTIGATION_LOCK:
-                INVESTIGATION_RETRY_AT[instance_id] = now() + GOOSE_RETRY_COOLDOWN_S
+                phase_complete = autonomous_pipeline.enabled() and phase == 'assets' and autonomous_pipeline.read(instance_id).get('assets')
+                INVESTIGATION_RETRY_AT[instance_id] = now() + (0 if phase_complete else GOOSE_RETRY_COOLDOWN_S)
                 INVESTIGATING_INSTANCES.pop(instance_id, None)
             with STATE_LOCK:
                 SCAN_STATE["active_investigations"].pop(pid, None)
@@ -1202,7 +1227,7 @@ def _enqueue_investigation(pid: int, instance_id: str, create_time: float | None
         if instance_id in INVESTIGATING_INSTANCES or instance_id in INVESTIGATION_QUEUED:
             return "duplicate"
         previous = INVESTIGATION_RESULTS.get(instance_id)
-        if not force and previous is not None and previous.get("status") in ("succeeded", "reused", "assets_collected", "partial"):
+        if not autonomous_pipeline.enabled() and not force and previous is not None and previous.get("status") in ("succeeded", "reused", "assets_collected", "partial"):
             return "duplicate"  # 已有成功调查，防止重复历史调查
         if not force and now() < INVESTIGATION_RETRY_AT.get(instance_id, 0):
             return "duplicate"
@@ -1305,8 +1330,17 @@ def _dispatch_worker(task: dict[str, Any]) -> None:
         except Exception as exc:
             print(f"[Analyze Error PID={pid}] {exc}", file=sys.stderr)
             struct = {"pid": pid, "create_time": task.get("create_time")}
+        resume_from = None
+        if autonomous_pipeline.enabled() and not task.get('force'):
+            previous = INVESTIGATION_RESULTS.get(instance_id, {})
+            expected_phase = autonomous_pipeline.next_phase(instance_id,
+                exact=matcher.classify(struct).get('status') == 'exact')
+            if previous.get('status') in ('failed', 'timeout') and previous.get('lifecycle', {}).get('phase') == expected_phase:
+                saved_run = previous.get('log_dir')
+                if saved_run and Path(saved_run).is_dir():
+                    resume_from = Path(saved_run)
         _execute_investigation(pid, struct, instance_id, task.get("create_time"),
-                               force=task.get("force", False))
+                               force=task.get("force", False), resume_from=resume_from)
     except Exception as exc:
         print(f"[Investigation Dispatcher] {type(exc).__name__}: {exc}", file=sys.stderr)
     finally:
@@ -1355,6 +1389,11 @@ def scan_agents_once():
     sensor = Sensor(policies)
     threshold = int(policies.get("agent_score_threshold", 50))
     observation_snapshot = read_observation_snapshot()
+    observation_snapshots = _observation_registry().snapshots()
+    # Preserve the legacy receiver until it has been migrated to file bindings.
+    legacy_id = observation_snapshot.get('instance_id')
+    if legacy_id and legacy_id not in observation_snapshots:
+        observation_snapshots[legacy_id] = observation_snapshot
     
     found_agents = []
     
@@ -1464,6 +1503,7 @@ def scan_agents_once():
                 display_name = f"未知 Agent ({name})"
 
             instance_id = f"{pid}:{pinfo.get('create_time')}"
+            instance_observation = observation_snapshots.get(instance_id, {'status': 'not_configured'})
             is_investigating = False
             with INVESTIGATION_LOCK:
                 is_investigating = (instance_id in INVESTIGATING_INSTANCES)
@@ -1503,6 +1543,19 @@ def scan_agents_once():
                     if saved_findings and saved_findings.get("findings"):
                         partial_findings = saved_findings
                         break
+            if autonomous_pipeline.enabled():
+                asset_run = autonomous_pipeline.read(instance_id).get('assets', {}).get('run_dir')
+                baseline = _load_partial_findings(Path(asset_run), {'pid': pid, 'create_time': pinfo.get('create_time')}) if asset_run else None
+                if baseline:
+                    merged = deepcopy(baseline)
+                    current_findings = (partial_findings or {}).get('findings', {})
+                    if current_findings.get('identity'):
+                        merged.setdefault('findings', {})['identity'] = current_findings['identity']
+                    assets = merged.setdefault('findings', {}).setdefault('assets', {})
+                    for key, value in current_findings.get('assets', {}).items():
+                        if key not in assets or value.get('status') in ('collected', 'empty'):
+                            assets[key] = value
+                    partial_findings = merged
             partial_identity = ((partial_findings or {}).get("findings") or {}).get("identity") \
                 if isinstance(partial_findings, dict) else None
             if (not local_identity and not matched_fp and isinstance(partial_identity, dict)
@@ -1557,7 +1610,7 @@ def scan_agents_once():
             adapter_info['historical_recipe'] = recipe_obj
             adapter_info['onboarding'] = onboarding_view
             adapter_info['observation_evidence'] = observation_for_instance(
-                observation_snapshot, pid, pinfo.get('create_time'))
+                instance_observation, pid, pinfo.get('create_time'))
             for field in adapter_info['assets']:
                 adapter_info[field] = None
             if log_dir:
@@ -1610,18 +1663,36 @@ def scan_agents_once():
                         'label': '工具事件观测已验收；语义阻断未实现',
                     }
             live_observation = adapter_info.get('observation_evidence', {})
-            if OBSERVE_CONFIG and live_observation.get('status') == 'observed':
+            if live_observation.get('status') == 'observed' and instance_observation.get('paired_calls'):
                 adapter_info['assets']['child_executions'] = {
                     'status': 'collected', 'label': '持续读取事件文件',
-                    'value': {'events': observation_snapshot.get('recent_events', []),
-                              'paired_calls': observation_snapshot.get('paired_calls', []),
+                    'value': {'events': instance_observation.get('recent_events', []),
+                              'paired_calls': instance_observation.get('paired_calls', []),
                               'live_file_source': True,
-                              'last_event_time': observation_snapshot.get('last_event_time'),
-                              'target_alive': observation_snapshot.get('target_alive')},
+                              'last_event_time': instance_observation.get('last_event_time'),
+                              'target_alive': instance_observation.get('target_alive')},
                     'source': 'external_config: target-bound JSONL',
                     'message': '动态读取 Hook 日志',
                 }
+            if instance_observation.get('target_alive') is True and instance_observation.get('health', {}).get('loaded_observed'):
+                health = instance_observation['health']
+                observing = health.get('status') == 'observing'
+                adapter_info['hook_state'] = {'status': 'observing' if observing else 'loaded',
+                    'label': '工具事件已接通' if observing else '已加载，等待工具活动',
+                    'verified': True, 'source': 'instance_event_file'}
+            elif learned_installation.get('installed') or learned_installation.get('status') in ('installed', 'bound', 'rebound', 'activation_rebound', 'installed_no_observation'):
+                adapter_info['hook_state'] = {'status': 'installed_pending_activation',
+                    'label': '已安装，等待加载事件（可能需下次启动）', 'verified': False}
+            if autonomous_pipeline.enabled():
+                adapter_info['pipeline'] = {'next_phase': autonomous_pipeline.next_phase(instance_id, exact=is_matched),
+                    'completed': autonomous_pipeline.read(instance_id)}
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
+            if instance_observation.get('target_alive') is True and instance_observation.get('recent_events'):
+                latest = instance_observation['recent_events'][-1]
+                last_msg = {'source': 'live_hook', 'event_type': latest['event_type'],
+                    'ts': time.strftime('%H:%M:%S', time.localtime(latest['timestamp'])),
+                    'detail': {'pid': pid, 'paired_tools': [x['tool_name'] for x in instance_observation.get('paired_calls', [])[-10:]]}}
+                adapter_info['sink_state'] = {'status': 'connected', 'label': '本实例 Hook 事件流已接通'}
             
             found_agents.append({
                 "pid": pid,
@@ -1647,7 +1718,12 @@ def scan_agents_once():
             with INVESTIGATION_LOCK:
                 retry_ready = now() >= INVESTIGATION_RETRY_AT.get(instance_id, 0)
             target_allowed = not os.environ.get('ASG_ANALYST_TARGET_PID') or str(pid) == os.environ['ASG_ANALYST_TARGET_PID']
-            if target_allowed and AUTONOMOUS_ANALYSIS_ENABLED and (not is_matched or needs_deep_governance) and not is_investigating and retry_ready:
+            if autonomous_pipeline.enabled():
+                needs_deep_governance = autonomous_pipeline.next_phase(instance_id, exact=is_matched) is not None
+                should_investigate = needs_deep_governance
+            else:
+                should_investigate = not is_matched or needs_deep_governance
+            if target_allowed and AUTONOMOUS_ANALYSIS_ENABLED and should_investigate and not is_investigating and retry_ready:
                 _schedule_investigation(pid, struct)
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -1706,6 +1782,7 @@ def scan_agents_once():
         SCAN_STATE["scan_count"] += 1
         SCAN_STATE["agents"] = final_agents
         SCAN_STATE["fingerprints_count"] = fp_count
+        SCAN_STATE['observation_instances'] = observation_snapshots
         SCAN_STATE["observation_adapter"] = {
             key: value for key, value in observation_snapshot.items()
             if key != "capabilities"
@@ -2084,6 +2161,7 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
 </div>
 
+<details style="margin-top:24px"><summary>历史接入实例与事件</summary><div id="observation-history" style="padding:12px"></div></details>
 <div class="footer">
   <div>OS-Level Zero-Prior Agent Governance</div>
   <div>·</div>
@@ -2115,7 +2193,9 @@ function assetText(adapter, key) {
   let brief = '';
   if (status === 'collected') {
     if (key === 'model_routing') {
-      brief = rows.slice(0,3).map(x => readableLine('模型',x.model || x.model_name) + readableLine('网关',x.base_url || x.baseURL || x.endpoint) + readableLine('提供方',x.name || x.provider)).join('');
+      const fields = rows.filter(x => x && x.value !== undefined && /model|base.?url|endpoint|provider/i.test(x.field || x.name || '') && !/key|token|secret/i.test(x.field || x.name || ''));
+      brief = fields.slice(0,6).map(x => readableLine(x.field || x.name, typeof x.value === 'object' ? JSON.stringify(x.value) : x.value)).join('');
+      if (!brief) brief = rows.slice(0,3).map(x => readableLine('模型',x.model || x.model_name) + readableLine('网关',x.base_url || x.baseURL || x.endpoint) + readableLine('提供方',x.name || x.provider)).join('');
     } else if (key === 'system_prompt_rules') {
       brief = rows.slice(0,3).map(x => {
         if (typeof x === 'string') return readableLine('规则', x);
@@ -2260,8 +2340,8 @@ function renderTools(tools) {
 }
 
 function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  if (str === undefined || str === null) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function formatUptime(sec) {
@@ -2409,11 +2489,19 @@ async function updateUI() {
     document.getElementById('scan-interval').innerText = `${data.scan_interval || 30}s`;
     document.getElementById('fp-count').innerText = data.fingerprints_count;
     document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
+    const bindings = Object.values(data.observation_instances || {});
+    const aliveBindings = bindings.filter(x => x.target_alive === true);
+    const activeBindings = aliveBindings.filter(x => (x.health || {}).loaded_observed);
     const observe = data.observation_adapter || {};
     const observeHealth = observe.health ? ` · ${observe.health.status}` : '';
     const observePid = observe.instance_pid ? ` · 绑定 PID ${observe.instance_pid}` : '';
-    document.getElementById('observe-status').innerText = (observe.status || '未知') + observeHealth + observePid;
+    document.getElementById('observe-status').innerText = bindings.length ? `已加载 ${activeBindings.length} · 待加载 ${aliveBindings.length - activeBindings.length} · 历史 ${bindings.length - aliveBindings.length}` : '尚无实例接入';
     
+    const historyPanel = document.getElementById('observation-history');
+    if (historyPanel) historyPanel.innerHTML = bindings.filter(x => x.target_alive === false).map(x =>
+      `<div style="margin-bottom:8px">PID ${escapeHtml(x.instance_pid)} · 已退出 · 有效事件 ${escapeHtml((x.events || {}).valid || 0)} · 配对工具调用 ${(x.paired_calls || []).length}</div>`
+    ).join('') || '暂无已退出的接入实例';
+
     currentAgentsData = data.agents || [];
     
     // 更新全局 KPI 指标
@@ -2499,7 +2587,8 @@ async function updateUI() {
       const statusHtml = '<div class="asset-view status-overview">' +
         readableLine('调查', investigation.label || '未调度') +
         readableLine('指纹', ({exact:'兼容命中',similar:'相似，待调查',miss:'未命中'}[a.adapter.match_status] || '未判断') + (a.adapter.fingerprint_revision ? ' · 版本 ' + a.adapter.fingerprint_revision : '')) +
-        readableLine('Hook', observationEvidence.status === 'observed' && observationEvidence.target_alive === true ? '已加载 · 工具事件已接通' : a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
+        readableLine('Hook', observationEvidence.loaded_observed && observationEvidence.target_alive === true ? (observationEvidence.health_status === 'observing' ? '已加载 · 工具事件已接通' : '已加载，等待工具活动') : a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
+        (a.adapter.pipeline ? readableLine('自动流程', a.adapter.pipeline.next_phase === 'assets' ? '等待资产调查' : a.adapter.pipeline.next_phase === 'hook' ? '等待接入学习' : '调查阶段完成，接入状态见 Hook') : '') +
         readableDetails('status:'+a.pid,'查看状态说明',{调查:investigation.message || '',分类:classification.label,观测:observationText,接入:onboardingText}) + '</div>';
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
@@ -2516,7 +2605,7 @@ async function updateUI() {
         if (typeof msgDetail === 'object') msgDetail = JSON.stringify(msgDetail, null, 2);
         semanticHtml = `
           <div>
-            <div class="section-label">导入事件（不证明当前 Hook 生效）</div>
+            <div class="section-label">${a.last_message.source === 'live_hook' ? '本实例最新 Hook 活动' : '导入事件（不证明当前 Hook 生效）'}</div>
             <div class="msg-box">
               <div class="msg-header">
                 <span>事件: ${a.last_message.event_type}</span>
@@ -2927,8 +3016,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
 def main():
     host = os.environ.get("ASG_HOST", "127.0.0.1").strip() or "127.0.0.1"
     port = _env_int("ASG_PORT", 8080)
-    print("[Monitor] 执行首次进程环境扫描...")
-    scan_agents_once()
+    print("[Monitor] 后台执行首次进程环境扫描...")
     
     t = threading.Thread(target=background_scanner_loop, name="scanner-thread", daemon=True)
     t.start()
