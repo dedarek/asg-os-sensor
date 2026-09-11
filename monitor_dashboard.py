@@ -1878,6 +1878,22 @@ HTML_PAGE = """<!DOCTYPE html>
 
   .inspect-trigger { cursor: pointer; border-bottom: 1px dotted rgba(56, 189, 248, 0.4); transition: color 0.2s; }
   .inspect-trigger:hover { color: #38bdf8 !important; }
+
+/* Readable summaries keep diagnostic payloads available, but out of the overview. */
+.asset-view {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#dbe5f0; font-size:13px; line-height:1.6; min-width:0;}
+.asset-badge {display:inline-block; padding:1px 7px; border:1px solid #405064; border-radius:4px; color:#b9c7d9; font-size:11px; margin-bottom:5px;}
+.asset-found {color:#7dd3c0; border-color:#28584f; background:#132e2b;}
+.asset-note {color:#93a4b8; font-size:12px; margin:2px 0 7px;}
+.readable-line {display:grid; grid-template-columns:66px minmax(0,1fr); gap:10px; margin:3px 0;}
+.readable-line>span {color:#92a4b9; font-weight:400;}
+.readable-line>strong {font-weight:500; overflow-wrap:anywhere; color:#e2eaf4;}
+.readable-details {margin-top:8px; color:#91a5bf; font-weight:400;}
+.readable-details>summary {cursor:pointer; font-size:12px; padding:3px 0; width:fit-content;}
+.readable-details>summary:focus-visible {outline:2px solid #38bdf8; outline-offset:3px;}
+.readable-details pre {white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; background:#0b1320; padding:12px; border:1px solid #2b394e; border-radius:5px; color:#b9c9da; font:11px/1.7 ui-monospace,monospace;}
+.adapter-row {align-items:flex-start; padding-top:7px; padding-bottom:7px;}
+.adapter-val {min-width:0;}
+@media(max-width:600px){.adapter-row{flex-direction:column;gap:6px}.adapter-label{width:auto;flex-basis:auto}.adapter-val{width:100%}}
 </style>
 </head>
 <body>
@@ -1953,22 +1969,68 @@ HTML_PAGE = """<!DOCTYPE html>
 </div>
 
 <script>
+const readableOpen = new Set();
+function rememberReadable(el) {
+  if (!el.isConnected) return;
+  if (el.open) readableOpen.add(el.dataset.readable);
+  else readableOpen.delete(el.dataset.readable);
+}
+function readableDetails(id, title, data) {
+  return `<details class="readable-details" data-readable="${escapeHtml(id)}" ${readableOpen.has(id) ? 'open' : ''} ontoggle="rememberReadable(this)"><summary>${escapeHtml(title)}</summary><pre>${escapeHtml(typeof data === 'string' ? data : JSON.stringify(data, null, 2))}</pre></details>`;
+}
+function readableLine(label, value) {
+  if (value === undefined || value === null || value === '') return '';
+  return `<div class="readable-line"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`;
+}
 function assetText(adapter, key) {
-  const item = (adapter.assets || {})[key] || {label: '尚未采集'};
-  const source = item.sources && item.sources.length ? item.sources.join(', ') : item.source;
-  return escapeHtml(item.label + (item.message ? '：' + item.message : '') + (source ? ' [来源: ' + source + ']' : '') +
-    (item.value ? ' · ' + JSON.stringify(item.value) : '') +
-    (Array.isArray(item.uncertainty) && item.uncertainty.length ? ' · 范围/限制: ' + item.uncertainty.join('；') : ''));
+  const item = (adapter.assets || {})[key] || {status:'not_collected', label:'尚未采集'};
+  const status = item.status || 'not_collected';
+  const v = item.value;
+  const rows = v && typeof v === 'object' && Array.isArray(v.items) ? v.items : Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : [];
+  const labels = {collected:'已查到', empty:'检查范围内未发现', not_collected:'尚未调查', unknown:'待进一步确认', failed:'本项采集失败', unsupported:'当前不支持'};
+  let brief = '';
+  if (status === 'collected') {
+    if (key === 'model_routing') {
+      brief = rows.slice(0,3).map(x => readableLine('模型',x.model || x.model_name) + readableLine('网关',x.base_url || x.baseURL || x.endpoint) + readableLine('提供方',x.name || x.provider)).join('');
+    } else if (key === 'system_prompt_rules') {
+      brief = rows.slice(0,3).map(x => {
+        if (typeof x === 'string') return readableLine('规则', x);
+        if (x.type === 'runtime_permission_policy') {
+          let permissions = [];
+          for (const m of String(x.policy || '').matchAll(/permission\\s*:\\s*"([^"]+)"[^}]*?action\\s*:\\s*"([^"]+)"/g)) {
+            permissions.push((m[1] === '*' ? '其他操作' : m[1]) + '：' + ({allow:'允许',deny:'拒绝',ask:'需确认'}[m[2]] || m[2]));
+          }
+          return readableLine('会话权限', permissions.length ? permissions.join('；') : '已记录权限策略') + readableLine('依据','运行日志中的会话记录');
+        }
+        return readableLine('规则',x.name || x.file || x.summary || x.type);
+      }).join('');
+    } else if (key === 'child_executions') {
+      const events = v && v.events || [];
+      const calls = v && v.paired_calls || [];
+      brief = readableLine('工具调用',calls.length ? calls.map(x=>x.tool_name || '未命名工具').join('、') + ' · ' + calls.length + ' 次前后配对' : '已记录执行事件') + readableLine('时效','历史验收快照，非持续健康状态');
+    } else if (key === 'network_surface') {
+      const ports = rows.filter(x=>x.status === 'LISTEN').map(x=>x.local_port).filter(Boolean);
+      brief = readableLine('监听端口',ports.length ? ports.join('、') : '见端点详情') + readableLine('范围','目标进程的瞬时快照');
+    } else if (key === 'parsed_config') {
+      brief = rows.slice(0,3).map(x => readableLine('配置文件',x.file || x.name)).join('');
+    } else {
+      brief = rows.slice(0,3).map(x => readableLine('名称',typeof x === 'string' ? x : x.name || x.id || x.summary)).join('');
+    }
+    if (!brief) brief = readableLine('结果',typeof v === 'string' ? v : '已保存结构化信息，请展开查看');
+  }
+  const provenance = v && v.configuration_status;
+  const note = provenance === 'configured' ? '配置中声明，未验证实际使用' : provenance === 'observed' ? '有运行记录支持，不代表持续生效' : status === 'empty' ? '不代表全局不存在；检查范围见详情' : '';
+  const refs = item.evidence_refs || item.sources || [];
+  const id = key + ':' + (refs.join(',') || item.source || status);
+  const details = status === 'not_collected' ? '' : readableDetails(id,'查看依据与原始详情', {说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []});
+  return `<div class="asset-view"><span class="asset-badge ${status === 'collected' ? 'asset-found' : ''}">${escapeHtml(labels[status] || item.label || '未知')}</span>${note ? `<div class="asset-note">${escapeHtml(note)}</div>` : ''}${brief}${details}</div>`;
 }
 function findingText(finding) {
-  if (!finding) return '尚未得到 Goose 身份结论';
-  const value = finding.value || {};
-  const name = typeof value === 'object' ? (value.name || '未识别') : value;
-  const runtime = typeof value === 'object' ? (value.runtime || '运行时未知') : '';
-  const refs = Array.isArray(finding.evidence_refs) ? finding.evidence_refs.join(', ') : '';
-  return escapeHtml((finding.status === 'identified' ? name : '身份未知') +
-    (runtime ? ' · ' + runtime : '') + (refs ? ' · 证据: ' + refs : '') +
-    (Array.isArray(finding.uncertainty) && finding.uncertainty.length ? ' · 范围/限制: ' + finding.uncertainty.join('；') : ''));
+  if (!finding) return '<span class="asset-note">尚未确认身份</span>';
+  const v = finding.value || {};
+  const refs = finding.evidence_refs || [];
+  const name = typeof v === 'object' ? v.name || '未识别' : v;
+  return `<div class="asset-view">${readableLine('名称',name)}${readableLine('版本',v.version)}${readableDetails('identity:'+refs.join(','),'查看身份判断依据',finding)}</div>`;
 }
 function classificationText(cls) {
   if (!cls) return '候选/待确认';
@@ -2310,10 +2372,11 @@ async function updateUI() {
                   : '接入链: ' + (plan.status || '尚未生成计划');
       
       const classification = (a.adapter && a.adapter.agent_classification) || {};
-      const statusHtml = escapeHtml('分类: ' + (classification.label || '候选/待确认') +
-        (classification.roles && classification.roles.length ? ' (' + classification.roles.join('/') + ')' : '') +
-        ' | ' + investigation.label + ' · ' + (investigation.message || '') +
-        ' | ' + ({exact:'精确匹配（仅构建与启动约束）', similar:'相似匹配（需差异调查）', miss:'未命中指纹'}[a.adapter.match_status] || '未命中指纹') + ' | 配方 revision: ' + (a.adapter.fingerprint_revision || '无') + ' | Hook: ' + a.adapter.hook_state.label + ' | ' + observationText + ' | ' + onboardingText);
+      const statusHtml = '<div class="asset-view status-overview">' +
+        readableLine('调查', investigation.label || '未调度') +
+        readableLine('指纹', ({exact:'兼容命中',similar:'相似，待调查',miss:'未命中'}[a.adapter.match_status] || '未判断') + (a.adapter.fingerprint_revision ? ' · 版本 ' + a.adapter.fingerprint_revision : '')) +
+        readableLine('Hook', a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
+        readableDetails('status:'+a.pid,'查看状态说明',{调查:investigation.message || '',分类:classification.label,观测:observationText,接入:onboardingText}) + '</div>';
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
       const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
@@ -2394,21 +2457,21 @@ async function updateUI() {
               <div class="adapter-group-title">🏢 身份与运行环境</div>
               <div class="adapter-row">
                 <span class="adapter-label">调查 / 指纹 / Hook:</span>
-                <span class="adapter-val">${statusHtml}</span>
+                <div class="adapter-val">${statusHtml}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">Goose 部分身份:</span>
-                <span class="adapter-val">${partialIdentityHtml}</span>
+                <div class="adapter-val">${partialIdentityHtml}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">宿主与工作区:</span>
-                <span class="adapter-val" style="color: #38bdf8; font-family: monospace;">${a.adapter.host_platform} · ${a.adapter.workspace_cwd || '未知工作区'}</span>
+                <div class="adapter-val" style="color: #38bdf8; font-family: monospace;">${a.adapter.host_platform} · ${a.adapter.workspace_cwd || '未知工作区'}</div>
               </div>
 
               <div class="adapter-group-title">🧠 模型与治理策略</div>
               <div class="adapter-row">
                 <span class="adapter-label">模型与网关端点:</span>
-                <span class="adapter-val" style="color: #34d399; font-family: monospace;">${assetText(a.adapter, 'model_routing')}</span>
+                <div class="adapter-val" style="color: #34d399; font-family: monospace;">${assetText(a.adapter, 'model_routing')}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">可用 Tools / MCP:</span>
@@ -2416,22 +2479,22 @@ async function updateUI() {
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">行规/Prompt 约束:</span>
-                <span class="adapter-val" style="color: #cbd5e1;">${assetText(a.adapter, 'system_prompt_rules')}</span>
+                <div class="adapter-val" style="color: #cbd5e1;">${assetText(a.adapter, 'system_prompt_rules')}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">配置解析提取:</span>
-                <span class="adapter-val inspect-trigger" onclick="openInspector(${a.pid})" style="color: #cbd5e1;" title="点击展开完整配置">${assetText(a.adapter, 'parsed_config')}</span>
+                <span class="adapter-val">${assetText(a.adapter, 'parsed_config')}</span>
               </div>
 
-              <div class="adapter-row"><span class="adapter-label">Skill:</span><span class="adapter-val">${assetText(a.adapter, 'skills')}</span></div>
+              <div class="adapter-row"><span class="adapter-label">Skill:</span><div class="adapter-val">${assetText(a.adapter, 'skills')}</div></div>
               <div class="adapter-group-title">🌐 执行与通信画像（无数据不能判断安全性）</div>
               <div class="adapter-row">
                 <span class="adapter-label">执行事件（${a.adapter.assets.child_executions.status === 'collected' ? '本实例验收' : '未接入采集'}）:</span>
-                <span class="adapter-val" style="color: #f59e0b; font-family: monospace;">${assetText(a.adapter, 'child_executions')}</span>
+                <div class="adapter-val" style="color: #f59e0b; font-family: monospace;">${assetText(a.adapter, 'child_executions')}</div>
               </div>
               <div class="adapter-row">
                 <span class="adapter-label">网络与监听端点:</span>
-                <span class="adapter-val" style="color: #38bdf8; font-family: monospace;">${assetText(a.adapter, 'network_surface')}</span>
+                <div class="adapter-val" style="color: #38bdf8; font-family: monospace;">${assetText(a.adapter, 'network_surface')}</div>
               </div>
             </div>
           </div>
