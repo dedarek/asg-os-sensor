@@ -88,6 +88,35 @@ RECIPE_SCHEMA = {
                 },
             },
         },
+        "observation_source": {
+            "type": "object",
+            "description": ("How this candidate's own Hook writes its event log: a workspace-relative "
+                            "log_path plus the field/event names it really emits. The target pid and "
+                            "create_time are bound by the executor and must NOT appear here."),
+            "required": ["log_path", "fields"],
+            "additionalProperties": False,
+            "properties": {
+                "log_path": {"type": "string", "minLength": 1,
+                             "description": "Workspace-relative path; must not escape the approved workspace."},
+                "fields": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["event", "pid", "timestamp"],
+                    "properties": {
+                        "event": {"type": "string", "minLength": 1},
+                        "pid": {"type": "string", "minLength": 1},
+                        "timestamp": {"type": "string", "minLength": 1},
+                        "tool": {"type": "string", "minLength": 1},
+                        "call_id": {"type": "string", "minLength": 1},
+                    },
+                },
+                "event_names": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string", "minLength": 1},
+                    "description": "Maps canonical names to the raw names this Hook really writes.",
+                },
+            },
+        },
         "investigation": {
             "type": "object",
             "description": "Evidence-backed identity and asset summary required by the gate.",

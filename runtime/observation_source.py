@@ -19,8 +19,9 @@ from __future__ import annotations
 import json
 import math
 import hashlib
+import os
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
@@ -43,6 +44,12 @@ CANONICAL_EVENTS = ("hook.loaded", "tool.execute.before", "tool.execute.after")
 DEFAULT_FIELDS = {"event": "event", "pid": "pid", "timestamp": "ts",
                   "tool": "tool", "call_id": "callID"}
 BLOCKING_UNSUPPORTED = {"status": "unsupported", "label": "未支持"}
+
+# A candidate may describe how its own Hook writes events, but it may never
+# decide which instance it is bound to: pid/create_time come from the executor.
+DECLARATION_KEYS = ("log_path", "fields", "event_names")
+REQUIRED_FIELD_ROLES = ("event", "pid", "timestamp")
+FORBIDDEN_DECLARATION_KEYS = ("target", "pid", "create_time")
 
 _STATE: dict[str, dict[str, Any]] = {}
 
@@ -76,7 +83,7 @@ def load_config(path: Path | str) -> dict[str, Any]:
     resolved = Path(log_path).expanduser()
     if not resolved.is_absolute():
         raise ValueError("observation config log_path must be absolute")
-    fields = dict(DEFAULT_FIELDS)
+    fields = {} if value.get("mapping_mode") == "explicit" else dict(DEFAULT_FIELDS)
     configured = value.get("fields")
     if configured is not None:
         if not isinstance(configured, dict):
@@ -105,6 +112,110 @@ def load_config(path: Path | str) -> dict[str, Any]:
         "log_path": str(resolved),
         "fields": fields,
         "event_names": event_names,
+    }
+
+
+def _validate_mapping(value: Any, allowed_keys, label: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise ValueError("%s must be an object" % label)
+    result: dict[str, str] = {}
+    for key, name in value.items():
+        if key not in allowed_keys:
+            raise ValueError("unknown %s key: %s (allowed: %s)"
+                             % (label, key, ", ".join(allowed_keys)))
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("%s values must be non-empty strings" % label)
+        result[key] = name.strip()
+    if len(set(result.values())) != len(result):
+        raise ValueError("%s must not map two roles to the same field" % label)
+    return result
+
+
+def validate_declaration(declaration: Any) -> dict[str, Any]:
+    """Validate a candidate's observation-source declaration in isolation.
+
+    The declaration describes how the candidate's own Hook writes its log:
+    a workspace-relative ``log_path`` plus the field/event names it really
+    emits. It must never carry an instance binding; ``pid``/``create_time`` are
+    bound by the executor at install time.
+    """
+    if not isinstance(declaration, dict):
+        raise ValueError("observation_source must be an object")
+    for key in FORBIDDEN_DECLARATION_KEYS:
+        if key in declaration:
+            raise ValueError("observation_source must not declare %s; the executor binds the target instance"
+                             % key)
+    unknown = sorted(set(declaration) - set(DECLARATION_KEYS))
+    if unknown:
+        raise ValueError("unknown observation_source keys: " + ", ".join(unknown))
+    log_path = declaration.get("log_path")
+    if not isinstance(log_path, str) or not log_path.strip():
+        raise ValueError("observation_source.log_path is required")
+    log_path = log_path.strip()
+    if "\\" in log_path or "\x00" in log_path or log_path.startswith("/"):
+        raise ValueError("observation_source.log_path must be workspace-relative")
+    parts = log_path.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("observation_source.log_path must stay inside the workspace")
+    if PurePosixPath(log_path).is_absolute():
+        raise ValueError("observation_source.log_path must be workspace-relative")
+    fields = _validate_mapping(declaration.get("fields"), tuple(DEFAULT_FIELDS), "observation_source.fields")
+    missing = [role for role in REQUIRED_FIELD_ROLES if role not in fields]
+    if missing:
+        raise ValueError("observation_source.fields must declare: " + ", ".join(missing))
+    event_names = {name: name for name in CANONICAL_EVENTS}
+    if declaration.get("event_names") is not None:
+        event_names.update(_validate_mapping(declaration["event_names"], CANONICAL_EVENTS,
+                                             "observation_source.event_names"))
+    return {"log_path": log_path, "fields": fields, "event_names": event_names}
+
+
+def candidate_to_config(declaration: Any, workspace: Path | str, target: dict[str, Any]) -> dict[str, Any]:
+    """Pure conversion: candidate declaration + executor binding -> source config.
+
+    ``workspace`` and ``target`` are supplied by the caller (the executor), never
+    read from the candidate. The produced ``log_path`` is proven to resolve
+    inside the approved workspace before it is returned.
+    """
+    normalized = validate_declaration(declaration)
+    root = Path(workspace).expanduser()
+    if not root.is_absolute():
+        raise ValueError("approved workspace must be an absolute path")
+    root = Path(os.path.abspath(root))
+    if not root.is_dir():
+        raise ValueError("approved workspace must exist")
+    # Only the workspace and its own components are in scope. Ancestors may be
+    # platform aliases (e.g. macOS /var -> /private/var) that abspath keeps
+    # verbatim; the caller passes the approved root as the supervisor sees it.
+    if root.is_symlink():
+        raise ValueError("approved workspace must not be a symlink")
+    if not isinstance(target, dict) or target.get("pid") is None or target.get("create_time") is None:
+        raise ValueError("target binding requires pid and create_time")
+    try:
+        pid = int(target["pid"])
+        create_time = float(target["create_time"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("target binding pid/create_time must be numeric") from exc
+    if pid <= 0:
+        raise ValueError("target binding pid must be positive")
+
+    candidate_path = root.joinpath(*PurePosixPath(normalized["log_path"]).parts)
+    resolved = Path(os.path.abspath(candidate_path))
+    if resolved != root and root not in resolved.parents:
+        raise ValueError("observation_source.log_path escapes the approved workspace")
+    current = resolved.parent
+    while current != root and root in current.parents:
+        if current.is_symlink():
+            raise ValueError("observation_source.log_path crosses a symlink")
+        current = current.parent
+    return {
+        "version": SCHEMA_VERSION,
+        "path": str(root / normalized["log_path"]),
+        "target": {"pid": pid, "create_time": create_time},
+        "log_path": str(resolved),
+        "mapping_mode": "explicit",
+        "fields": dict(normalized["fields"]),
+        "event_names": dict(normalized["event_names"]),
     }
 
 
@@ -211,8 +322,12 @@ def _apply_line(line: str, state: dict[str, Any], config: dict[str, Any]) -> Non
     if canonical == "hook.loaded":
         state["loaded"] = True
     else:
-        call_id = event.get(fields["call_id"])
-        tool = event.get(fields["tool"])
+        # ``tool``/``call_id`` are optional in a candidate declaration: a Hook
+        # that never writes them cannot be correlated. A missing role means the
+        # event cannot be paired, which is invalid, not a reason to invent a name.
+        call_field, tool_field = fields.get("call_id"), fields.get("tool")
+        call_id = event.get(call_field) if call_field else None
+        tool = event.get(tool_field) if tool_field else None
         if not state["loaded"] or not isinstance(call_id, str) or not call_id \
                 or not isinstance(tool, str) or not tool:
             state["invalid"] += 1

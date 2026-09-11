@@ -141,6 +141,15 @@ def validate(recipe, evidence_dir, target=None, known_harness_ids=None):
     # so the model gets an actionable, fixable error inside the tool call.
     validate_evolution_target(recipe, known_harness_ids)
 
+    # A declared observation source must describe only how the Hook writes its
+    # log; it may not name the instance it is bound to (executor owns that).
+    if recipe.get('observation_source') is not None:
+        from runtime import observation_source
+        try:
+            observation_source.validate_declaration(recipe['observation_source'])
+        except ValueError as exc:
+            raise ValueError('Invalid observation_source: ' + str(exc)) from exc
+
     refs = recipe['evidence_refs']
     evidence = []
     seen_target = None

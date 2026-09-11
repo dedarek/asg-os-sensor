@@ -39,6 +39,12 @@ prompt: |
   Use hook.method="file_plan" only for a complete file-based mechanism supported by evidence. Generate your
   own real Hook contents from observed interfaces, not placeholders or a copied ASG template. Never write
   outside the evidenced workspace. This is a candidate, not proof of installation or observation.
+  If your Hook appends events to a log file, also declare observation_source so the executor can bind it:
+  {log_path: workspace-relative path of the log your Hook writes, fields: the ACTUAL top-level key names
+  your Hook emits for event/pid/timestamp (and tool/call_id if you write them), event_names: optional map
+  from canonical names hook.loaded/tool.execute.before/tool.execute.after to the raw names you really
+  write}. Declare the names you truly emit, not a default template. Do NOT put pid or create_time in
+  observation_source: the executor binds the target instance, and any target you name is rejected.
   If evidence remains insufficient, persist what is known and a concrete open question rather than cycling
   through every tool or treating absent evidence as proof of impossibility. Do not fabricate a plan to finish.
   Finish after propose_recipe succeeds. The supervisor separately checks, installs and tests actual events.
