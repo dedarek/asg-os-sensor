@@ -1,0 +1,23 @@
+monitor_dashboard.py
+  s_655532ed3c4512::t_58a36b954a12be 1222-1238
+  s_655532ed3c4512::t_1f13987b7f10d8 1642-1646
+test_asset_followup_gate.py
+  s_655532ed3c4512::t_dd66f350ed186e 1-73,78,81-138
+  s_655532ed3c4512::t_ff7162cf27ca85 74-77,79-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "505ed1dc4bfd773b10fd0124c04a9d35e5872bb3",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
