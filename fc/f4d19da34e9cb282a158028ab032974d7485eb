@@ -1,0 +1,25 @@
+docs/stage1/WORKLOG.md
+  s_1512a994888af5::t_504e2b663a9362 452-455
+monitor_dashboard.py
+  s_1512a994888af5::t_f7030d31236eef 1597,1622,2090,2134,2146,2386,2448,2467,2477,2483,2559,2614
+runtime/status.py
+  s_1512a994888af5::t_807ff6f8398934 61
+test_readable_assets.py
+  s_1512a994888af5::t_e109e9b5f03975 22,32-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "fcf4d19da34e9cb282a158028ab032974d7485eb",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
