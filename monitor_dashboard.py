@@ -1982,7 +1982,7 @@ HTML_PAGE = """<!DOCTYPE html>
     box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
   }
   
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 22px; align-items: stretch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); gap: 22px; align-items: stretch; }
   .card { 
     background: var(--card-bg); 
     border: 1px solid var(--card-border); 
@@ -2164,6 +2164,40 @@ HTML_PAGE = """<!DOCTYPE html>
 .adapter-row {align-items:flex-start; padding-top:7px; padding-bottom:7px;}
 .adapter-val {min-width:0;}
 @media(max-width:600px){.adapter-row{flex-direction:column;gap:6px}.adapter-label{width:auto;flex-basis:auto}.adapter-val{width:100%}}
+
+  .overview-card { background:var(--card-bg);border:1px solid var(--card-border);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0; }
+  .overview-head { display:flex;justify-content:space-between;gap:16px;align-items:flex-start; }
+  .overview-head h3 { font-size:20px;margin:4px 0 8px;letter-spacing:-.3px;overflow-wrap:anywhere; }
+  .eyebrow { font-size:10px;font-weight:700;letter-spacing:1.4px;color:var(--text-muted);text-transform:uppercase; }
+  .overview-meta { color:var(--text-muted);font-size:12px; }
+  .role-pill { border:1px solid #304456;color:#b8cbd8;border-radius:6px;padding:5px 9px;font-size:11px;white-space:nowrap; }
+  .status-tiles { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px; }
+  .status-tile { text-align:left;cursor:pointer;background:#101a27;border:1px solid #283546;border-radius:9px;padding:13px 12px;color:var(--text-primary);min-width:0; }
+  .status-tile span { display:block;font-size:11px;color:var(--text-muted);margin-bottom:9px; }
+  .status-tile strong { display:block;font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere; }
+  .status-tile small { display:block;font-size:10px;color:#6f849a;margin-top:8px; }
+  .status-tile.good { border-top:2px solid #5bba9a; }
+  .status-tile.wait { border-top:2px solid #c3a66b; }
+  .status-tile:hover,.asset-tile:hover { border-color:#7b93aa;background:#142233; }
+  button:focus-visible { outline:2px solid #9ed8e8;outline-offset:3px; }
+  .asset-tiles { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
+  .asset-tile { border:1px solid var(--card-border);background:transparent;border-radius:8px;padding:11px 12px;text-align:left;color:var(--text-secondary);cursor:pointer;min-width:0; }
+  .asset-tile span { display:block;font-size:11px;color:var(--text-muted);margin-bottom:7px; }
+  .asset-tile strong { font-size:12px;font-weight:500; }
+  .card-caption { font-size:11px;color:var(--text-muted);margin-bottom:9px; }
+  .card-footer { display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;border-top:1px solid var(--card-border);flex-wrap:wrap; }
+  .card-actions { display:flex;gap:8px;flex-wrap:wrap; }
+  .latest-activity { text-align:left;background:transparent;border:0;padding:0;color:#9fbcbd;cursor:pointer;font-size:12px; }
+  .detail-link { border:1px solid var(--card-border);background:transparent;border-radius:6px;padding:7px 11px;color:#a6c6d4;cursor:pointer;font-size:12px; }
+  .other-card { border-left:3px solid #a39579;background:#131922; }
+  .other-card .status-tiles { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .other-summary { color:var(--text-secondary);font-size:13px;line-height:1.7;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+  .drawer-body { font-family:system-ui,sans-serif;font-size:14px;line-height:1.7;overflow-wrap:anywhere; }
+  .drawer-body .detail-section { background:#101925;border:1px solid var(--card-border);padding:16px;border-radius:10px;margin-bottom:12px; }
+  .drawer-body .detail-section h4 { margin:0 0 10px;font-size:12px;color:var(--text-muted); }
+  .drawer-body pre { white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px; }
+  @media(max-width:650px) { .overview-card{padding:16px}.status-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.asset-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-head h3{font-size:18px}.role-pill{white-space:normal} }
+  @media(prefers-reduced-motion:reduce) { .drawer,.drawer-overlay {transition:none} }
 </style>
 </head>
 <body>
@@ -2239,10 +2273,10 @@ HTML_PAGE = """<!DOCTYPE html>
 </div>
 
 <!-- 深度透视抽屉 (Deep Inspector) -->
-<div class="drawer" id="inspect-drawer">
+<div class="drawer" id="inspect-drawer" role="dialog" aria-modal="true" aria-labelledby="inspect-title">
   <div class="drawer-header">
-    <div class="drawer-title" id="inspect-title">🔍 Agent 治理深度透视 (Deep Inspector)</div>
-    <button class="drawer-close" onclick="closeAllDrawers()">✕</button>
+    <div class="drawer-title" id="inspect-title">资料详情</div>
+    <button id="detail-close" aria-label="关闭详情" class="drawer-close" onclick="closeAllDrawers()">✕</button>
   </div>
   <div class="drawer-body" id="inspect-drawer-body">
     <div style="text-align: center; color: var(--text-muted); padding: 40px;">正在读取深度全景信息...</div>
@@ -2277,10 +2311,48 @@ function standardDisplay(display) {
   if (!display || display.version !== 1) return '';
   return `<p>${escapeHtml(display.summary || '')}</p>` + (display.facts || []).map(f=>readableLine(f.label,f.value)).join('') + readableLine('调查范围',display.scope);
 }
-function readableDetails(id, title, data) {
-  const display = data && data.display;
-  const body = display ? standardDisplay(display) + formattedValue({证据:data.evidence_refs || data.证据,范围与限制:data.uncertainty || data.范围与限制,待确认事项:data.open_questions}) : formattedValue(data);
-  return `<details class="readable-details" data-readable="${escapeHtml(id)}" ${readableOpen.has(id) ? 'open' : ''} ontoggle="rememberReadable(this)"><summary>${escapeHtml(title)}</summary><div style="padding:12px;font-family:system-ui;line-height:1.65">${body}<details><summary>原始记录（JSON）</summary><pre>${escapeHtml(typeof data === 'string' ? data : JSON.stringify(data,null,2))}</pre></details></div></details>`;
+const detailRecords = new Map();
+let drawerReturnFocus = null;
+function detailButton(id, title, data, body, className='detail-link') {
+  detailRecords.set(id,{title,data});
+  return `<button type="button" class="${className}" data-detail-key="${escapeHtml(id)}" onclick="openDetail(this.dataset.detailKey)">${body || escapeHtml(title)}</button>`;
+}
+function openDetail(id) {
+  const record=detailRecords.get(id); if(!record) return;
+  drawerReturnFocus=document.activeElement;
+  const data=record.data || {}, display=data.display;
+  const content=display ? standardDisplay(display)+formattedValue(Object.fromEntries(Object.entries({证据:data.evidence_refs || data.证据,范围与限制:data.uncertainty || data.范围与限制,待确认事项:data.open_questions}).filter(([,v])=>v != null))) : formattedValue(data);
+  document.getElementById('fp-drawer').classList.remove('active');
+  document.getElementById('inspect-title').innerText=record.title;
+  document.getElementById('inspect-drawer-body').innerHTML=`<div class="detail-section">${content}</div><details><summary>原始记录（JSON）</summary><pre>${escapeHtml(JSON.stringify(data,null,2))}</pre></details>`;
+  document.getElementById('drawer-overlay').classList.add('active');
+  const drawer=document.getElementById('inspect-drawer');drawer.classList.add('active');
+  document.getElementById('detail-close').focus();
+}
+function readableDetails(id,title,data) { return detailButton(id,title,data); }
+function statusTile(a,key,label,value,data,tone='') {
+  data = {...(data || {})};
+  if (!data.display) {
+    const identity = data.value || {};
+    const facts = [{label:'当前状态',value:String(value || '待确认')}];
+    if (identity.name) facts.push({label:'名称',value:String(identity.name)});
+    if (identity.version) facts.push({label:'版本',value:String(identity.version)});
+    if (data.安装 && data.安装.workspace) facts.push({label:'安装目录',value:data.安装.workspace});
+    if (data.详情) facts.push({label:'有效事件',value:String(data.详情.recent_events || 0)}, {label:'阻断能力',value:'未支持'});
+    data.display={version:1,summary:String(data.结论 || data.说明 || identity.role_reasoning || data.范围 || label+'：'+(value || '待确认')),
+      facts,scope:'当前实例 · PID '+a.pid};
+  }
+  return detailButton('tile:'+a.instance_id+':'+key, a.name+' · '+label,data,
+    `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '待确认')}</strong><small>查看详情 ↗</small>`,'status-tile '+tone);
+}
+function assetTiles(a) {
+  const labels={model_routing:'模型与网关',registered_tools_and_mcp:'工具 / MCP',system_prompt_rules:'规则',skills:'技能',network_surface:'网络端点',child_executions:'执行事件'};
+  const statuses={collected:'已查到',empty:'检查范围内未发现',unknown:'待确认',not_collected:'尚未调查',failed:'采集失败',unsupported:'当前不支持'};
+  return Object.entries(labels).map(([key,label])=>{
+    const item=(a.adapter.assets || {})[key] || {status:'not_collected'};
+    return detailButton('asset:'+a.instance_id+':'+key,a.name+' · '+label,item,
+      `<span>${label}</span><strong>${escapeHtml(statuses[item.status] || item.label || '待确认')} ↗</strong>`,'asset-tile');
+  }).join('');
 }
 function readableLine(label, value) {
   if (value === undefined || value === null || value === '') return '';
@@ -2472,6 +2544,7 @@ function closeAllDrawers() {
   document.getElementById('drawer-overlay').classList.remove('active');
   document.getElementById('fp-drawer').classList.remove('active');
   document.getElementById('inspect-drawer').classList.remove('active');
+  if (drawerReturnFocus && drawerReturnFocus.isConnected) drawerReturnFocus.focus();
 }
 
 async function loadFingerprints() {
@@ -2754,93 +2827,25 @@ async function updateUI() {
 
       const scoreClass = a.score >= 80 ? 'score-high' : (a.score >= 50 ? 'score-mid' : 'score-low');
 
-      html += `
-        <div class="card">
-          <div class="card-top">
-            <div>
-              <div class="agent-name inspect-trigger" onclick="openInspector(${a.pid})" title="点击查看深度全景档案">${a.name} <span class="pid-tag">${pidsList}</span>${instanceCount} <span class="pid-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.4);">${classificationText(classification)}</span></div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
-            </div>
-            <div style="text-align: right;">
-              <div class="score-badge ${scoreClass}" title="身份与行为识别分">识别分: ${a.score}</div>
-              ${reasonTags}
-            </div>
-          </div>
-          
-          <div>
-            <div class="section-label">启动命令行与参数特征</div>
-            <div class="cmdline">${a.cmdline}</div>
-            <details><summary>进程归属与身份依据</summary><div class="cmdline">关联进程（扫描快照）: ${(a.process_pids || [a.pid]).join(', ')}<br>实例: ${escapeHtml(a.instance_id)}<br>身份依据: ${escapeHtml(a.identity ? (a.identity.evidence || '行为推断') : '行为推断 / 指纹')}</div></details>
-          </div>
-
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-              <div class="section-label" style="margin-bottom: 0;">Agent 调查资料（状态与来源）</div>
-              <div style="display: flex; gap: 6px;">
-                <button onclick="openInspector(${a.pid})" class="btn-reinvestigate" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">🔍 深度透视</button>
-                <button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="btn-reinvestigate" ${btnDisabled}>${btnText}</button>
-                ${continuation}
-                ${cancelButton}
-              </div>
-            </div>
-            <div class="adapter-box">
-              <div class="adapter-group-title">🏢 身份与运行环境</div>
-              <div class="adapter-row">
-                <span class="adapter-label">调查 / 指纹 / Hook:</span>
-                <div class="adapter-val">${statusHtml}</div>
-              </div>
-              <div class="adapter-row">
-                <span class="adapter-label">Goose 部分身份:</span>
-                <div class="adapter-val">${partialIdentityHtml}</div>
-              </div>
-              <div class="adapter-row">
-                <span class="adapter-label">宿主与工作区:</span>
-                <div class="adapter-val" style="color: #38bdf8; font-family: monospace;">${a.adapter.host_platform} · ${a.adapter.workspace_cwd || '未知工作区'}</div>
-              </div>
-
-              <div class="adapter-group-title">🧠 模型与治理策略</div>
-              <div class="adapter-row">
-                <span class="adapter-label">模型与网关端点:</span>
-                <div class="adapter-val" style="color: #34d399; font-family: monospace;">${assetText(a.adapter, 'model_routing')}</div>
-              </div>
-              <div class="adapter-row">
-                <span class="adapter-label">可用 Tools / MCP:</span>
-                <div class="adapter-val">${assetText(a.adapter, 'registered_tools_and_mcp')}</div>
-              </div>
-              <div class="adapter-row">
-                <span class="adapter-label">行规/Prompt 约束:</span>
-                <div class="adapter-val" style="color: #cbd5e1;">${assetText(a.adapter, 'system_prompt_rules')}</div>
-              </div>
-              <div class="adapter-row">
-                <span class="adapter-label">配置解析提取:</span>
-                <span class="adapter-val">${assetText(a.adapter, 'parsed_config')}</span>
-              </div>
-
-              <div class="adapter-row"><span class="adapter-label">Skill:</span><div class="adapter-val">${assetText(a.adapter, 'skills')}</div></div>
-              <div class="adapter-group-title">🌐 执行与通信画像</div>
-              <div class="adapter-row">
-                <span class="adapter-label">执行事件（${a.adapter.assets.child_executions.status === 'collected' ? '本实例验收' : '未接入采集'}）:</span>
-                <div class="adapter-val" style="color: #f59e0b; font-family: monospace;">${assetText(a.adapter, 'child_executions')}</div>
-              </div>
-              <div class="adapter-row">
-                <span class="adapter-label">网络与监听端点:</span>
-                <div class="adapter-val" style="color: #38bdf8; font-family: monospace;">${assetText(a.adapter, 'network_surface')}</div>
-              </div>
-            </div>
-          </div>
-
-          ${semanticHtml}
-          <details class="adapter-box" id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid) ? 'open' : ''} style="margin-top:8px;" onToggle="onActivityToggle(${a.pid}, this)">
-            <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">🔬 调查活动（工具调用与 finding 时间线，脱敏）</summary>
-            <div id="activity-body-${a.pid}" style="margin-top:6px;"></div>
-          </details>
+      const hookLabel = learnedHook.status === 'observing' ? '工具事件已接通' : learnedHook.status === 'loaded' ? '已加载，等待活动' : learnedHook.status === 'installed_pending_activation' ? '已安装，等待加载' : '尚未接通';
+      html += `<article class="overview-card">
+        <header class="overview-head"><div><div class="eyebrow">Agent / Runtime</div><h3>${escapeHtml(a.name)}</h3><div class="overview-meta">PID ${a.pid} · ${escapeHtml(formatUptime(a.uptime_sec))} · ${(a.all_pids || [a.pid]).length} 个进程</div></div><span class="role-pill">${escapeHtml(classification.label || '待确认')}</span></header>
+        <div class="status-tiles">
+          ${statusTile(a,'investigation','调查',investigation.label || '待调查',{结论:investigation.message,状态:investigation.label,自动流程:a.adapter.pipeline},isInvestigating?'wait':'')}
+          ${statusTile(a,'classification','分类',classification.label || '待确认',a.adapter.investigated_identity || classification)}
+          ${statusTile(a,'observation','观测',observationEvidence.recent_events ? observationEvidence.recent_events+' 条有效事件' : '等待事件',{说明:observationText,详情:observationEvidence},observationEvidence.recent_events?'good':'')}
+          ${statusTile(a,'onboarding','接入',hookLabel,{结论:onboardingText,状态:learnedHook,安装:install,验证:verification},learnedHook.status==='observing'?'good':'wait')}
         </div>
-      `;
+        <section><div class="card-caption">资产概况 · 点击查看信息与依据</div><div class="asset-tiles">${assetTiles(a)}</div></section>
+        <footer class="card-footer"><div>${a.last_message && a.last_message.source==='live_hook' ? detailButton('latest:'+a.instance_id,'最近活动',a.last_message,escapeHtml('最近活动 · '+a.last_message.event_type+' · '+(a.last_message.ts || '')),'latest-activity') : '<span class="overview-meta">尚无当前实例的 Hook 活动</span>'}</div><div class="card-actions"><button class="detail-link" onclick="openInspector(${a.pid})">完整资料 ↗</button><button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="detail-link" ${btnDisabled}>${btnText}</button>${continuation}${cancelButton}</div></footer>
+        <details id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid)?'open':''} onToggle="onActivityToggle(${a.pid},this)"><summary class="overview-meta">调查活动</summary><div id="activity-body-${a.pid}"></div></details>
+      </article>`;
     });
     if (otherItems.length) html += '<div style="grid-column:1/-1;font-size:18px;margin-top:18px">其他类别（非 Agent） · ' + otherItems.length + '</div>' + otherItems.map(a=>{
       const f=a.adapter.investigated_identity || {}, v=f.value || {};
       const roles=(v.roles || []).map(r=>({model_gateway:'模型网关',tool_service:'工具服务',host:'宿主程序',other:'其他'}[r] || r)).join('、');
-      return `<div class="agent-card" style="padding:20px"><h3>${escapeHtml(v.name || a.name)}</h3>${readableLine('类别',roles)}${readableLine('进程',a.pid)}${readableLine('版本',v.version)}${f.display ? standardDisplay(f.display) : readableLine('用途与判断',v.role_reasoning)}${readableDetails('other:'+a.instance_id,'查看依据与详情',f)}<details class="adapter-box" id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid) ? 'open' : ''} onToggle="onActivityToggle(${a.pid}, this)"><summary>调查活动</summary><div id="activity-body-${a.pid}"></div></details></div>`;
+      const summary=f.display && f.display.summary || '已识别为'+(roles || '非 Agent 组件')+'，用途与判断依据见详情。';
+      return `<article class="overview-card other-card"><header class="overview-head"><div><div class="eyebrow">Other / Infrastructure</div><h3>${escapeHtml(v.name || a.name)}</h3><div class="overview-meta">PID ${a.pid} · ${escapeHtml(v.version || '版本待确认')}</div></div><span class="role-pill">${escapeHtml(roles || '非 Agent')}</span></header><p class="other-summary">${escapeHtml(summary)}</p><div class="status-tiles">${statusTile(a,'role','类别',roles || '非 Agent',f)}${statusTile(a,'profile','用途与信息','查看调查资料',f)}${statusTile(a,'scope','调查范围','查看依据',{范围:f.display && f.display.scope,证据:f.evidence_refs,未知项:f.uncertainty})}</div><footer class="card-footer"><span class="overview-meta">独立组件 · 不展示 Agent 接入字段</span>${detailButton('other:'+a.instance_id,'组件资料',f,'查看详情 ↗')}</footer><details id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid)?'open':''} onToggle="onActivityToggle(${a.pid},this)"><summary class="overview-meta">调查活动</summary><div id="activity-body-${a.pid}"></div></details></article>`;
     }).join('');
     grid.innerHTML = html;
     activityOpenPids.forEach(pid => {
@@ -2962,6 +2967,7 @@ function handleHashRouting() {
   }
 }
 
+window.addEventListener('keydown', e=>{if(e.key==='Escape') closeAllDrawers();});
 window.addEventListener('hashchange', handleHashRouting);
 setInterval(updateUI, 5000);
 updateUI().then(handleHashRouting);
