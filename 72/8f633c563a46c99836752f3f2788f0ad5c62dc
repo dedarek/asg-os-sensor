@@ -1,0 +1,21 @@
+runtime/observation_source.py
+  s_1512a994888af5::t_dba17da03e5ea1 20-21,36-38,114,116-117,119,122,124-128,146-153,167-170,206-210,245-251,253
+test_observation_file_source.py
+  s_1512a994888af5::t_3c5b6ff6bfefcd 177-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "728f633c563a46c99836752f3f2788f0ad5c62dc",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
