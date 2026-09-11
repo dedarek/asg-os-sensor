@@ -1,0 +1,21 @@
+runtime/onboarding.py
+  s_1512a994888af5::t_53c255a2b0b947 348-362,640-641,661-763
+test_reuse_exact_fileplan.py
+  s_1512a994888af5::t_85010635bf24f5 1-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "49caedfd9ad62b70db796134ef44b7643a48b941",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
