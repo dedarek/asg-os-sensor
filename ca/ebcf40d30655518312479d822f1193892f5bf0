@@ -1,0 +1,43 @@
+.gitignore
+  s_7a5b8096b41d01::t_ac4ded66f27f10 30-33
+docs/stage1/AUTONOMOUS_DELIVERY.md
+  s_7a5b8096b41d01::t_79b0c55b0aefd8 1-59
+e2e/real_autonomous_demo.py
+  s_7a5b8096b41d01::t_b76337832fec59 1-118
+e2e/verify_autonomous_delivery.py
+  s_7a5b8096b41d01::t_c71d9e958af84e 1-61
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_6dba1f7e77e112 35-36,597-600,623,863-873,888,903,949,963,1098,1112-1115,1160-1161,1204-1205,1230,1333-1341,1343,1392-1396,1506,1546-1558,1613,1666,1669-1670,1672-1673,1677-1688,1690-1695,1721-1726,1785,2164,2196-2198,2343-2344,2492-2494,2498,2500-2504,2590-2591,2608,3019
+runtime/autonomous_pipeline.py
+  s_7a5b8096b41d01::t_170d2c471ee501 1-40
+runtime/observation_registry.py
+  s_7a5b8096b41d01::t_9dbc2590ecffce 1-55
+runtime/onboarding.py
+  s_7a5b8096b41d01::t_fe094d7204b5b4 392-400,402
+service.py
+  s_7a5b8096b41d01::t_473112e766ae91 1-55
+test_analyst_evidence.py
+  s_7a5b8096b41d01::t_902764e6f33bcb 118
+test_asset_pass.py
+  s_7a5b8096b41d01::t_da71e811f3c1b8 193
+test_autonomous_pipeline.py
+  s_7a5b8096b41d01::t_d8b09bd14a03b3 1-119
+test_history_render.py
+  s_7a5b8096b41d01::t_a06bcc340288b7 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "caebcf40d30655518312479d822f1193892f5bf0",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
