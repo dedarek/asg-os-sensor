@@ -217,3 +217,139 @@ def rebind_activation(prepared: dict, state_dir: Path, *, approved_workspace: Pa
                       'entry': observed_compatibility.get('entry')},
             'evidence': list(evidence), 'reason': reason,
             'activation': 'unverified', 'blocking': 'not_implemented'}
+
+
+AUTHORIZATION_KEYS = ('approved_workspace', 'approved_candidate_digest', 'install', 'rebind')
+
+
+def authorization_scope(*, approved_workspace, approved_candidate_digest=None,
+                        allow_install=False, allow_rebind=False) -> dict:
+    """Explicit supervisor scope. Nothing is authorized unless it is named here.
+
+    ``allow_install``/``allow_rebind`` default to False: an unauthorized call may
+    read and plan but never writes files or moves a binding. Nothing in this
+    module starts, restarts or stops a target process.
+    """
+    if approved_workspace is None:
+        raise ValueError('authorization requires an approved workspace')
+    if approved_candidate_digest is not None and (not isinstance(approved_candidate_digest, str)
+                                                  or not approved_candidate_digest):
+        raise ValueError('approved_candidate_digest must be a non-empty string when given')
+    if not isinstance(allow_install, bool) or not isinstance(allow_rebind, bool):
+        raise ValueError('allow_install/allow_rebind must be booleans')
+    return {'approved_workspace': str(Path(approved_workspace).resolve(strict=True)),
+            'approved_candidate_digest': approved_candidate_digest,
+            'install': allow_install, 'rebind': allow_rebind}
+
+
+def _check_authorization(authorization, workspace: Path, candidate_digest: str) -> dict:
+    if not isinstance(authorization, dict):
+        raise ValueError('authorization scope required')
+    unknown = sorted(set(authorization) - set(AUTHORIZATION_KEYS))
+    if unknown:
+        raise ValueError('unknown authorization keys: ' + ', '.join(unknown))
+    approved = authorization.get('approved_workspace')
+    if not approved or Path(approved).resolve(strict=True) != workspace:
+        raise PermissionError('candidate workspace differs from the approved scope')
+    stamped = authorization.get('approved_candidate_digest')
+    if stamped is not None and stamped != candidate_digest:
+        raise PermissionError('candidate digest does not match the approved scope')
+    for key in ('install', 'rebind'):
+        if not isinstance(authorization.get(key), bool):
+            raise ValueError('authorization.%s must be a boolean' % key)
+    return authorization
+
+
+def coordinate(recipe: dict, evidence_dir: Path, target: dict, *, workspace: Path, state_dir: Path,
+               authorization: dict, observed_compatibility=None, evidence=None,
+               reason=None) -> dict:
+    """Single entry point: candidate -> prepare/execute -> activation binding.
+
+    Returns a service-consumable result. It is idempotent when the plan is already
+    installed, asks for a rebind when the bound instance restarted, and reports
+    ``pending_authorization`` (writing nothing) when the scope does not allow the
+    step. It never restarts or stops a target process, and knows no product.
+    """
+    workspace_root = Path(workspace).resolve(strict=True)
+    candidate_digest = hashlib.sha256(json.dumps(recipe, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+    scope = _check_authorization(authorization, workspace_root, candidate_digest)
+    state = Path(state_dir)
+    record_path = state / 'prepared_install.json'
+    expected_plan = learned_install.plan_digest(recipe.get('install_plan'))
+    manifest = state / (expected_plan + '.json')
+    installed = False
+    if manifest.exists():
+        tx = json.loads(manifest.read_text())
+        if tx.get('status') != 'installed' or tx.get('workspace') != str(workspace_root):
+            raise ValueError('installation manifest is not an installed transaction for this workspace')
+        for change in tx.get('changes', []):
+            path = learned_install._file(workspace_root, change['path'])
+            if not path.is_file() or learned_install.digest(path.read_bytes()) != change['after_sha256']:
+                raise ValueError('installed hook files changed; refusing bound status')
+        if not tx.get('changes') or not record_path.is_file():
+            raise ValueError('missing original installation record; explicit migration required')
+        prepared = json.loads(record_path.read_text())
+        if prepared.get('candidate_digest') != candidate_digest or prepared.get('plan_digest') != expected_plan or prepared.get('workspace') != str(workspace_root):
+            raise ValueError('original installation record does not match candidate/workspace')
+        validate(recipe, evidence_dir, target=prepared['target'])
+        installed = True
+    else:
+        prepared = prepare(recipe, evidence_dir, target, workspace_root,
+                           compatibility=observed_compatibility)
+    config_path = state / OBSERVATION_FILE
+    declared = prepared['observation']['status'] == 'configured'
+
+    # Everything a consumer needs to act, whether or not a write happened.
+    base = {'workspace': str(workspace_root), 'target': dict(target),
+            'plan_digest': prepared['plan_digest'], 'candidate_digest': prepared['candidate_digest'],
+            'observation_declared': declared, 'installed': installed,
+            'config_path': str(config_path) if (installed and declared) else None,
+            'activation': 'unverified', 'blocking': 'not_implemented',
+            'restarted_target': False, 'authorization': dict(scope)}
+
+    if not installed:
+        if not scope['install']:
+            base.update(status='pending_authorization',
+                        reason='安装未获授权；未写入任何文件',
+                        required_scope={'install': True},
+                        planned_plan_digest=prepared['plan_digest'])
+            return base
+        executed = execute(prepared, state_dir, approved_workspace=workspace_root,
+                           approved_candidate_digest=scope['approved_candidate_digest']
+                           or prepared['candidate_digest'])
+        learned_install._atomic(record_path, json.dumps(prepared, ensure_ascii=False, indent=2).encode('utf-8'))
+        observation = executed.get('observation') or {}
+        base.update(installed=True, install_status=executed.get('status'),
+                    config_path=observation.get('config_path'), observation=observation,
+                    status='installed' if observation.get('status') == 'configured'
+                           else 'installed_no_observation')
+        return base
+
+    # Already installed: never install again. Only the binding may move.
+    observation = {'status': 'not_configured' if not declared else 'configured',
+                   'config_path': str(config_path) if declared else None}
+    if not declared or not config_path.is_file():
+        base.update(status='installed_no_observation', observation=observation,
+                    reason='已安装，但候选未声明 observation_source' if not declared
+                           else '绑定文件缺失，需重新调查')
+        return base
+
+    bound = observation_source.load_config(config_path)['target']
+    live_target = _normalize_target(target)
+    if abs(psutil.Process(live_target['pid']).create_time() - live_target['create_time']) >= .001:
+        raise ValueError('activation target is no longer the bound process')
+    if _normalize_target(bound) == _normalize_target(target):
+        base.update(status='bound', observation=observation,
+                    reason='已安装且绑定实例一致；未做任何写入')
+        return base
+    base.update(status='rebind_required', observation=observation,
+                bound_target=dict(bound), required_scope={'rebind': True},
+                reason='已安装，但绑定实例已变化；需授权重绑')
+    if not scope['rebind']:
+        return base
+    rebound = rebind_activation(prepared, state_dir, approved_workspace=workspace_root,
+                                new_target=target, observed_compatibility=observed_compatibility,
+                                evidence=evidence, reason=reason)
+    base.update(status='rebound', previous_target=rebound.get('previous_target'),
+                config_path=rebound.get('config_path'), history_path=rebound.get('history_path'))
+    return base
