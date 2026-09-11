@@ -1,0 +1,21 @@
+runtime/learned_onboarding.py
+  s_1512a994888af5::t_e4527172e33fe0 9,11,15,20,38-39,55,103,105-219
+test_activation_rebind.py
+  s_1512a994888af5::t_bed70de3e6d9da 1-215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "d9009a557ac1075b80f2369154eb6e07b60f393a",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
