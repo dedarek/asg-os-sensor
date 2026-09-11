@@ -1,0 +1,19 @@
+tools/stage1_engine_agent_hook_smoke.py
+  s_655532ed3c4512::t_4e964aa6f85ae6 348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "78606241c86288ce4ca329b2c3f78acfb8beaccb",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
