@@ -91,6 +91,19 @@ def validate_finding(finding: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("asset value must be JSON data")
     else:
         raise ValueError("finding kind must be identity or asset")
+    display = finding.get('display')
+    if display is not None:
+        if not isinstance(display, dict) or display.get('version') != 1:
+            raise ValueError('display must be {version:1, summary:string, facts:[{label,value}], scope:string}')
+        for field in ('summary', 'scope'):
+            if not isinstance(display.get(field), str):
+                raise ValueError('display.' + field + ' must be a string')
+        facts = display.get('facts')
+        if not isinstance(facts, list) or len(facts) > 20:
+            raise ValueError('display.facts must be a list of at most 20 facts')
+        if any(not isinstance(f, dict) or not isinstance(f.get('label'), str)
+               or not isinstance(f.get('value'), str) for f in facts):
+            raise ValueError('each display fact requires string label and value')
     sources = finding.get("evidence_refs")
     if not isinstance(sources, list) or not sources or not all(isinstance(item, str) for item in sources):
         raise ValueError("finding evidence_refs are required")

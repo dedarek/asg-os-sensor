@@ -102,6 +102,11 @@ def _legacy_routes() -> dict:
     }
 def analyst_route(route_name: str = '') -> dict:
     _load_dotenv()
+    if not route_name:
+        from runtime.model_settings import load
+        saved = load()
+        if saved:
+            return dict(saved['route'])
     cfg = _yaml()
     routes = cfg.get('routes') or {}
     default = str(cfg.get('default_route') or '').strip().lower()
@@ -132,6 +137,10 @@ def analyst_route(route_name: str = '') -> dict:
     r['route'] = name
     return r
 def analyst_key(route: dict) -> str:
+    if route.get('route') == 'dashboard':
+        from runtime.model_settings import load
+        saved = load()
+        return saved['key'] if saved and saved.get('route') == route else ''
     _load_dotenv()
     key = os.environ.get(str(route.get('key_env', '')), '') or ''
     return key.strip()

@@ -543,6 +543,7 @@ def _partial_asset_collections(partial: dict[str, Any] | None) -> dict[str, dict
             "evidence_refs": refs if isinstance(refs, list) else [],
             "uncertainty": finding.get("uncertainty", []),
             "message": "Goose 部分调查结果",
+            "display": finding.get("display"),
         }
     return result
 
@@ -994,7 +995,7 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
 
             env = os.environ.copy()
             env.update(build_goose_env(route, key, pid))
-            env.update(ASG_INVESTIGATION_PHASE=phase or "", ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
+            env.update(ASG_REQUIRE_STANDARD_DISPLAY="1", ASG_INVESTIGATION_PHASE=phase or "", ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
                        ASG_AUDIT_DIR=str(run_dir), ASG_RECIPE_DIR=str(recipes_dir),
                        ASG_TARGET_STREAM_FILE=str(stream_file),
                        ASG_FINDINGS_FILE=str(run_dir / "investigation_findings.json"))
@@ -2189,6 +2190,18 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
 </div>
 
+<details style="margin:16px 0;padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px" ontoggle="if(this.open) loadModelSettings()">
+  <summary style="cursor:pointer">Goose 模型配置</summary>
+  <form onsubmit="testModelSettings(event)" style="display:grid;gap:12px;max-width:720px;margin-top:16px">
+    <p style="color:var(--text-muted)">OpenAI 兼容接口。验证会启动 Goose 获取真实回复，成功后保存；正在执行的调查继续使用原配置。</p>
+    <label>API 地址 <input id="model-base" type="url" required style="width:100%;padding:8px" placeholder="https://example.com/v1"></label>
+    <label>模型名称 <input id="model-name" required style="width:100%;padding:8px" placeholder="模型 ID"></label>
+    <label>API Key <input id="model-key" type="password" autocomplete="new-password" style="width:100%;padding:8px" placeholder="同一地址留空保留现有密钥；更换地址请填写新密钥"></label>
+    <span id="model-key-state" class="asset-note"></span>
+    <button id="model-test-button" class="refresh-btn" type="submit">验证并保存</button>
+    <div id="model-test-status" role="status" aria-live="polite"></div>
+  </form>
+</details>
 <!-- 全局治理指标 KPI 栏 -->
 <div class="kpi-row">
   <div class="kpi-card">
@@ -2252,8 +2265,22 @@ function rememberReadable(el) {
   if (el.open) readableOpen.add(el.dataset.readable);
   else readableOpen.delete(el.dataset.readable);
 }
+const fieldLabels = {kind:'资料类型',status:'状态',value:'内容',name:'名称',version:'版本',runtime:'运行环境',entry:'入口',roles:'角色',role_reasoning:'判断依据',evidence_refs:'证据编号',uncertainty:'范围与限制',open_questions:'待确认事项',source:'来源',submitted_at:'记录时间',configuration_status:'信息来源',items:'条目',summary:'结论',facts:'已确认信息',scope:'调查范围',label:'项目',display:'标准资料',model:'模型',base_url:'接口地址',provider:'提供方'};
+function formattedValue(value, depth=0) {
+  if (value === null || value === undefined || value === '') return '<span class="asset-note">未提供</span>';
+  if (typeof value !== 'object') return `<span style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(String(value))}</span>`;
+  if (depth > 8) return '<span class="asset-note">详细内容见原始记录</span>';
+  if (Array.isArray(value)) return value.length ? '<ul>' + value.map(x=>'<li>'+formattedValue(x,depth+1)+'</li>').join('') + '</ul>' : '<span class="asset-note">无</span>';
+  return '<dl>' + Object.entries(value).map(([key,v])=>`<div style="margin:8px 0"><dt style="color:var(--text-muted)">${escapeHtml(fieldLabels[key] || key)}</dt><dd style="margin:3px 0 0 12px">${formattedValue(v,depth+1)}</dd></div>`).join('') + '</dl>';
+}
+function standardDisplay(display) {
+  if (!display || display.version !== 1) return '';
+  return `<p>${escapeHtml(display.summary || '')}</p>` + (display.facts || []).map(f=>readableLine(f.label,f.value)).join('') + readableLine('调查范围',display.scope);
+}
 function readableDetails(id, title, data) {
-  return `<details class="readable-details" data-readable="${escapeHtml(id)}" ${readableOpen.has(id) ? 'open' : ''} ontoggle="rememberReadable(this)"><summary>${escapeHtml(title)}</summary><pre>${escapeHtml(typeof data === 'string' ? data : JSON.stringify(data, null, 2))}</pre></details>`;
+  const display = data && data.display;
+  const body = display ? standardDisplay(display) + formattedValue({证据:data.evidence_refs || data.证据,范围与限制:data.uncertainty || data.范围与限制,待确认事项:data.open_questions}) : formattedValue(data);
+  return `<details class="readable-details" data-readable="${escapeHtml(id)}" ${readableOpen.has(id) ? 'open' : ''} ontoggle="rememberReadable(this)"><summary>${escapeHtml(title)}</summary><div style="padding:12px;font-family:system-ui;line-height:1.65">${body}<details><summary>原始记录（JSON）</summary><pre>${escapeHtml(typeof data === 'string' ? data : JSON.stringify(data,null,2))}</pre></details></div></details>`;
 }
 function readableLine(label, value) {
   if (value === undefined || value === null || value === '') return '';
@@ -2297,11 +2324,12 @@ function assetText(adapter, key) {
     }
     if (!brief) brief = readableLine('结果',typeof v === 'string' ? v : '已保存结构化信息，请展开查看');
   }
+  if (item.display) brief = standardDisplay(item.display);
   const provenance = v && v.configuration_status;
   const note = provenance === 'configured' ? '来源：配置' : provenance === 'observed' ? '来源：运行记录' : status === 'empty' ? '' : '';
   const refs = item.evidence_refs || item.sources || [];
   const id = key + ':' + (refs.join(',') || item.source || status);
-  const details = status === 'not_collected' ? '' : readableDetails(id,'查看依据与原始详情', {说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []});
+  const details = status === 'not_collected' ? '' : readableDetails(id,'查看依据与详情', {display:item.display,说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []});
   return `<div class="asset-view"><span class="asset-badge ${status === 'collected' ? 'asset-found' : ''}">${escapeHtml(labels[status] || item.label || '未知')}</span>${note ? `<div class="asset-note">${escapeHtml(note)}</div>` : ''}${brief}${details}</div>`;
 }
 function findingText(finding) {
@@ -2628,8 +2656,10 @@ async function updateUI() {
       return;
     }
     
-    let html = '';
-    data.agents.forEach(a => {
+    const otherItems = data.agents.filter(a => (a.adapter.agent_classification || {}).status === 'infrastructure');
+    const agentItems = data.agents.filter(a => (a.adapter.agent_classification || {}).status !== 'infrastructure');
+    let html = '<div style="grid-column:1/-1;font-size:18px">Agent 与待确认候选 · ' + agentItems.length + '</div>';
+    agentItems.forEach(a => {
       const isMatched = a.adapter && a.adapter.matched;
       const backendInvestigating = !!(a.adapter && a.adapter.investigating);
       const investigation = (a.adapter && a.adapter.investigation) || {};
@@ -2807,6 +2837,11 @@ async function updateUI() {
         </div>
       `;
     });
+    if (otherItems.length) html += '<div style="grid-column:1/-1;font-size:18px;margin-top:18px">其他类别（非 Agent） · ' + otherItems.length + '</div>' + otherItems.map(a=>{
+      const f=a.adapter.investigated_identity || {}, v=f.value || {};
+      const roles=(v.roles || []).map(r=>({model_gateway:'模型网关',tool_service:'工具服务',host:'宿主程序',other:'其他'}[r] || r)).join('、');
+      return `<div class="agent-card" style="padding:20px"><h3>${escapeHtml(v.name || a.name)}</h3>${readableLine('类别',roles)}${readableLine('进程',a.pid)}${readableLine('版本',v.version)}${f.display ? standardDisplay(f.display) : readableLine('用途与判断',v.role_reasoning)}${readableDetails('other:'+a.instance_id,'查看依据与详情',f)}<details class="adapter-box" id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid) ? 'open' : ''} onToggle="onActivityToggle(${a.pid}, this)"><summary>调查活动</summary><div id="activity-body-${a.pid}"></div></details></div>`;
+    }).join('');
     grid.innerHTML = html;
     activityOpenPids.forEach(pid => {
       const panel = document.getElementById('activity-details-' + pid);
@@ -2816,6 +2851,42 @@ async function updateUI() {
   } catch (err) {
     console.error("更新失败:", err);
   }
+}
+
+let modelTestTimer = null;
+async function loadModelSettings(poll=false) {
+  const status = document.getElementById('model-test-status');
+  try {
+    const response = await fetch('/api/model-settings');
+    if (!response.ok) throw new Error('无法读取模型配置');
+    const data = await response.json();
+    if (!poll) {
+      document.getElementById('model-base').value = data.config.base_url || '';
+      document.getElementById('model-name').value = data.config.model || '';
+      document.getElementById('model-key-state').innerText = data.config.has_key ? '已配置密钥（不回显）' : '尚未配置密钥';
+    }
+    const testing = data.test.status === 'testing';
+    document.getElementById('model-test-button').disabled = testing;
+    status.innerText = (data.test.message || '修改后点击“验证并保存”') + (data.test.reply ? ' · Goose 实际回复：' + data.test.reply : '');
+    if (modelTestTimer) clearTimeout(modelTestTimer);
+    if (testing) modelTestTimer = setTimeout(()=>loadModelSettings(true),2000);
+  } catch (error) { status.innerText = error.message; }
+}
+async function testModelSettings(event) {
+  event.preventDefault();
+  const button = document.getElementById('model-test-button');
+  button.disabled = true;
+  const status = document.getElementById('model-test-status');
+  status.innerText = '正在提交验证…';
+  try {
+    const response = await fetch('/api/model-settings', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({base_url:document.getElementById('model-base').value,
+        model:document.getElementById('model-name').value,api_key:document.getElementById('model-key').value})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '验证启动失败');
+    document.getElementById('model-key').value = '';
+    await loadModelSettings(true);
+  } catch(error) { status.innerText = error.message; button.disabled = false; }
 }
 
 async function saveScanInterval(event) {
@@ -2903,6 +2974,14 @@ setInterval(() => { activityOpenPids.forEach(pid => loadActivity(pid)); }, 5000)
 
 class MonitorHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/api/model-settings':
+            from runtime.model_settings import public
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(json.dumps(public(), ensure_ascii=False).encode())
+            return
         if urllib.parse.urlparse(self.path).path == "/api/investigation/activity":
             from runtime.investigation_activity import snapshot as activity_snapshot
             try:
@@ -2996,7 +3075,21 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        if self.path == '/api/scan-interval':
+        if self.path == '/api/model-settings':
+            from runtime.model_settings import start
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 16384:
+                    raise ValueError('无效配置请求')
+                payload = start(json.loads(self.rfile.read(length)))
+                code = 202
+            except (ValueError, TypeError) as exc:
+                code, payload = 400, {'error': str(exc)}
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode())
+        elif self.path == '/api/scan-interval':
             try:
                 length = int(self.headers.get('Content-Length', '0'))
                 if not 0 < length <= 1024:

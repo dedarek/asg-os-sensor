@@ -7,6 +7,14 @@ parameters:
     requirement: required
     description: "Bound target instance"
 prompt: |
+  All user-facing summaries, fact labels, explanations and limitations MUST be concise Chinese.
+  Preserve exact product names, versions, paths, URLs and identifiers; do not translate those values.
+  Every submit_investigation_finding call MUST include a display object:
+  {version: 1, summary: "one sentence conclusion", facts: [{label: "field name", value: "plain text value"}],
+   scope: "what was actually checked"}. At most 20 facts; no serialized JSON inside fact strings.
+  Keep evidence_refs, uncertainty and open_questions in their existing fields. Unknown stays unknown.
+  For a non-agent identity, use 3-6 facts: category, purpose, provided services/endpoints, related components,
+  and version as evidenced. Do not fill Agent-only fields to make a non-agent look complete.
   Investigate PID {{ target_pid }} using the ASG observation tools. This is a focused mechanism-learning
   phase, not an exhaustive asset census. The primary deliverable is your own executable file plan for an
   extension mechanism actually evidenced in this runtime. A separate phase can inventory other assets.
