@@ -1,0 +1,26 @@
+tools/stage1_call_chain.py
+  s_655532ed3c4512::t_4b07fb001360e8 59-61,978-1000,1002-1015,1017-1020,1022-1026,1047
+  s_655532ed3c4512::t_f2861f51d74397 58,62,1001,1016
+WORKLOG.md
+  s_655532ed3c4512::t_55a80df3e7baaa 1020-1021
+  s_655532ed3c4512::t_24bb8888531c4b 1013-1019,1022
+test_stage1_call_chain.py
+  s_655532ed3c4512::t_f2861f51d74397 128-137
+  s_655532ed3c4512::t_4b07fb001360e8 90-98,100-103,105-127,138-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "5c4358cae7c7c9d2284049cff3450bbbbb044776",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
