@@ -1,0 +1,31 @@
+test_observation_file_source.py
+  s_655532ed3c4512::t_c4ed42af3fd5fc 1-290
+config/observation_source.example.json
+  s_655532ed3c4512::t_a5b99cc292a381 1-27
+WORKLOG.md
+  s_655532ed3c4512::t_0ef69400996e04 1074-1096
+monitor_dashboard.py
+  s_655532ed3c4512::t_74c07d827e67e8 110-116
+  s_655532ed3c4512::t_877930d88a3e83 774-788,805-807
+  s_655532ed3c4512::t_88a5319c17b53a 659-663
+  s_655532ed3c4512::t_eb1a60d8bd48db 638-656
+  s_655532ed3c4512::t_9437d78fedef71 147-148
+runtime/observation_source.py
+  s_655532ed3c4512::t_1a649a8873810e 1-294
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "5ff7babdaf7488877dc66897efee135665098a26",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
