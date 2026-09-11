@@ -50,6 +50,12 @@ BLOCKING_UNSUPPORTED = {"status": "unsupported", "label": "未支持"}
 DECLARATION_KEYS = ("log_path", "fields", "event_names")
 REQUIRED_FIELD_ROLES = ("event", "pid", "timestamp")
 FORBIDDEN_DECLARATION_KEYS = ("target", "pid", "create_time")
+# Legacy configs may omit roles and inherit the built-in names. A config written
+# from a candidate declaration is ``explicit``: only the roles it declared exist,
+# so saving and re-reading never resurrects a role the candidate never named.
+DEFAULT_MAPPING_MODE = "defaults"
+EXPLICIT_MAPPING_MODE = "explicit"
+MAPPING_MODES = (DEFAULT_MAPPING_MODE, EXPLICIT_MAPPING_MODE)
 
 _STATE: dict[str, dict[str, Any]] = {}
 
@@ -83,17 +89,27 @@ def load_config(path: Path | str) -> dict[str, Any]:
     resolved = Path(log_path).expanduser()
     if not resolved.is_absolute():
         raise ValueError("observation config log_path must be absolute")
-    fields = {} if value.get("mapping_mode") == "explicit" else dict(DEFAULT_FIELDS)
+    mode = value.get("mapping_mode", DEFAULT_MAPPING_MODE)
+    if mode not in MAPPING_MODES:
+        raise ValueError("observation config mapping_mode must be one of: " + ", ".join(MAPPING_MODES))
     configured = value.get("fields")
-    if configured is not None:
-        if not isinstance(configured, dict):
-            raise ValueError("observation config fields must be an object")
-        for key, name in configured.items():
-            if key not in DEFAULT_FIELDS:
-                raise ValueError("unknown observation field mapping: " + str(key))
-            if not isinstance(name, str) or not name.strip():
-                raise ValueError("observation field mapping values must be non-empty strings")
-            fields[key] = name.strip()
+    if mode == EXPLICIT_MAPPING_MODE:
+        # Explicit mode never inherits a name the declaration did not state.
+        fields = _validate_mapping(configured, tuple(DEFAULT_FIELDS), "observation config fields")
+    else:
+        fields = dict(DEFAULT_FIELDS)
+        if configured is not None:
+            if not isinstance(configured, dict):
+                raise ValueError("observation config fields must be an object")
+            for key, name in configured.items():
+                if key not in DEFAULT_FIELDS:
+                    raise ValueError("unknown observation field mapping: " + str(key))
+                if not isinstance(name, str) or not name.strip():
+                    raise ValueError("observation field mapping values must be non-empty strings")
+                fields[key] = name.strip()
+    missing = [role for role in REQUIRED_FIELD_ROLES if role not in fields]
+    if missing:
+        raise ValueError("observation config fields must declare: " + ", ".join(missing))
     event_names = {name: name for name in CANONICAL_EVENTS}
     declared = value.get("event_names")
     if declared is not None:
@@ -107,6 +123,7 @@ def load_config(path: Path | str) -> dict[str, Any]:
             event_names[key] = name.strip()
     return {
         "version": SCHEMA_VERSION,
+        "mapping_mode": mode,
         "path": str(config_path),
         "target": {"pid": pid, "create_time": create_time},
         "log_path": str(resolved),
@@ -210,10 +227,10 @@ def candidate_to_config(declaration: Any, workspace: Path | str, target: dict[st
         current = current.parent
     return {
         "version": SCHEMA_VERSION,
+        "mapping_mode": EXPLICIT_MAPPING_MODE,
         "path": str(root / normalized["log_path"]),
         "target": {"pid": pid, "create_time": create_time},
         "log_path": str(resolved),
-        "mapping_mode": "explicit",
         "fields": dict(normalized["fields"]),
         "event_names": dict(normalized["event_names"]),
     }

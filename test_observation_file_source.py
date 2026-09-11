@@ -286,6 +286,45 @@ class ConfigContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             src.load_config(missing)
 
+    def test_explicit_mapping_round_trip_does_not_resurrect_declared_roles(self):
+        # A config produced from a candidate declaration declares only event/pid/
+        # timestamp. Saving it and reading it back must not silently restore the
+        # built-in tool/callID names the candidate never declared.
+        value = {"version": 1, "mapping_mode": "explicit",
+                 "target": {"pid": 1, "create_time": 1.0},
+                 "log_path": str(self.root / "x.log"),
+                 "fields": {"event": "kind", "pid": "process", "timestamp": "at"},
+                 "event_names": {"hook.loaded": "probe.ready"}}
+        config = src.load_config(self.write(value))
+        self.assertEqual(config["mapping_mode"], "explicit")
+        self.assertEqual(config["fields"], {"event": "kind", "pid": "process", "timestamp": "at"})
+        self.assertNotIn("tool", config["fields"])
+        self.assertNotIn("call_id", config["fields"])
+
+        # Re-saving what was read must be byte-identical in the mapping.
+        saved = {key: config[key] for key in
+                 ("version", "mapping_mode", "target", "log_path", "fields", "event_names")}
+        again = src.load_config(self.write(saved))
+        self.assertEqual(again["fields"], config["fields"])
+        self.assertEqual(again["event_names"], config["event_names"])
+
+    def test_explicit_mapping_still_requires_the_core_roles(self):
+        value = {"version": 1, "mapping_mode": "explicit",
+                 "target": {"pid": 1, "create_time": 1.0},
+                 "log_path": str(self.root / "x.log"),
+                 "fields": {"event": "kind", "pid": "process"}}
+        with self.assertRaises(ValueError) as ctx:
+            src.load_config(self.write(value))
+        self.assertIn("must declare: timestamp", str(ctx.exception))
+
+    def test_unknown_mapping_mode_is_rejected(self):
+        value = {"version": 1, "mapping_mode": "guess",
+                 "target": {"pid": 1, "create_time": 1.0},
+                 "log_path": str(self.root / "x.log")}
+        with self.assertRaises(ValueError) as ctx:
+            src.load_config(self.write(value))
+        self.assertIn("mapping_mode", str(ctx.exception))
+
 
 class DashboardProjectionTests(unittest.TestCase):
     """The scan/API path must expose the same snapshot shape as the HTTP source."""
