@@ -1,0 +1,43 @@
+docs/stage1/AUTONOMOUS_DELIVERY.md
+  s_7a5b8096b41d01::t_cdf3f8ea555007 66-75
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_99a3383404788b 546,998,2193-2204,2268-2279,2281-2283,2327,2332,2659-2662,2840-2844,2856-2891,2977-2984,3078-3092
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_3bd2d39ae94f7e 10-17
+recipes/runtime_hook_analyst.yaml
+  s_7a5b8096b41d01::t_6e7b620976d7ba 10-17
+runtime/analyst_tools.py
+  s_7a5b8096b41d01::t_410fb9fea05d2e 541-544,933
+runtime/investigation_findings.py
+  s_7a5b8096b41d01::t_e477d97e16bd48 94-106
+runtime/llm_config.py
+  s_b0143c6f6e2ba8::t_4281d39aff93e3 105-109,140-143
+runtime/model_settings.py
+  s_7a5b8096b41d01::t_33986f858c75b8 1-112
+test_model_settings.py
+  s_7a5b8096b41d01::t_26961cfac00c31 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5caa4314d512172a7883938335ee3af20862a0ad",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_b0143c6f6e2ba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06628-c25e-7551-aac2-9fdc1a5b204c",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
