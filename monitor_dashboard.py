@@ -593,8 +593,49 @@ def _read_file_observation_snapshot() -> dict[str, Any]:
                 "message": "观测文件源读取失败: %s" % type(exc).__name__}
 
 
+def _observation_pointer_path():
+    return Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard'))) / 'active_observation.json'
+
+
+def _wire_observe_config(result, target, *, persist=True):
+    """Shared manual/automatic consumer; persist only successful executor bindings."""
+    global OBSERVE_CONFIG, OBSERVE_CONFIG_ERROR
+    if result.get('status') not in ('installed', 'bound', 'rebound', 'activation_rebound') or not result.get('config_path'):
+        return False
+    if OBSERVE_URL:
+        return False
+    from runtime.observation_source import load_config, target_liveness
+    config = load_config(result['config_path'])
+    expected = {'pid': int(target['pid']), 'create_time': float(target['create_time'])}
+    if config['target'] != expected or target_liveness(expected) is not True:
+        raise ValueError('executor binding target is mismatched or no longer live')
+    path = str(Path(result['config_path']).resolve(strict=True))
+    if persist:
+        from runtime.learned_install import _atomic
+        pointer = _observation_pointer_path()
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        _atomic(pointer, json.dumps({'config_path': path, 'target': expected}).encode())
+    OBSERVE_CONFIG = path
+    OBSERVE_CONFIG_ERROR = ''
+    return True
+
+
+def _restore_observe_config():
+    if OBSERVE_CONFIG or OBSERVE_URL:
+        return
+    try:
+        saved = json.loads(_observation_pointer_path().read_text())
+        _wire_observe_config({'status': 'bound', 'config_path': saved['config_path']}, saved['target'], persist=False)
+    except FileNotFoundError:
+        return
+    except (ValueError, KeyError, OSError) as exc:
+        global OBSERVE_CONFIG_ERROR
+        OBSERVE_CONFIG_ERROR = '保存的观测绑定无法恢复: ' + str(exc)
+
+
 def read_observation_snapshot() -> dict[str, Any]:
     """受控读取观测契约；该适配层不改变扫描器的 Agent 列表。"""
+    _restore_observe_config()
     if OBSERVE_CONFIG_ERROR:
         return {"status": "invalid", "source": OBSERVE_CONFIG or OBSERVE_URL or None,
                 "message": OBSERVE_CONFIG_ERROR}
@@ -1709,16 +1750,7 @@ def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
     if isinstance(existing, dict) and not authorization.get("approved"):
         return None, None
     install_result = onboarding.execute_install(plan, target, authorization)
-    if plan.get('adapter') == 'file_plan' and install_result.get('config_path'):
-        # Consume only the executor-produced binding for this exact target.
-        from runtime.observation_source import load_config
-        config = load_config(install_result['config_path'])
-        if config['target'] != target:
-            raise ValueError('executor observation binding differs from current target')
-        global OBSERVE_CONFIG, OBSERVE_CONFIG_ERROR
-        if not OBSERVE_URL:
-            OBSERVE_CONFIG = install_result['config_path']
-            OBSERVE_CONFIG_ERROR = ''
+    _wire_observe_config(install_result, target)
     verification_result = None
     if install_result.get("status") in ("installed_pending_activation", "already_installed"):
         verification_result = onboarding.verify_activation(install_result, target)
@@ -2754,6 +2786,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 plan = agent.get("adapter", {}).get("onboarding", {}).get("plan", {})
                 auth = onboarding.authorization_from_environment(plan.get("workspace"))
                 install_result = onboarding.execute_install(plan, target, auth)
+                _wire_observe_config(install_result, target)
                 verification_result = None
                 if install_result.get("status") == "installed_pending_activation":
                     verification_result = onboarding.verify_activation(install_result, target)
