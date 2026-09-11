@@ -1709,6 +1709,16 @@ def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
     if isinstance(existing, dict) and not authorization.get("approved"):
         return None, None
     install_result = onboarding.execute_install(plan, target, authorization)
+    if plan.get('adapter') == 'file_plan' and install_result.get('config_path'):
+        # Consume only the executor-produced binding for this exact target.
+        from runtime.observation_source import load_config
+        config = load_config(install_result['config_path'])
+        if config['target'] != target:
+            raise ValueError('executor observation binding differs from current target')
+        global OBSERVE_CONFIG, OBSERVE_CONFIG_ERROR
+        if not OBSERVE_URL:
+            OBSERVE_CONFIG = install_result['config_path']
+            OBSERVE_CONFIG_ERROR = ''
     verification_result = None
     if install_result.get("status") in ("installed_pending_activation", "already_installed"):
         verification_result = onboarding.verify_activation(install_result, target)

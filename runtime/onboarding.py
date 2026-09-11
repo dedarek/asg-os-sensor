@@ -235,6 +235,13 @@ def _contract_error(recipe: dict[str, Any], source: str | None = None) -> str | 
     hook = recipe.get("hook")
     if not isinstance(hook, dict):
         return "配方没有 hook 契约"
+    if hook.get('method') == 'file_plan':
+        from runtime.learned_install import validate_plan
+        try:
+            validate_plan(recipe.get('install_plan'))
+        except ValueError as exc:
+            return '无效通用文件计划: ' + str(exc)
+        return None
     adapter = hook.get("adapter")
     contract = ADAPTER_REGISTRY.get(adapter)
     if not contract:
@@ -253,8 +260,8 @@ def _common_plan(struct: dict[str, Any], match_status: str, entry: dict[str, Any
                  recipe: dict[str, Any], recipe_source: str) -> dict[str, Any]:
     iid = make_instance_id(struct["pid"], struct["create_time"])
     hook = recipe.get("hook", {})
-    adapter = hook.get("adapter")
-    contract = ADAPTER_REGISTRY.get(adapter, {})
+    adapter = "file_plan" if hook.get("method") == "file_plan" else hook.get("adapter")
+    contract = {"installer": "runtime.learned_install"} if adapter == "file_plan" else ADAPTER_REGISTRY.get(adapter, {})
     workspace = _workspace(struct)
     return {
         "plan_version": 1,
@@ -390,6 +397,8 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
     """执行唯一登记的安装器；失败关闭且不运行模型提供的命令。"""
     if plan.get("status") != "plan_pending_authorization":
         return {"status": plan.get("status", "invalid_plan"), "reason": plan.get("reason", "计划不可执行")}
+    if plan.get('adapter') == 'file_plan':
+        return _execute_file_plan(plan, target, authorization or {})
     contract = ADAPTER_REGISTRY.get(plan.get("adapter"))
     if not contract:
         result = {"status": "unsupported", "reason": "计划使用了未登记的接入适配器"}
@@ -572,6 +581,8 @@ def record_investigation(instance: dict[str, Any], struct: dict[str, Any], recip
         "plan": plan,
     }
     if run_dir:
+        plan['investigation_run_dir'] = str(Path(run_dir).resolve())
+        plan['observed_compatibility'] = copy.deepcopy(struct.get('compatibility'))
         payload["run_dir"] = run_dir
     record_transition(instance, "investigation_recipe_saved", payload)
     return plan
@@ -601,3 +612,32 @@ def view_for_instance(instance_id: str, struct: dict[str, Any], match_result: di
                 "verification": prior.get("verification"), "install": prior.get("install")}
     return {"status": "ready", "plan": plan_from_match(struct, match_result),
             "last_event": None}
+
+
+def _execute_file_plan(plan, target, auth):
+    """Generic learned plan dispatch; no product template and no process restart."""
+    from runtime import learned_onboarding
+    if not auth.get('approved'):
+        return {'status': 'pending_authorization', 'reason': '等待安装授权'}
+    workspace = plan.get('workspace')
+    if auth.get('scope') != 'project' or not workspace or auth.get('workspace') != workspace:
+        return {'status': 'failed', 'reason': 'file_plan authorization scope/workspace mismatch'}
+    try:
+        _target_is_live(target)
+        run = Path(plan['investigation_run_dir']).resolve(strict=True)
+        recipe = json.loads((run / 'recipes' / 'candidate.json').read_text())['recipe']
+        state = run / 'coordinator-state'
+        state.mkdir(exist_ok=True)
+        result = learned_onboarding.coordinate(
+            recipe, run / 'evidence', target, workspace=Path(workspace), state_dir=state,
+            authorization=learned_onboarding.authorization_scope(
+                approved_workspace=workspace, allow_install=True,
+                allow_rebind=os.environ.get('ASG_ONBOARDING_REBIND', '0') == '1'),
+            observed_compatibility=plan.get('observed_compatibility'),
+            evidence=plan.get('activation_evidence'), reason='authorized dashboard file_plan dispatch')
+        record_transition(target, 'learned_file_plan_execution', {'plan': plan, 'install': result})
+        return result
+    except (OSError, ValueError, KeyError, psutil.Error) as exc:
+        result = {'status': 'failed', 'reason': str(exc)}
+        record_transition(target, 'install_failed', {'plan': plan, 'install': result})
+        return result
