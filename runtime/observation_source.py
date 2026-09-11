@@ -17,6 +17,8 @@ Truth rules, mirroring the rest of Stage1:
 from __future__ import annotations
 
 import json
+import math
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,9 @@ MAX_PARTIAL_BYTES = 64 * 1024
 MAX_EVENTS = 40
 MAX_PAIRED = 40
 CREATE_TIME_TOLERANCE = 1e-3
+# An event may not predate the bound instance's own create time (with a small
+# tolerance for sub-second rounding between the producer clock and psutil).
+EVENT_TIME_TOLERANCE_S = 1.0
 SCHEMA_VERSION = 1
 
 # Canonical vocabulary shared with the existing observation contract.
@@ -106,17 +111,21 @@ def load_config(path: Path | str) -> dict[str, Any]:
 def _timestamp(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
+    parsed: float | None = None
     if isinstance(value, (int, float)):
-        return float(value) / 1000.0 if value > 1e11 else float(value)
-    if isinstance(value, str):
+        parsed = float(value) / 1000.0 if value > 1e11 else float(value)
+    elif isinstance(value, str):
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
-        if parsed.tzinfo is None:
+        if moment.tzinfo is None:
             return None
-        return parsed.timestamp()
-    return None
+        parsed = moment.timestamp()
+    # NaN/Infinity survive json.loads and are truthy; they are not timestamps.
+    if parsed is None or not math.isfinite(parsed):
+        return None
+    return parsed
 
 
 def target_liveness(target: dict[str, Any]) -> bool | None:
@@ -134,7 +143,14 @@ def target_liveness(target: dict[str, Any]) -> bool | None:
 def _blank_state() -> dict[str, Any]:
     return {"offset": 0, "partial": "", "valid": 0, "invalid": 0, "ignored": 0,
             "loaded": False, "pending": {}, "paired": [], "events": [],
-            "last_event_time": None}
+            "last_event_time": None, "inode": None}
+
+
+def _mapping_fingerprint(config: dict[str, Any]) -> str:
+    """Identity of the field/event mapping so a mapping change never reuses state."""
+    payload = json.dumps({"fields": config["fields"], "event_names": config["event_names"]},
+                         sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def reset_state(log_path: str | None = None) -> None:
@@ -148,7 +164,10 @@ def reset_state(log_path: str | None = None) -> None:
 
 def _state_for(config: dict[str, Any]) -> dict[str, Any]:
     target = config["target"]
-    key = "%s|%s|%s" % (config["log_path"], target["pid"], target["create_time"])
+    # The mapping is part of the identity: changing how fields/events are named
+    # must start a fresh read, never blend results from the previous mapping.
+    key = "%s|%s|%s|%s" % (config["log_path"], target["pid"], target["create_time"],
+                            _mapping_fingerprint(config))
     state = _STATE.get(key)
     if state is None:
         state = _blank_state()
@@ -182,6 +201,11 @@ def _apply_line(line: str, state: dict[str, Any], config: dict[str, Any]) -> Non
         return
     timestamp = _timestamp(event.get(fields["timestamp"]))
     if timestamp is None:
+        state["invalid"] += 1
+        return
+    if timestamp < float(config["target"]["create_time"]) - EVENT_TIME_TOLERANCE_S:
+        # A hook cannot report activity from before the instance it is bound to
+        # came into existence; such lines are treated the same as unparsable.
         state["invalid"] += 1
         return
     if canonical == "hook.loaded":
@@ -218,10 +242,15 @@ def _ingest(config: dict[str, Any], state: dict[str, Any]) -> str | None:
     if path.is_symlink():
         return "观测日志不得为符号链接"
     try:
-        size = path.stat().st_size
-        if size < state["offset"]:
-            # Truncated or rotated: restart from the beginning of the new file.
+        info = path.stat()
+        identity = (info.st_dev, info.st_ino)
+        replaced = state["inode"] is not None and state["inode"] != identity
+        truncated = info.st_size < state["offset"]
+        if replaced or truncated:
+            # A same-path file that was replaced (copy/rename/rotate) or truncated
+            # is a different reader target: restart instead of trusting an offset.
             state.update(_blank_state())
+        state["inode"] = identity
         with path.open("r", encoding="utf-8", errors="replace") as stream:
             stream.seek(state["offset"])
             chunk = stream.read(MAX_READ_CHUNK_BYTES)

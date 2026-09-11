@@ -174,6 +174,67 @@ class FileEventSourceTests(unittest.TestCase):
         self.assertTrue(snap["target_alive"])
         self.assertEqual(snap["instance_create_time"], TARGET["create_time"])
 
+    # ---- narrow boundary fixes requested by review ----
+
+    def test_event_time_must_be_finite_and_not_before_create_time(self):
+        self.append(_loaded())
+        # Timestamps that pre-date the bound instance, or that are not finite
+        # numbers, must not be accepted as observed activity.
+        self.append({"ts": "2026-01-01T00:00:00.000Z", "pid": 4242, "event": "tool.execute.before",
+                     "tool": "read", "callID": "old-1"})
+        self.append({"ts": float("nan"), "pid": 4242, "event": "tool.execute.before",
+                     "tool": "read", "callID": "nan-1"})
+        self.append({"ts": float("inf"), "pid": 4242, "event": "tool.execute.before",
+                     "tool": "read", "callID": "inf-1"})
+
+        snap = self.read()
+
+        self.assertEqual(snap["events"]["valid"], 1)  # only the loaded event
+        self.assertEqual(snap["events"]["invalid"], 3)
+        self.assertEqual(snap["paired_calls"], [])
+
+    def test_event_at_or_after_create_time_is_accepted(self):
+        at_bind = datetime.fromtimestamp(TARGET["create_time"], timezone.utc)
+        self.append({"ts": at_bind.isoformat().replace("+00:00", "Z"), "pid": 4242,
+                     "event": "plugin.loaded"})
+        snap = self.read()
+        self.assertEqual(snap["events"]["valid"], 1)
+
+    def test_same_path_file_replaced_with_new_inode_resets_read_state(self):
+        self.append(_loaded())
+        first = self.read()
+        self.assertEqual(first["events"]["valid"], 1)
+
+        # Rotate in place: a different file now lives at the same path and is
+        # larger than the previous read offset, so a size-only check would miss it.
+        replacement = self.root / "probe.log.new"
+        replacement.write_text("\n".join(json.dumps(item) for item in
+                                          (_loaded(), _before("call-rot"), _after("call-rot"))) + "\n",
+                               encoding="utf-8")
+        self.assertGreater(replacement.stat().st_size, self.log.stat().st_size)
+        import os
+        os.replace(replacement, self.log)
+
+        snap = self.read()
+        self.assertEqual(snap["events"]["valid"], 3)
+        self.assertEqual(snap["events"]["invalid"], 0)
+        self.assertEqual(snap["paired_calls"], [{"call_id": "call-rot", "tool_name": "read"}])
+
+    def test_field_mapping_change_rebuilds_state_instead_of_mixing(self):
+        self.append(_loaded(), _before("call-map"), _after("call-map"))
+        self.assertEqual(self.read()["events"]["valid"], 3)
+
+        # Same file, different mapping: the prior counts must not be reused, and
+        # the new mapping must be applied to a fresh read of the same bytes.
+        changed = json.loads(self.config_path.read_text(encoding="utf-8"))
+        changed["fields"] = dict(changed["fields"], call_id="callId")
+        self.config_path.write_text(json.dumps(changed), encoding="utf-8")
+        remapped = src.snapshot(src.load_config(self.config_path))
+
+        self.assertEqual(remapped["events"]["valid"], 1)   # only the loaded event matches
+        self.assertEqual(remapped["events"]["invalid"], 2)  # both tool events lack "callId"
+        self.assertEqual(remapped["paired_calls"], [])
+
 
 class ConfigContractTests(unittest.TestCase):
     def setUp(self):
