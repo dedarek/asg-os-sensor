@@ -14,7 +14,7 @@ class HistoryRenderTests(unittest.TestCase):
         bootstrap='''
 const assert=require('assert');
 const nodes={}; const errors=[];
-const document={getElementById(id){return nodes[id] || (nodes[id]={style:{},classList:{add(){},remove(){}}});}};
+const document={getElementById(id){return nodes[id] || (nodes[id]={style:{},dataset:{},classList:{add(){},remove(){}}});}};
 const window={location:{hash:''},addEventListener(){}};
 const setInterval=()=>0;
 console.error=(...args)=>errors.push(args.join(' '));

@@ -98,6 +98,40 @@ def _env_optional_positive_float(name: str) -> float | None:
 
 
 SCAN_INTERVAL_S = _env_int("ASG_SCAN_INTERVAL", 30)
+SCAN_TIMER_CONDITION = threading.Condition()
+SCAN_TIMER_REVISION = 0
+
+
+def _scan_settings_path():
+    return Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts/stage1/dashboard'))) / 'scan_settings.json'
+
+
+def _validate_scan_interval(value):
+    if type(value) is not int or not 1 <= value <= 86400:
+        raise ValueError('请输入 1 到 86400 之间的整数秒数')
+    return value
+
+
+try:
+    SCAN_INTERVAL_S = _validate_scan_interval(json.loads(_scan_settings_path().read_text())['scan_interval'])
+except (OSError, ValueError, KeyError, TypeError):
+    pass
+
+
+def set_scan_interval(value):
+    global SCAN_INTERVAL_S, SCAN_TIMER_REVISION
+    value = _validate_scan_interval(value)
+    from runtime.learned_install import _atomic
+    with SCAN_TIMER_CONDITION:
+        path = _scan_settings_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic(path, json.dumps({'scan_interval': value}).encode())
+        SCAN_INTERVAL_S = value
+        SCAN_TIMER_REVISION += 1
+        with STATE_LOCK:
+            SCAN_STATE['scan_interval'] = value
+        SCAN_TIMER_CONDITION.notify_all()
+    return value
 MAX_ANALYSTS = _env_int("ASG_MAX_ANALYSTS", 2)
 GOOSE_MAX_TURNS = _env_optional_positive_int("ASG_GOOSE_MAX_TURNS")
 GOOSE_MAX_TOOL_REPETITIONS = _env_optional_positive_int("ASG_GOOSE_MAX_TOOL_REPETITIONS")
@@ -1818,7 +1852,17 @@ def background_scanner_loop():
             scan_agents_once()
         except Exception as e:
             print(f"[Scanner Error] {e}", file=sys.stderr)
-        time.sleep(SCAN_INTERVAL_S)
+        with SCAN_TIMER_CONDITION:
+            revision = SCAN_TIMER_REVISION
+            deadline = time.monotonic() + SCAN_INTERVAL_S
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                SCAN_TIMER_CONDITION.wait(remaining)
+                if revision != SCAN_TIMER_REVISION:
+                    revision = SCAN_TIMER_REVISION
+                    deadline = time.monotonic() + SCAN_INTERVAL_S
 
 
 def _query_pid(path: str) -> int | None:
@@ -2129,7 +2173,13 @@ HTML_PAGE = """<!DOCTYPE html>
     ASG · 进程发现、自主调查与接入验证
   </div>
   <div class="meta-bar">
-    <div class="meta-item">扫描周期: <b id="scan-interval">-</b></div>
+    <form class="meta-item" onsubmit="saveScanInterval(event)">
+      <label for="scan-interval-input">扫描周期:</label>
+      <input id="scan-interval-input" type="number" min="1" max="86400" step="1" required
+        style="width:82px;background:var(--bg);color:var(--text-primary);border:1px solid var(--card-border);border-radius:6px;padding:6px" aria-label="扫描周期（秒）">
+      <span>秒</span><button class="refresh-btn" type="submit">保存</button>
+      <span id="scan-interval" role="status" aria-live="polite"></span>
+    </form>
     <div class="meta-item">已存指纹: <b id="fp-count" style="cursor: pointer; text-decoration: underline;" onclick="openFpDrawer()">-</b></div>
     <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
     <div class="meta-item">上次更新: <b id="last-time">-</b></div>
@@ -2519,7 +2569,11 @@ async function updateUI() {
       : data.scanning ? '正在发现 Agent，已有结果会继续显示'
       : running ? `正在分析 ${running} 个实例，资产和接入结果会自动更新`
       : '扫描结果已更新；是否接入成功以各卡片的真实事件为准';
-    document.getElementById('scan-interval').innerText = `${data.scan_interval || 30}s`;
+    const intervalInput = document.getElementById('scan-interval-input');
+    if (!intervalInput.dataset.initialized) {
+      intervalInput.value = data.scan_interval || 30;
+      intervalInput.dataset.initialized = 'true';
+    }
     document.getElementById('fp-count').innerText = data.fingerprints_count;
     document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
     const bindings = Object.values(data.observation_instances || {});
@@ -2764,6 +2818,25 @@ async function updateUI() {
   }
 }
 
+async function saveScanInterval(event) {
+  event.preventDefault();
+  const input = document.getElementById('scan-interval-input');
+  const status = document.getElementById('scan-interval');
+  const value = Number(input.value);
+  if (!Number.isInteger(value) || value < 1 || value > 86400) {
+    status.innerText = '请输入 1～86400 的整数';
+    return;
+  }
+  status.innerText = '正在保存…';
+  try {
+    const response = await fetch('/api/scan-interval', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({scan_interval:value})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '保存失败');
+    status.innerText = `已保存：${result.scan_interval} 秒`;
+  } catch (error) { status.innerText = error.message; }
+}
+
 async function triggerScan() {
   const btn = document.getElementById('scan-button');
   btn.disabled = true;
@@ -2923,7 +2996,25 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        if self.path == "/api/scan":
+        if self.path == '/api/scan-interval':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 1024:
+                    raise ValueError('无效请求')
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError('无效请求')
+                value = set_scan_interval(data.get('scan_interval'))
+                code, payload = 200, {'scan_interval': value}
+            except (ValueError, TypeError) as exc:
+                code, payload = 400, {'error': str(exc)}
+            except OSError:
+                code, payload = 500, {'error': '保存失败，请重试'}
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode())
+        elif self.path == "/api/scan":
             threading.Thread(target=scan_agents_once, daemon=True).start()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
