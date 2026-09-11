@@ -162,6 +162,20 @@ def entry_surface(process: psutil.Process) -> dict[str, Any]:
         roots.append({"id": f"root-{len(roots)}", "path": value, "source": source})
 
     add_root(cwd, "process.cwd")
+    # Configuration-directory environment names are launch facts, not product
+    # adapters. Export only existing absolute directory paths, never env values
+    # in general (tokens, model prompts and URL credentials stay private).
+    env = _safe_call(lambda: process.environ(), {}) or {}
+    for key, value in sorted(env.items())[:256]:
+        if not isinstance(key, str) or _SECRET_KEY.search(key):
+            continue
+        if not re.fullmatch(r"[A-Z0-9_]*CONFIG_(DIR|HOME)", key):
+            continue
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            continue
+        directory = _resolve(value)
+        if directory and directory.is_dir() and not _SENSITIVE_NAME.search(directory.name):
+            add_root(directory, "process.environment path: " + key + " (declared; loading unverified)")
     if executable and executable["exists"]:
         add_root(Path(executable["resolved"]).parent, "resolved executable directory")
     for entry in entries[:8]:
