@@ -1,0 +1,21 @@
+runtime/analyst_evidence.py
+  s_1512a994888af5::t_db1942bb146469 165-178
+test_config_directory_evidence.py
+  s_1512a994888af5::t_5686e756ab97b0 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "07fd7dc6ec5524ee5892f5e6f0101f99756b5942",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
