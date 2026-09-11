@@ -58,7 +58,7 @@ def investigation_state(enabled, running=False, result=None):
     state = {'running': '执行中', 'succeeded': '成功', 'reused': '指纹复用（未调用Goose）', 'failed': '失败',
              'timeout': '超时（已保留证据）', 'cancelled': '已取消（已保留证据）',
              'queued': '排队中', 'deferred': '暂缓（队列已满）',
-             'assets_collected': '资产初查完成（非 Hook 接入）',
+             'assets_collected': '资产初查完成',
              'partial': '已保存部分发现（可续查）',
              'not_scheduled': '未调度'}[status]
     response = {'status': status, 'label': state, 'message': message,

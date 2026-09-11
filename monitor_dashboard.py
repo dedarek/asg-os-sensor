@@ -1594,7 +1594,7 @@ def scan_agents_once():
                                if learned_verification.get('target') == {'pid': pid, 'create_time': pinfo.get('create_time')}
                                else []),
                     'paired_calls': adapter_info['hook_state'].get('paired_calls', []),
-                    'label': '当前实例的独立验收记录（非持续健康保证）',
+                    'label': '当前实例的工具事件记录',
                     'blocking': 'not_implemented',
                 }
                 if adapter_info['hook_state']['status'] == 'observing':
@@ -1619,7 +1619,7 @@ def scan_agents_once():
                               'last_event_time': observation_snapshot.get('last_event_time'),
                               'target_alive': observation_snapshot.get('target_alive')},
                     'source': 'external_config: target-bound JSONL',
-                    'message': '动态读取真实Hook日志；接收映射由人工配置，不代表自主接入完成或阻断能力',
+                    'message': '动态读取 Hook 日志',
                 }
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             
@@ -2087,7 +2087,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="footer">
   <div>OS-Level Zero-Prior Agent Governance</div>
   <div>·</div>
-  <div>进程发现与调查状态 · Stage1 尚未闭环</div>
+  <div>Agent 发现、资产与 Hook 状态</div>
   <div>·</div>
   <div>每 5 秒刷新</div>
 </div>
@@ -2131,7 +2131,7 @@ function assetText(adapter, key) {
     } else if (key === 'child_executions') {
       const events = v && v.events || [];
       const calls = v && v.paired_calls || [];
-      brief = readableLine('工具调用',calls.length ? calls.map(x=>x.tool_name || '未命名工具').join('、') + ' · ' + calls.length + ' 次前后配对' : '已记录执行事件') + readableLine('时效',v && v.live_file_source ? '自动读取新事件 · 目标进程存活' : '历史验收快照，非持续健康状态') + (v && v.live_file_source && v.last_event_time ? readableLine('末次事件',new Date(v.last_event_time*1000).toLocaleString()) : '');
+      brief = readableLine('工具调用',calls.length ? calls.map(x=>x.tool_name || '未命名工具').join('、') + ' · ' + calls.length + ' 次前后配对' : '已记录执行事件') + readableLine('时效',v && v.live_file_source ? '自动读取新事件 · 目标进程存活' : '历史事件快照') + (v && v.live_file_source && v.last_event_time ? readableLine('末次事件',new Date(v.last_event_time*1000).toLocaleString()) : '');
     } else if (key === 'network_surface') {
       const ports = rows.filter(x=>x.status === 'LISTEN').map(x=>x.local_port).filter(Boolean);
       brief = readableLine('监听端口',ports.length ? ports.join('、') : '见端点详情') + readableLine('范围','目标进程的瞬时快照');
@@ -2143,7 +2143,7 @@ function assetText(adapter, key) {
     if (!brief) brief = readableLine('结果',typeof v === 'string' ? v : '已保存结构化信息，请展开查看');
   }
   const provenance = v && v.configuration_status;
-  const note = provenance === 'configured' ? '配置中声明，未验证实际使用' : provenance === 'observed' ? '有运行记录支持，不代表持续生效' : status === 'empty' ? '不代表全局不存在；检查范围见详情' : '';
+  const note = provenance === 'configured' ? '来源：配置' : provenance === 'observed' ? '来源：运行记录' : status === 'empty' ? '' : '';
   const refs = item.evidence_refs || item.sources || [];
   const id = key + ':' + (refs.join(',') || item.source || status);
   const details = status === 'not_collected' ? '' : readableDetails(id,'查看依据与原始详情', {说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []});
@@ -2383,7 +2383,7 @@ async function openInspector(pid) {
       <div class="fp-header">
         <b style="color: #f59e0b;">🌐 网络与通信表面 (Network Surface)</b>
       </div>
-      <div class="fp-code">${assetText(adapter, 'network_surface')} · 当前观测未完成时不能判断连接情况或安全性</div>
+      <div class="fp-code">${assetText(adapter, 'network_surface')}</div>
     </div>
 
     <div class="fp-item">
@@ -2445,7 +2445,7 @@ async function updateUI() {
     const netColor = totalPorts > 0 ? 'var(--amber)' : 'var(--green)';
     document.getElementById('kpi-net-count').style.color = netColor;
     document.getElementById('kpi-net-count').innerText = '未知';
-    document.getElementById('kpi-net-detail').innerText = totalPorts > 0 ? `${totalPorts} 历史端点（未验证）` : '尚未采集，不能判断安全性';
+    document.getElementById('kpi-net-detail').innerText = totalPorts > 0 ? `${totalPorts} 历史端点（未验证）` : '尚未采集';
     
     const grid = document.getElementById('agents-grid');
     if (!data.agents || data.agents.length === 0) {
@@ -2464,7 +2464,7 @@ async function updateUI() {
       const isInvestigating = backendInvestigating;
       const observationEvidence = (a.adapter && a.adapter.observation_evidence) || {};
       const observationText = a.adapter.learned_observation && a.adapter.learned_observation.status === 'observing'
-        ? '观测证据: 本实例工具前后事件已配对验证（验收快照，非持续健康保证）'
+        ? '工具事件：前后配对已验证'
         : observationEvidence.status === 'observed'
         ? `观测证据: ${observationEvidence.label} · 当前=${observationEvidence.health_status || 'unknown'} · 有效事件=${observationEvidence.recent_events || 0} · 阻断=${(observationEvidence.blocking || {}).label || '未支持'}`
         : `观测证据: ${observationEvidence.label || '未绑定观测证据'}${observationEvidence.reason ? ' · ' + observationEvidence.reason : ''}`;
@@ -2474,13 +2474,13 @@ async function updateUI() {
       const verification = onboarding.verification || {};
       const learnedHook = (a.adapter && a.adapter.hook_state) || {};
       const onboardingText = learnedHook.status === 'observing'
-        ? '接入链: Goose生成方案已安装，真实工具前后事件已验收（仅观测）'
+        ? 'Hook：已安装，工具事件已验证'
         : learnedHook.status === 'loaded'
           ? '接入链: 生成Hook已加载，等待工具事件'
         : learnedHook.status === 'installed_pending_activation'
           ? '接入链: 生成方案已安装，待目标加载'
         : verification.status === 'events_verified'
-        ? '接入链: 加载与工具事件已验证（仅观测，阻断未支持）'
+        ? 'Hook：已加载，工具事件已验证'
         : verification.status === 'loaded_verified'
           ? '接入链: 插件已加载，尚无工具事件（未完成观测验证）'
         : install.status === 'installed_pending_activation'
@@ -2556,7 +2556,7 @@ async function updateUI() {
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">原生程序: ${a.raw_exe} · 存活时长: <b style="color: #cbd5e1;">${formatUptime(a.uptime_sec)}</b></div>
             </div>
             <div style="text-align: right;">
-              <div class="score-badge ${scoreClass}" title="身份/行为识别分，不代表安全风险或概率">识别分: ${a.score}</div>
+              <div class="score-badge ${scoreClass}" title="身份与行为识别分">识别分: ${a.score}</div>
               ${reasonTags}
             </div>
           </div>
@@ -2611,7 +2611,7 @@ async function updateUI() {
               </div>
 
               <div class="adapter-row"><span class="adapter-label">Skill:</span><div class="adapter-val">${assetText(a.adapter, 'skills')}</div></div>
-              <div class="adapter-group-title">🌐 执行与通信画像（无数据不能判断安全性）</div>
+              <div class="adapter-group-title">🌐 执行与通信画像</div>
               <div class="adapter-row">
                 <span class="adapter-label">执行事件（${a.adapter.assets.child_executions.status === 'collected' ? '本实例验收' : '未接入采集'}）:</span>
                 <div class="adapter-val" style="color: #f59e0b; font-family: monospace;">${assetText(a.adapter, 'child_executions')}</div>
