@@ -1219,6 +1219,23 @@ def _enqueue_investigation(pid: int, instance_id: str, create_time: float | None
     return "enqueued"
 
 
+def _needs_asset_followup(*, is_matched: bool, investigation_result: dict[str, Any] | None,
+                         assets_phase: bool) -> bool:
+    """Whether an exact-matched instance still needs its own asset snapshot.
+
+    An exact fingerprint legitimately reuses the Hook recipe, so it must not
+    trigger a fresh Hook investigation. It does not follow that a *new* instance
+    already has assets: the checkpoint belongs to an instance, not to a family.
+    This only declares the intent to schedule; `_enqueue_investigation` still
+    refuses an active/queued run, an existing assets_collected/partial result and
+    the retry cooldown, so a repeat investigation cannot actually start.
+    """
+    if not assets_phase or not is_matched:
+        return False
+    return (investigation_result or {}).get("status") not in (
+        "assets_collected", "partial", "succeeded", "reused")
+
+
 def _schedule_investigation(pid: int, struct: dict[str, Any], force: bool = False) -> str:
     """扫描循环的公平调度入口：统一进入 FIFO 队列，由调度线程按槽位启动。"""
     if not AUTONOMOUS_ANALYSIS_ENABLED:
@@ -1622,7 +1639,11 @@ def scan_agents_once():
             })
 
             # 自动接入闭环：若发现陌生 Agent 或尚未拥有深度治理全景档案的已匹配 Agent，立即在后台拉起 Goose 进行自主逆向！
-            needs_deep_governance = False  # exact compatibility reuses investigation, even when model is unknown
+            # exact 命中复用 Hook 配方，但资产快照属于实例而非家族：assets 阶段里
+            # 已匹配但本实例尚无资产 checkpoint 时仍需调度；重复由队列去重拦截。
+            needs_deep_governance = _needs_asset_followup(
+                is_matched=is_matched, investigation_result=investigation_result,
+                assets_phase=os.environ.get('ASG_INVESTIGATION_PHASE', '').strip() == 'assets')
             with INVESTIGATION_LOCK:
                 retry_ready = now() >= INVESTIGATION_RETRY_AT.get(instance_id, 0)
             target_allowed = not os.environ.get('ASG_ANALYST_TARGET_PID') or str(pid) == os.environ['ASG_ANALYST_TARGET_PID']
