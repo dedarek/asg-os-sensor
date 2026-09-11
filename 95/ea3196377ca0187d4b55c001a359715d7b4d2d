@@ -1,0 +1,27 @@
+recipes/runtime_analyst.yaml
+  s_1512a994888af5::t_f27ff24600f8ac 58-61
+recipes/runtime_hook_analyst.yaml
+  s_1512a994888af5::t_ae6a7290846dc2 28-32
+runtime/analyst_tools.py
+  s_1512a994888af5::t_e4b142adb6c6b8 815-816,888-911
+runtime/recipe_validation.py
+  s_1512a994888af5::t_92908fcf9247eb 16-69,99,105,140-143
+test_recipe_evolution_contract.py
+  s_1512a994888af5::t_78292b6effc6d9 1-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "95ea3196377ca0187d4b55c001a359715d7b4d2d",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
