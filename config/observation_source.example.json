@@ -1,0 +1,27 @@
+{
+  "_comment": "人工配置示范：外部文件事件接入。字段名与事件名都是可替换的配置，不是代码分支；后续可由 Goose 调查结果生成同结构文件。",
+  "version": 1,
+  "source": "file-events",
+  "target": {
+    "pid": 36946,
+    "create_time": 1789097026.356022
+  },
+  "log_path": "/Users/mac/个人项目/asg-os-sensor-stage1/artifacts/stage1/learned-demo/run-20260910-203924/workspace/.opencode/plugins/asg-hook-probe.log",
+  "fields": {
+    "event": "event",
+    "pid": "pid",
+    "timestamp": "ts",
+    "tool": "tool",
+    "call_id": "callID"
+  },
+  "event_names": {
+    "hook.loaded": "plugin.loaded",
+    "tool.execute.before": "tool.execute.before",
+    "tool.execute.after": "tool.execute.after"
+  },
+  "notes": [
+    "绑定以 pid+create_time 复核，目标是进程退出或被替换即不再宣称健康。",
+    "本接入只记录事件，不声明阻断（blocking=unsupported）。",
+    "未映射的同实例事件（例如 session.*、plugin.added）计入 ignored，不算观测事件。"
+  ]
+}

@@ -107,6 +107,13 @@ GOOSE_RETRY_COOLDOWN_S = _env_int("ASG_GOOSE_RETRY_COOLDOWN", 300)
 AUTONOMOUS_ANALYSIS_ENABLED = os.environ.get("ASG_AUTONOMOUS_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
 ONBOARDING_AUTO_INSTALL_ENABLED = os.environ.get("ASG_ONBOARDING_AUTO_INSTALL", "0").strip() == "1"
 OBSERVE_URL = os.environ.get("ASG_OBSERVE_URL", "").strip().rstrip("/")
+# Generic file-event binding: an external config declares target pid+create_time,
+# log path and field mapping. Mutually exclusive with the HTTP receiver so a
+# scanned instance is never granted evidence from two different sources.
+OBSERVE_CONFIG = os.environ.get("ASG_OBSERVE_CONFIG", "").strip()
+OBSERVE_CONFIG_ERROR = ""
+if OBSERVE_CONFIG and OBSERVE_URL:
+    OBSERVE_CONFIG_ERROR = "ASG_OBSERVE_CONFIG 与 ASG_OBSERVE_URL 不能同时配置"
 try:
     OBSERVE_TIMEOUT_S = float(os.environ.get("ASG_OBSERVE_TIMEOUT", "1.0") or "1.0")
 except ValueError:
@@ -131,8 +138,8 @@ SCAN_STATE = {
     "agents": [],
     "fingerprints_count": 0,
     "observation_adapter": {
-        "status": "not_configured" if not OBSERVE_URL else "pending",
-        "source": OBSERVE_URL or None,
+        "status": "pending" if (OBSERVE_URL or OBSERVE_CONFIG) else "not_configured",
+        "source": OBSERVE_CONFIG or OBSERVE_URL or None,
     },
     "active_investigations": {}  # pid -> {status, started_at, turns}
 }
@@ -567,8 +574,32 @@ def _observe_request(path: str) -> tuple[int | None, dict[str, Any] | None, str 
     return status, payload, None
 
 
+def _read_file_observation_snapshot() -> dict[str, Any]:
+    """通用文件事件源：外部配置绑定 pid+create_time、日志路径与字段映射。
+
+    该源与 HTTP 接收器产出同一份快照结构，因此页面与 API 无需分支；
+    它只做记录，不声明阻断，也不把历史 pid 当作持续健康。
+    """
+    from runtime import observation_source
+
+    try:
+        config = observation_source.load_config(OBSERVE_CONFIG)
+    except ValueError as exc:
+        return {"status": "invalid", "source": OBSERVE_CONFIG, "message": str(exc)}
+    try:
+        return observation_source.snapshot(config)
+    except OSError as exc:
+        return {"status": "unavailable", "source": OBSERVE_CONFIG,
+                "message": "观测文件源读取失败: %s" % type(exc).__name__}
+
+
 def read_observation_snapshot() -> dict[str, Any]:
     """受控读取观测契约；该适配层不改变扫描器的 Agent 列表。"""
+    if OBSERVE_CONFIG_ERROR:
+        return {"status": "invalid", "source": OBSERVE_CONFIG or OBSERVE_URL or None,
+                "message": OBSERVE_CONFIG_ERROR}
+    if OBSERVE_CONFIG:
+        return _read_file_observation_snapshot()
     if not OBSERVE_URL:
         return {"status": "not_configured", "source": None,
                 "message": "未配置隔离观测接收器；扫描结果仍来自本机进程扫描"}
@@ -679,6 +710,21 @@ def observation_for_instance(snapshot: dict[str, Any], pid: int,
     events = snapshot.get("events", {})
     loaded_observed = bool(health.get("loaded_observed", False))
     recent_events = int(events.get("valid", 0) or 0)
+    # A file-event source re-checks live liveness on every read. A bound pid
+    # whose process is gone keeps its recorded evidence visible but is never
+    # reported as a currently healthy instance.
+    if snapshot.get("target_alive") is False:
+        base.update(status="target_gone", label="目标实例已退出（记录保留，不宣称健康）",
+                    reason=snapshot.get("message", "目标进程已退出或被替换"),
+                    instance_id="%s:%s" % (observed_pid, observed_ct),
+                    health_status="stale", loaded_observed=False,
+                    target_alive=False,
+                    last_event_time=snapshot.get("last_event_time"),
+                    recent_events=recent_events,
+                    invalid_events=int(events.get("invalid", 0) or 0),
+                    blocking=snapshot.get("blocking") or {"status": "unsupported", "label": "未支持"},
+                    capabilities=snapshot.get("capabilities", {}))
+        return base
     if not loaded_observed and recent_events == 0:
         base.update(status="bound_no_events", label="已绑定实例，但尚无观测事件",
                     reason=health.get("reason", "尚无 hook.loaded 或工具事件"),
@@ -695,6 +741,9 @@ def observation_for_instance(snapshot: dict[str, Any], pid: int,
         loaded_observed=loaded_observed,
         recent_events=recent_events,
         invalid_events=int(events.get("invalid", 0) or 0),
+        last_event_time=snapshot.get("last_event_time"),
+        target_alive=snapshot.get("target_alive"),
+        blocking=snapshot.get("blocking") or {"status": "unsupported", "label": "未支持"},
         capabilities=snapshot.get("capabilities", {}),
     )
     return base
@@ -1502,6 +1551,18 @@ def scan_agents_once():
                         'status': 'observation_verified',
                         'label': '工具事件观测已验收；语义阻断未实现',
                     }
+            live_observation = adapter_info.get('observation_evidence', {})
+            if OBSERVE_CONFIG and live_observation.get('status') == 'observed':
+                adapter_info['assets']['child_executions'] = {
+                    'status': 'collected', 'label': '持续读取事件文件',
+                    'value': {'events': observation_snapshot.get('recent_events', []),
+                              'paired_calls': observation_snapshot.get('paired_calls', []),
+                              'live_file_source': True,
+                              'last_event_time': observation_snapshot.get('last_event_time'),
+                              'target_alive': observation_snapshot.get('target_alive')},
+                    'source': 'external_config: target-bound JSONL',
+                    'message': '动态读取真实Hook日志；接收映射由人工配置，不代表自主接入完成或阻断能力',
+                }
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             
             found_agents.append({
@@ -2007,7 +2068,7 @@ function assetText(adapter, key) {
     } else if (key === 'child_executions') {
       const events = v && v.events || [];
       const calls = v && v.paired_calls || [];
-      brief = readableLine('工具调用',calls.length ? calls.map(x=>x.tool_name || '未命名工具').join('、') + ' · ' + calls.length + ' 次前后配对' : '已记录执行事件') + readableLine('时效','历史验收快照，非持续健康状态');
+      brief = readableLine('工具调用',calls.length ? calls.map(x=>x.tool_name || '未命名工具').join('、') + ' · ' + calls.length + ' 次前后配对' : '已记录执行事件') + readableLine('时效',v && v.live_file_source ? '自动读取新事件 · 目标进程存活' : '历史验收快照，非持续健康状态') + (v && v.live_file_source && v.last_event_time ? readableLine('末次事件',new Date(v.last_event_time*1000).toLocaleString()) : '');
     } else if (key === 'network_surface') {
       const ports = rows.filter(x=>x.status === 'LISTEN').map(x=>x.local_port).filter(Boolean);
       brief = readableLine('监听端口',ports.length ? ports.join('、') : '见端点详情') + readableLine('范围','目标进程的瞬时快照');
@@ -2375,7 +2436,7 @@ async function updateUI() {
       const statusHtml = '<div class="asset-view status-overview">' +
         readableLine('调查', investigation.label || '未调度') +
         readableLine('指纹', ({exact:'兼容命中',similar:'相似，待调查',miss:'未命中'}[a.adapter.match_status] || '未判断') + (a.adapter.fingerprint_revision ? ' · 版本 ' + a.adapter.fingerprint_revision : '')) +
-        readableLine('Hook', a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
+        readableLine('Hook', observationEvidence.status === 'observed' && observationEvidence.target_alive === true ? '已加载 · 工具事件已接通' : a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
         readableDetails('status:'+a.pid,'查看状态说明',{调查:investigation.message || '',分类:classification.label,观测:observationText,接入:onboardingText}) + '</div>';
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
