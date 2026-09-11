@@ -45,6 +45,7 @@ def investigation_state(enabled, running=False, result=None):
     status = 'running' if running else {
         'succeeded': 'succeeded', 'failed': 'failed', 'timeout': 'timeout',
         'reused': 'reused',
+        'assets_collected': 'assets_collected', 'partial': 'partial',
         'cancelled': 'cancelled', 'unavailable': 'failed', 'blocked': 'failed',
         'queued': 'queued', 'deferred': 'deferred',
         'busy': 'not_scheduled',
@@ -57,13 +58,15 @@ def investigation_state(enabled, running=False, result=None):
     state = {'running': '执行中', 'succeeded': '成功', 'reused': '指纹复用（未调用Goose）', 'failed': '失败',
              'timeout': '超时（已保留证据）', 'cancelled': '已取消（已保留证据）',
              'queued': '排队中', 'deferred': '暂缓（队列已满）',
+             'assets_collected': '资产初查完成（非 Hook 接入）',
+             'partial': '已保存部分发现（可续查）',
              'not_scheduled': '未调度'}[status]
     response = {'status': status, 'label': state, 'message': message,
                 'source': 'investigation_scheduler', 'can_request': not running}
     for key in ('log_dir', 'partial_findings', 'lifecycle', 'resume'):
         if key in result:
             response[key] = result[key]
-    response['can_continue'] = status in ('failed', 'timeout', 'cancelled') and bool(result.get('log_dir'))
+    response['can_continue'] = status in ('failed', 'timeout', 'cancelled', 'partial', 'assets_collected') and bool(result.get('log_dir'))
     return response
 
 

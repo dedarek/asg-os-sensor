@@ -2,6 +2,15 @@
 # Secrets come from environment variables or .env (see .env.example).
 default_route: custom-openai
 routes:
+  commandcode:
+    provider: openai
+    model: deepseek/deepseek-v4.1-flash
+    base_url: https://api.commandcode.ai/provider/v1
+    key_env: COMMANDCODE_API_KEY
+    chat_path: /chat/completions
+    timeout_s: 180
+    tls:
+      verify: true
   custom-openai:
     provider: openai
     model: qwen38-27b

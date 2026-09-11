@@ -987,6 +987,22 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             elapsed_ms = int((time.time() - t0) * 1000)
 
             # 检查是否成功产出 candidate.json
+            if (os.environ.get('ASG_INVESTIGATION_PHASE') == 'assets'
+                    and lifecycle.get('end_reason') == 'completed'):
+                from runtime.asset_pass import outcome as asset_pass_outcome
+                checkpoint = asset_pass_outcome(run_dir, {'pid': pid, 'create_time': create_time}, cp.returncode)
+                if checkpoint is not None:
+                    _record_investigation_result(
+                        instance_id, pid, create_time, checkpoint['status'], checkpoint['message'],
+                        run_dir, {'lifecycle': deepcopy(lifecycle),
+                                  'asset_checkpoint': checkpoint['asset_checkpoint'],
+                                  'partial_findings': checkpoint['partial_findings']})
+                    onboarding.record_transition(
+                        {'pid': pid, 'create_time': create_time}, 'asset_checkpoint_saved',
+                        {'run_dir': str(run_dir), 'status': checkpoint['status'],
+                         'compatibility': struct.get('compatibility')})
+                    return
+
             candidate_file = recipes_dir / "candidate.json"
             if candidate_file.exists():
                 payload = json.loads(candidate_file.read_text(encoding="utf-8"))
@@ -1096,7 +1112,7 @@ def _enqueue_investigation(pid: int, instance_id: str, create_time: float | None
         if instance_id in INVESTIGATING_INSTANCES or instance_id in INVESTIGATION_QUEUED:
             return "duplicate"
         previous = INVESTIGATION_RESULTS.get(instance_id)
-        if not force and previous is not None and previous.get("status") in ("succeeded", "reused"):
+        if not force and previous is not None and previous.get("status") in ("succeeded", "reused", "assets_collected", "partial"):
             return "duplicate"  # 已有成功调查，防止重复历史调查
         if not force and now() < INVESTIGATION_RETRY_AT.get(instance_id, 0):
             return "duplicate"
@@ -1319,7 +1335,12 @@ def scan_agents_once():
                         'match_status': match_result.get('status'),
                         'plan': onboarding.plan_from_match(struct, match_result),
                     }
-            print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
+            # A detached service may lose its stdout reader. Diagnostic output
+            # must not make the outer exception handler silently drop a candidate.
+            try:
+                print(f"[Scan Match] PID={pid}, name={name}, matched={bool(matched_fp)}, harness={(matched_fp.get('id') if matched_fp else None)}")
+            except OSError:
+                pass
             
             # 计算真实的展示名称 (如果已经识别/适配过，展示 Agent 真实身份，而非 .exe)
             display_name = name
@@ -1936,7 +1957,8 @@ function assetText(adapter, key) {
   const item = (adapter.assets || {})[key] || {label: '尚未采集'};
   const source = item.sources && item.sources.length ? item.sources.join(', ') : item.source;
   return escapeHtml(item.label + (item.message ? '：' + item.message : '') + (source ? ' [来源: ' + source + ']' : '') +
-    (item.value ? ' · ' + JSON.stringify(item.value) : ''));
+    (item.value ? ' · ' + JSON.stringify(item.value) : '') +
+    (Array.isArray(item.uncertainty) && item.uncertainty.length ? ' · 范围/限制: ' + item.uncertainty.join('；') : ''));
 }
 function findingText(finding) {
   if (!finding) return '尚未得到 Goose 身份结论';
@@ -1945,7 +1967,8 @@ function findingText(finding) {
   const runtime = typeof value === 'object' ? (value.runtime || '运行时未知') : '';
   const refs = Array.isArray(finding.evidence_refs) ? finding.evidence_refs.join(', ') : '';
   return escapeHtml((finding.status === 'identified' ? name : '身份未知') +
-    (runtime ? ' · ' + runtime : '') + (refs ? ' · 证据: ' + refs : ''));
+    (runtime ? ' · ' + runtime : '') + (refs ? ' · 证据: ' + refs : '') +
+    (Array.isArray(finding.uncertainty) && finding.uncertainty.length ? ' · 范围/限制: ' + finding.uncertainty.join('；') : ''));
 }
 function classificationText(cls) {
   if (!cls) return '候选/待确认';
