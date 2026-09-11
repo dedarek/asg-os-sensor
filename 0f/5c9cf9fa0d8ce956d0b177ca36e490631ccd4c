@@ -1,0 +1,39 @@
+runtime/observation_source.py
+  s_655532ed3c4512::t_2e76c548bfbf4c 207
+  s_655532ed3c4512::t_3834d277f48174 22
+  s_655532ed3c4512::t_04feec6c8c22f6 24,48-52
+  s_655532ed3c4512::t_1f75d5e0a45fab 187-191
+  s_655532ed3c4512::t_3f968473c0e01f 118-186,192-206,208-220
+  s_655532ed3c4512::t_64c1ad8ad7c7b6 324-329
+  s_655532ed3c4512::t_0dc631bbaa665b 53
+runtime/recipe_schema.py
+  s_655532ed3c4512::t_5c1a7f7a2bfa4a 91-119
+recipes/runtime_hook_analyst.yaml
+  s_655532ed3c4512::t_3fd7418a314115 42-47
+test_observation_declaration.py
+  s_655532ed3c4512::t_86fb0ec8fab3e7 95-168
+  s_655532ed3c4512::t_98a9305cbfac48 184-186,188
+  s_655532ed3c4512::t_b253663484a8e8 169-183,187,189-201
+  s_655532ed3c4512::t_20251f80a99360 1-37,40-68,84-94
+  s_655532ed3c4512::t_2c90c2b4a655f4 38-39,69-83
+runtime/recipe_validation.py
+  s_655532ed3c4512::t_cfe343ef8171e9 143-151
+WORKLOG.md
+  s_655532ed3c4512::t_2077d364ad4403 1115-1137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0f5c9cf9fa0d8ce956d0b177ca36e490631ccd4c",
+  "prompts": {},
+  "sessions": {
+    "s_655532ed3c4512": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0850e-a9be-7fd3-8ddc-c9c9c7cc931b",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
