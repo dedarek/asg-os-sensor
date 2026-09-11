@@ -35,6 +35,17 @@ def next_phase(instance_id, exact=False):
     state = read(instance_id)
     if not state.get('assets'):
         return 'assets'
-    if state['assets'].get('infrastructure') or exact or state.get('hook'):
+    if state['assets'].get('infrastructure'):
         return None
+    # A matching build/candidate is not a successful installation. Read the
+    # persisted execution outcome so failed or uninstalled reuse keeps learning.
+    from runtime import onboarding
+    prior = onboarding.instance_state(instance_id) or {}
+    install = prior.get('install') or {}
+    status = install.get('status')
+    if status in ('installed', 'bound', 'rebound', 'activation_rebound',
+                  'installed_no_observation', 'installed_pending_activation', 'already_installed'):
+        return None
+    if status == 'pending_authorization':
+        return None  # Scanner retries execution when deployment scope changes.
     return 'hook'

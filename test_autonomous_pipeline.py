@@ -14,11 +14,32 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(pipeline.next_phase('11:1', exact=True), 'assets')
             pipeline.save('11:1', 'assets', '/run/a')
             self.assertEqual(pipeline.next_phase('11:1'), 'hook')
-            self.assertIsNone(pipeline.next_phase('11:1', exact=True))
+            self.assertEqual(pipeline.next_phase('11:1', exact=True), 'hook')
             pipeline.save('11:1', 'hook', '/run/b')
-            self.assertIsNone(pipeline.next_phase('11:1'))
+            self.assertEqual(pipeline.next_phase('11:1'), 'hook')
             self.assertEqual(pipeline.next_phase('11:2', exact=True), 'assets')
             self.assertTrue(json.loads(pipeline.path().read_text())['11:1']['hook'])
+
+    def test_candidate_and_failed_reuse_do_not_complete_pipeline(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}), \
+             patch.object(onboarding, 'instance_state') as prior:
+            pipeline.save('55:1', 'assets', '/run/a')
+            pipeline.save('55:1', 'hook', '/run/b')
+            for status in ('failed', 'reuse_requires_validation', 'unsupported'):
+                prior.return_value = {'install': {'status': status}}
+                self.assertEqual(pipeline.next_phase('55:1', exact=True), 'hook')
+            prior.return_value = {'install': {'status': 'bound'}}
+            self.assertIsNone(pipeline.next_phase('55:1', exact=True))
+
+    def test_file_plan_uses_learned_scope_not_process_cwd(self):
+        # Arbitrary names/paths: no target-product branch is involved.
+        recipe = {'hook': {'method': 'file_plan', 'workspace': '/tmp/arbitrary-agent/config'}}
+        plan = onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': '/'},
+                                       'miss', None, recipe, 'goose')
+        self.assertEqual(plan['workspace'], '/tmp/arbitrary-agent/config')
+        recipe['hook'].pop('workspace')
+        self.assertIsNone(onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': '/tmp'},
+                          'miss', None, recipe, 'goose')['workspace'])
 
     def test_infrastructure_does_not_install_agent_hook(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}):

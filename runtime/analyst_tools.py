@@ -587,6 +587,9 @@ def _saved_investigation() -> dict[str, Any]:
             if isinstance(item, dict) and item.get("evidence_id"):
                 audit_rows.append({"tool": item.get("tool"), "evidence_id": item.get("evidence_id"),
                                    "args": redact(item.get("args", {})), "error": bool(item.get("error"))})
+    previous_result = _read_resume_json(RESUME_RUN_DIR / 'result.json', 'previous result') or {}
+    execution_feedback = {'message': previous_result.get('message'),
+                          'onboarding': previous_result.get('onboarding')}
     selected_lifecycle = {}
     if lifecycle:
         for key in ("status", "end_reason", "target", "tool_call_count", "elapsed_ms", "timed_out", "progress", "resume"):
@@ -596,6 +599,7 @@ def _saved_investigation() -> dict[str, Any]:
         "status": "available",
         "source": str(RESUME_RUN_DIR),
         "previous_lifecycle": selected_lifecycle,
+        "execution_feedback": redact(execution_feedback),
         "findings": (saved or {}).get("findings", {"identity": None, "assets": {}}),
         "open_questions": (saved or {}).get("open_questions", []),
         "evidence_refs": audit_rows[-64:],

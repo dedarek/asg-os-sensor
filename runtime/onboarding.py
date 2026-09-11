@@ -239,9 +239,14 @@ def _contract_error(recipe: dict[str, Any], source: str | None = None) -> str | 
         from runtime.learned_install import validate_plan
         try:
             validate_plan(recipe.get('install_plan'))
+            workspace = hook.get('workspace')
+            if not isinstance(workspace, str) or not Path(workspace).is_absolute() or Path(workspace).resolve() == Path('/'):
+                raise ValueError('file_plan requires an evidenced absolute installation directory; process cwd / is not an installation scope')
         except ValueError as exc:
             return '无效通用文件计划: ' + str(exc)
         return None
+    if os.environ.get('ASG_PIPELINE') == '1':
+        return '自动流程只执行 Goose 学到的通用文件计划；此机制需要继续调查'
     adapter = hook.get("adapter")
     contract = ADAPTER_REGISTRY.get(adapter)
     if not contract:
@@ -262,7 +267,7 @@ def _common_plan(struct: dict[str, Any], match_status: str, entry: dict[str, Any
     hook = recipe.get("hook", {})
     adapter = "file_plan" if hook.get("method") == "file_plan" else hook.get("adapter")
     contract = {"installer": "runtime.learned_install"} if adapter == "file_plan" else ADAPTER_REGISTRY.get(adapter, {})
-    workspace = _workspace(struct)
+    workspace = hook.get("workspace") if adapter == "file_plan" else _workspace(struct)
     return {
         "plan_version": 1,
         "instance_id": iid,
@@ -635,7 +640,16 @@ def view_for_instance(instance_id: str, struct: dict[str, Any], match_result: di
             # Recompute capability from the current matched recipe/code; retain
             # independent install/verification history, not a stale unsupported plan.
             prior = copy.deepcopy(prior)
-            prior['plan'] = plan_from_match(struct, match_result)
+            refreshed = plan_from_match(struct, match_result)
+            original = prior['plan']
+            # Same-instance candidate installation retains its bound source run.
+            if (original.get('action') == 'install_candidate_recipe'
+                    and original.get('investigation_run_dir')
+                    and original.get('fingerprint_id') == refreshed.get('fingerprint_id')
+                    and original.get('fingerprint_revision') == refreshed.get('fingerprint_revision')):
+                refreshed.update(action='install_candidate_recipe',
+                    investigation_run_dir=original['investigation_run_dir'])
+            prior['plan'] = refreshed
         return {"status": prior.get("plan", {}).get("status", "known"),
                 "plan": prior.get("plan"), "last_event": prior.get("last_event"),
                 "verification": prior.get("verification"), "install": prior.get("install")}
@@ -647,7 +661,7 @@ def _execute_file_plan(plan, target, auth):
     """Generic learned plan dispatch; no product template and no process restart."""
     from runtime import learned_onboarding
     if not auth.get('approved'):
-        return {'status': 'pending_authorization', 'reason': '等待安装授权'}
+        return {'status': 'pending_authorization', 'reason': '接入目录不在部署授权范围内，尚未安装：' + str(plan.get('workspace') or '未查明目录')}
     workspace = plan.get('workspace')
     if auth.get('scope') != 'project' or not workspace or auth.get('workspace') != workspace:
         return {'status': 'failed', 'reason': 'file_plan authorization scope/workspace mismatch'}

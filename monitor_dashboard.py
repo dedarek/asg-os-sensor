@@ -1158,7 +1158,8 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                                                  run_dir, {**onboarding_details, "lifecycle": deepcopy(lifecycle),
                                                            **_partial_result_details(run_dir, {"pid": pid, "create_time": create_time})})
                     if autonomous_pipeline.enabled():
-                        autonomous_pipeline.save(instance_id, 'hook', run_dir, fingerprint_id=entry.get('id'))
+                        autonomous_pipeline.save(instance_id, 'hook', run_dir, fingerprint_id=entry.get('id'),
+                            install_status=(install_result or {}).get('status', 'not_installed'))
                     print(f"[Analyst] 候选配方写入指纹库! Agent={entry.get('name')}, HarnessID={entry.get('id')}")
                 else:
                     _record_investigation_result(instance_id, pid, create_time, "failed", f"Recipe 未通过质量门禁 (identity={identity}, confidence={recipe.get('confidence')})", run_dir,
@@ -1335,7 +1336,7 @@ def _dispatch_worker(task: dict[str, Any]) -> None:
             previous = INVESTIGATION_RESULTS.get(instance_id, {})
             expected_phase = autonomous_pipeline.next_phase(instance_id,
                 exact=matcher.classify(struct).get('status') == 'exact')
-            if previous.get('status') in ('failed', 'timeout') and previous.get('lifecycle', {}).get('phase') == expected_phase:
+            if previous.get('status') in ('failed', 'timeout', 'succeeded') and previous.get('lifecycle', {}).get('phase') == expected_phase:
                 saved_run = previous.get('log_dir')
                 if saved_run and Path(saved_run).is_dir():
                     resume_from = Path(saved_run)
@@ -1382,7 +1383,29 @@ def get_last_semantic_message(pid: int, exe_name: str, cmdline: str) -> dict:
     }
 
 
+SCAN_EXECUTION_LOCK = threading.Lock()
+
+
 def scan_agents_once():
+    # Button and periodic scans share one run; never overlap installation work.
+    if not SCAN_EXECUTION_LOCK.acquire(blocking=False):
+        return
+    with STATE_LOCK:
+        SCAN_STATE['scanning'] = True
+        SCAN_STATE.pop('scan_error', None)
+    try:
+        _scan_agents_once()
+    except Exception as exc:
+        with STATE_LOCK:
+            SCAN_STATE['scan_error'] = str(exc)
+        raise
+    finally:
+        with STATE_LOCK:
+            SCAN_STATE['scanning'] = False
+        SCAN_EXECUTION_LOCK.release()
+
+
+def _scan_agents_once():
     """执行一次完整的 OS 级扫描；调用频率由 ASG_SCAN_INTERVAL 控制。"""
     global SCAN_STATE
     policies = load_policies()
@@ -1685,7 +1708,7 @@ def scan_agents_once():
                     'label': '已安装，等待加载事件（可能需下次启动）', 'verified': False}
             if autonomous_pipeline.enabled():
                 adapter_info['pipeline'] = {'next_phase': autonomous_pipeline.next_phase(instance_id, exact=is_matched),
-                    'completed': autonomous_pipeline.read(instance_id)}
+                    'checkpoints': autonomous_pipeline.read(instance_id)}
             last_msg = get_last_semantic_message(pid, name, " ".join(cmdline))
             if instance_observation.get('target_alive') is True and instance_observation.get('recent_events'):
                 latest = instance_observation['recent_events'][-1]
@@ -1848,6 +1871,7 @@ def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
     if isinstance(existing, dict) and not authorization.get("approved"):
         return None, None
     install_result = onboarding.execute_install(plan, target, authorization)
+    onboarding.record_transition(target, 'automatic_install_result', {'plan': plan, 'install': install_result})
     _wire_observe_config(install_result, target)
     verification_result = None
     if install_result.get("status") in ("installed_pending_activation", "already_installed"):
@@ -2110,7 +2134,8 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
     <div class="meta-item">上次更新: <b id="last-time">-</b></div>
     <div class="meta-item">观测适配: <b id="observe-status">-</b></div>
-    <button class="refresh-btn" onclick="triggerScan()">立即扫描</button>
+    <button id="scan-button" class="refresh-btn" onclick="triggerScan()">扫描分析</button>
+    <span id="scan-progress" role="status" aria-live="polite">发现后自动调查，接入后显示真实活动</span>
   </div>
 </div>
 
@@ -2486,6 +2511,14 @@ async function updateUI() {
     const data = await res.json();
     document.getElementById('last-time').innerText = data.last_scan_time || '初始化中';
     document.getElementById('scan-count').innerText = data.scan_count;
+    const scanButton = document.getElementById('scan-button');
+    scanButton.disabled = !!data.scanning;
+    scanButton.innerText = data.scanning ? '正在扫描…' : '扫描分析';
+    const running = Object.keys(data.active_investigations || {}).length;
+    document.getElementById('scan-progress').innerText = data.scan_error ? '扫描失败：' + data.scan_error
+      : data.scanning ? '正在发现 Agent，已有结果会继续显示'
+      : running ? `正在分析 ${running} 个实例，资产和接入结果会自动更新`
+      : '扫描结果已更新；是否接入成功以各卡片的真实事件为准';
     document.getElementById('scan-interval').innerText = `${data.scan_interval || 30}s`;
     document.getElementById('fp-count').innerText = data.fingerprints_count;
     document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
@@ -2588,7 +2621,7 @@ async function updateUI() {
         readableLine('调查', investigation.label || '未调度') +
         readableLine('指纹', ({exact:'兼容命中',similar:'相似，待调查',miss:'未命中'}[a.adapter.match_status] || '未判断') + (a.adapter.fingerprint_revision ? ' · 版本 ' + a.adapter.fingerprint_revision : '')) +
         readableLine('Hook', observationEvidence.loaded_observed && observationEvidence.target_alive === true ? (observationEvidence.health_status === 'observing' ? '已加载 · 工具事件已接通' : '已加载，等待工具活动') : a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
-        (a.adapter.pipeline ? readableLine('自动流程', a.adapter.pipeline.next_phase === 'assets' ? '等待资产调查' : a.adapter.pipeline.next_phase === 'hook' ? '等待接入学习' : '调查阶段完成，接入状态见 Hook') : '') +
+        (a.adapter.pipeline ? readableLine('自动流程', a.adapter.pipeline.next_phase === 'assets' ? '等待资产调查' : a.adapter.pipeline.next_phase === 'hook' ? '等待接入学习' : '接入执行结果见 Hook；候选方案不代表已接通') : '') +
         readableDetails('status:'+a.pid,'查看状态说明',{调查:investigation.message || '',分类:classification.label,观测:observationText,接入:onboardingText}) + '</div>';
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
@@ -2732,8 +2765,18 @@ async function updateUI() {
 }
 
 async function triggerScan() {
-  await fetch('/api/scan', { method: 'POST' });
-  await updateUI();
+  const btn = document.getElementById('scan-button');
+  btn.disabled = true;
+  btn.innerText = '正在扫描…';
+  try {
+    const response = await fetch('/api/scan', { method: 'POST' });
+    if (!response.ok) throw new Error('服务未接受扫描请求');
+    document.getElementById('scan-progress').innerText = '已开始扫描分析，结果会自动出现';
+  } catch (err) {
+    document.getElementById('scan-progress').innerText = '扫描未启动：' + err.message;
+    btn.disabled = false;
+    btn.innerText = '扫描分析';
+  }
 }
 
 async function triggerReinvestigate(pid) {
