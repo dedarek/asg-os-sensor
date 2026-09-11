@@ -622,6 +622,11 @@ def view_for_instance(instance_id: str, struct: dict[str, Any], match_result: di
         return {"status": "experience_unavailable", "reason": str(exc),
                 "match_status": match_result.get("status")}
     if prior and isinstance(prior.get("plan"), dict):
+        if match_result.get('status') == 'exact':
+            # Recompute capability from the current matched recipe/code; retain
+            # independent install/verification history, not a stale unsupported plan.
+            prior = copy.deepcopy(prior)
+            prior['plan'] = plan_from_match(struct, match_result)
         return {"status": prior.get("plan", {}).get("status", "known"),
                 "plan": prior.get("plan"), "last_event": prior.get("last_event"),
                 "verification": prior.get("verification"), "install": prior.get("install")}
