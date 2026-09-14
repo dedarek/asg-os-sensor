@@ -54,6 +54,9 @@ prompt: |
   roots and symlinks using the available evidence tools. Do not hard-code product paths or scan
   unrelated home directories. A root being absent from the initial snapshot is not evidence it is
   forbidden: inspect the current tools' returned scopes before claiming access is unavailable.
+  When an evidenced absolute or ~/ skill root is outside the initial roots, call
+  follow_related_directory with the exact path and original observation evidence_id, then enumerate it.
+  Prioritize these user/workspace roots before spending the budget reading bundled reference guides.
   Enumerate the actual skill entry manifests (SKILL.md when that is the evidenced format), page
   through results, and read each entry's name and description/frontmatter. Do not read all reference
   bodies. References, scripts, assets, README files and plugin guides are supporting material, not

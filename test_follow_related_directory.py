@@ -1,0 +1,25 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from runtime import analyst_tools as at
+
+class FollowDirectoryTests(unittest.TestCase):
+    def test_follows_observed_directory_not_guesses_or_other_instances(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home=Path(tmp).resolve(); folder=home/'user-extensions'; folder.mkdir()
+            (folder/'SKILL.md').write_text('---\nname: arbitrary-skill\ndescription: A test skill\n---')
+            ref='ev-123456789-0123456789'
+            evidence={'tool':'read_related_file','target':{'pid':123,'create_time':45},'result':{'content':f'Search skills in {folder}'}}
+            (home/(ref+'.json')).write_text(json.dumps(evidence))
+            with patch.object(at,'EVIDENCE_DIR',home), patch.object(at,'TARGET_PID',123), patch.object(at,'TARGET_CREATE_TIME',45), patch.object(at,'target_process'), patch.object(Path,'home',return_value=home), patch.dict(at._RELATED_EVIDENCE_ROOTS,{},clear=True), patch.object(at,'entry_surface',return_value={'related_roots':[]}):
+                self.assertEqual(at.call_tool('follow_related_directory',{'path':str(folder),'evidence_id':ref})['status'],'collected')
+                page=at.call_tool('find_related_files',{'scope':str(folder),'name_pattern':'SKILL.md'})
+                self.assertEqual(len(page['files']),1)
+                self.assertIn('arbitrary-skill',at.call_tool('read_related_file',{'path':page['files'][0]['path']})['content'])
+                for bad in [str(home),str(folder)[: -1],str(home/'guessed')]:
+                    with self.assertRaises(ValueError): at.call_tool('follow_related_directory',{'path':bad,'evidence_id':ref})
+                evidence['target']['create_time']=46
+                (home/(ref+'.json')).write_text(json.dumps(evidence))
+                with self.assertRaises(ValueError): at.call_tool('follow_related_directory',{'path':str(folder),'evidence_id':ref})
