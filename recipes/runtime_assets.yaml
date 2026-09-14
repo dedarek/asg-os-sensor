@@ -48,6 +48,32 @@ prompt: |
   a JSON pointer to the actual field, or follow next_offset. Do not reread the same page hoping
   for a different answer. If a selector is wrong, use the returned available_keys.
 
+  SKILL INVENTORY — investigate entries, not only the discovery mechanism.
+  Learn the target's skill search roots from its loader/configuration/manifests/runtime evidence.
+  Follow all evidenced root categories: user, workspace and enabled plugins; resolve referenced
+  roots and symlinks using the available evidence tools. Do not hard-code product paths or scan
+  unrelated home directories. A root being absent from the initial snapshot is not evidence it is
+  forbidden: inspect the current tools' returned scopes before claiming access is unavailable.
+  Enumerate the actual skill entry manifests (SKILL.md when that is the evidenced format), page
+  through results, and read each entry's name and description/frontmatter. Do not read all reference
+  bodies. References, scripts, assets, README files and plugin guides are supporting material, not
+  separate skills unless the target's loader explicitly registers them as independent entries.
+  Submit skills.value as {configuration_status, items:[{name, description, path, source_kind,
+  availability, evidence_refs}], coverage:{checked_roots:[], pending_roots:[], complete:false}}.
+  Use the actual entry path. source_kind is user/workspace/plugin/builtin/unknown as evidenced.
+  availability is discovered/registered/opened/invoked/unknown: a file being opened proves only
+  opened, not registration, model injection or invocation. Invocation requires a runtime event.
+  Deduplicate identical entry paths; preserve same-named skills from different paths and report
+  precedence only if established by the loader. Missing descriptions stay null with an explanation.
+  Keep user-facing descriptions concise Chinese based on the actual text, not guessed from names.
+  If only the mechanism is known and no actual entries were found, status must be unknown, not
+  collected. Missing/inaccessible/unpaged roots mean incomplete coverage, never global absence.
+  A partial inventory can be collected with coverage.complete=false and explicit pending_roots.
+  Prioritize useful entry records over long mechanism prose. Stay within the finding size limit:
+  keep descriptions short; if inventory is too large, retain a bounded partial list and explicitly
+  report omitted entries and pending roots. Do not repeatedly replace one partial list with another
+  and lose previous entries. Persist the consolidated inventory before finishing.
+
   PHASE 3 — save and finish this pass.
   Save findings through submit_investigation_finding, never only in prose. Tool arguments:
     {"finding": {"kind":"identity", "status":"identified" or "unknown",
