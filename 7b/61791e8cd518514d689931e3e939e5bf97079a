@@ -1,0 +1,21 @@
+runtime/analyst_evidence.py
+  s_7a5b8096b41d01::t_88b691398b317e 374-388,429,511-522
+test_follow_related_directory.py
+  s_7a5b8096b41d01::t_eb006ad880b75d 13-16,23-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7b61791e8cd518514d689931e3e939e5bf97079a",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
