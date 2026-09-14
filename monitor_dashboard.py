@@ -2133,8 +2133,8 @@ HTML_PAGE = """<!DOCTYPE html>
   /* 抽屉与模态框 */
   .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
   .drawer-overlay.active { opacity: 1; pointer-events: auto; }
-  .drawer { position: fixed; top: 0; right: -640px; width: 600px; height: 100vh; background: #0f1626; border-left: 1px solid var(--card-border); z-index: 1001; box-shadow: -8px 0 30px rgba(0,0,0,0.6); display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .drawer.active { right: 0 !important; transform: translateX(0) !important; }
+  .drawer { visibility:hidden;pointer-events:none; position: fixed; top: 0; right: -640px; width: 600px; height: 100vh; background: #0f1626; border-left: 1px solid var(--card-border); z-index: 1001; box-shadow: -8px 0 30px rgba(0,0,0,0.6); display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .drawer.active { visibility:visible;pointer-events:auto; right: 0 !important; transform: translateX(0) !important; }
   .drawer-header { padding: 18px 24px; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(10, 15, 26, 0.8); }
   .drawer-title { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
   .drawer-close { background: transparent; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; border-radius: 4px; }
@@ -2317,6 +2317,11 @@ function detailButton(id, title, data, body, className='detail-link', view='') {
   detailRecords.set(id,{title,data,view});
   return `<button type="button" class="${className}" data-detail-key="${escapeHtml(id)}" onclick="openDetail(this.dataset.detailKey)">${body || escapeHtml(title)}</button>`;
 }
+function toolNamesData(adapter,item) {
+  const execution=(adapter.assets || {}).child_executions || {};
+  const calls=(execution.value || {}).paired_calls || [];
+  return {...item, observed_tool_names:[...new Set(calls.map(call=>call.tool_name || call.tool).filter(name=>typeof name==='string' && name))]};
+}
 function toolNamesContent(data) {
   const value = data.value === undefined ? data.数据 : data.value;
   const names = [];
@@ -2334,7 +2339,9 @@ function toolNamesContent(data) {
     if (!names.length) add(value.name || value.tool_name || value.server_name);
   }
   const unique = [...new Set(names)];
-  return unique.length ? '<ul style="list-style:none;padding:0;margin:0;display:grid;gap:10px">' + unique.map(name=>`<li style="padding:12px 14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:8px;font-weight:600;overflow-wrap:anywhere">${escapeHtml(name)}</li>`).join('') + '</ul>' : '<p class="asset-note">暂未查到工具 / MCP 名称</p>';
+  const named = unique.length ? '<ul style="list-style:none;padding:0;margin:0;display:grid;gap:10px">' + unique.map(name=>`<li style="padding:12px 14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:8px;font-weight:600;overflow-wrap:anywhere">${escapeHtml(name)}</li>`).join('') + '</ul>' : '<p class="asset-note">' + ({unknown:'尚未确认 MCP 名称',empty:'检查范围内未发现 MCP',failed:'MCP 调查未成功',not_collected:'尚未调查 MCP'}[data.status] || '尚未提取到名称') + '</p>';
+  const observed=[...new Set(data.observed_tool_names || [])];
+  return named + (observed.length ? '<h4 style="margin-top:20px">已观察到的工具</h4><ul>' + observed.map(name=>'<li>'+escapeHtml(name)+'</li>').join('') + '</ul>' : '');
 }
 function openDetail(id) {
   const record=detailRecords.get(id); if(!record) return;
@@ -2369,7 +2376,7 @@ function assetTiles(a) {
   const statuses={collected:'已查到',empty:'检查范围内未发现',unknown:'待确认',not_collected:'尚未调查',failed:'采集失败',unsupported:'当前不支持'};
   return Object.entries(labels).map(([key,label])=>{
     const item=(a.adapter.assets || {})[key] || {status:'not_collected'};
-    return detailButton('asset:'+a.instance_id+':'+key,a.name+' · '+label,item,
+    return detailButton('asset:'+a.instance_id+':'+key,a.name+' · '+label,key === 'registered_tools_and_mcp' ? toolNamesData(a.adapter,item) : item,
       `<span>${label}</span><strong>${escapeHtml(statuses[item.status] || item.label || '待确认')} ↗</strong>`,'asset-tile',key === 'registered_tools_and_mcp' ? 'tool_names' : '');
   }).join('');
 }
@@ -2420,7 +2427,7 @@ function assetText(adapter, key) {
   const note = provenance === 'configured' ? '来源：配置' : provenance === 'observed' ? '来源：运行记录' : status === 'empty' ? '' : '';
   const refs = item.evidence_refs || item.sources || [];
   const id = key + ':' + (refs.join(',') || item.source || status);
-  const details = status === 'not_collected' ? '' : detailButton(id,'查看依据与详情', {display:item.display,说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []},null,'detail-link',key === 'registered_tools_and_mcp' ? 'tool_names' : '');
+  const details = status === 'not_collected' ? '' : detailButton(id,'查看依据与详情', {display:item.display,说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || [],status:item.status,observed_tool_names:key === 'registered_tools_and_mcp' ? toolNamesData(adapter,item).observed_tool_names : []},null,'detail-link',key === 'registered_tools_and_mcp' ? 'tool_names' : '');
   return `<div class="asset-view"><span class="asset-badge ${status === 'collected' ? 'asset-found' : ''}">${escapeHtml(labels[status] || item.label || '未知')}</span>${note ? `<div class="asset-note">${escapeHtml(note)}</div>` : ''}${brief}${details}</div>`;
 }
 function findingText(finding) {
