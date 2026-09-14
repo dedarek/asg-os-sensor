@@ -899,6 +899,10 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                    "prior_experience": call_tool("get_prior_experience", {}),
                    "prior_investigation": _continuation_context(),
                    "loader_surface": call_tool("inspect_loader_surface", {})}
+        from runtime.hook_control import contract
+        context['control_contract'] = contract()
+        from runtime.autonomous_pipeline import read as pipeline_read
+        context['installation_verification'] = pipeline_read(str(p.pid)+':'+str(p.create_time())).get('verification', {})
         if OBSERVE_URL:
             context["observation"] = call_tool("inspect_observation", {})
         return context

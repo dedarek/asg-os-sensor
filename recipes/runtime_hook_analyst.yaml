@@ -57,6 +57,22 @@ prompt: |
   observation_source: the executor binds the target instance, and any target you name is rejected.
   If evidence remains insufficient, persist what is known and a concrete open question rather than cycling
   through every tool or treating absent evidence as proof of impossibility. Do not fabricate a plan to finish.
+  OBSERVATION AND CONTROL REQUIREMENTS:
+  The dashboard is an acceptance console: retain actual input/output payloads in your events, not
+  only digests or names. Redact credentials. Emit explicit truncation metadata if a bounded callback
+  cannot retain the full payload; never silently hash or drop it. Capture all evidenced callbacks
+  for user input, assistant output, model request/response, tool/MCP input/output, errors and session
+  lifecycle. Do not invent callbacks or claim unsupported coverage. In hook.limitations list each
+  missing category and its evidence-backed reason. File/command operations are tool payloads.
+  get_target_context.control_contract describes the supervisor's generic synchronous decision client.
+  When the target provides a proven execution-before gate, generate a callback that waits for the
+  decision client, prevents execution on deny/error/timeout, and emits control.applied with request_id,
+  call_id and decision after applying the target-native control return/exception. Ask is resolved by
+  the supervisor before it returns allow/deny. A logging-only callback cannot claim blocking.
+  Preserve existing user extensions and settings. Write a new callback or update only your own prior
+  observer after reading its current digest. Report restart requirements explicitly. Capabilities
+  are declarations until independently tested by executing a harmless allowed operation and denying
+  another harmless operation, checking that its effect did NOT occur. Never emit verified labels yourself.
   Finish after propose_recipe succeeds. The supervisor separately checks, installs and tests actual events.
 settings:
   temperature: 0

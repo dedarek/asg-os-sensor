@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import psutil
+import yaml
 
 
 MAX_FILES = 20  # Per page, not an investigation quota; see next_offset.
@@ -454,6 +455,20 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
                         "readable_text_candidate": path.suffix.lower() in _TEXT_SUFFIXES,
                         "state": "opened_by_target" if str(_resolve(path)) in opened else "search_candidate",
                     })
+                    # Expose bounded document metadata alongside the listing so an
+                    # inventory does not require one model turn per description.
+                    if path.suffix.lower() == '.md':
+                        try:
+                            allowed_text = read_related_file(surface, str(path)).get('content', '')
+                            if isinstance(allowed_text, str) and allowed_text.startswith('---'):
+                                header = allowed_text.split('---', 2)
+                                if len(header) == 3 and len(header[1]) <= 8192:
+                                    metadata = yaml.safe_load(header[1])
+                                    if isinstance(metadata, dict):
+                                        files[-1]['document_metadata'] = {k: _redact_text(v[:1500]) for k,v in metadata.items()
+                                            if k in ('name','description','title') and isinstance(v,str)}
+                        except (ValueError, OSError, yaml.YAMLError):
+                            pass
                     if len(files) > limit:
                         break
                 except OSError:

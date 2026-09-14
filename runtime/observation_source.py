@@ -20,6 +20,7 @@ import json
 import math
 import hashlib
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -40,7 +41,9 @@ EVENT_TIME_TOLERANCE_S = 1.0
 SCHEMA_VERSION = 1
 
 # Canonical vocabulary shared with the existing observation contract.
-CANONICAL_EVENTS = ("hook.loaded", "tool.execute.before", "tool.execute.after")
+CANONICAL_EVENTS = ("hook.loaded", "tool.execute.before", "tool.execute.after",
+                    "user.input", "assistant.output", "model.request", "model.response",
+                    "session.start", "session.end", "tool.error", "control.applied")
 DEFAULT_FIELDS = {"event": "event", "pid": "pid", "timestamp": "ts",
                   "tool": "tool", "call_id": "callID"}
 BLOCKING_UNSUPPORTED = {"status": "unsupported", "label": "未支持"}
@@ -58,6 +61,7 @@ EXPLICIT_MAPPING_MODE = "explicit"
 MAPPING_MODES = (DEFAULT_MAPPING_MODE, EXPLICIT_MAPPING_MODE)
 
 _STATE: dict[str, dict[str, Any]] = {}
+_STATE_LOCK = threading.RLock()
 
 
 def load_config(path: Path | str) -> dict[str, Any]:
@@ -338,7 +342,7 @@ def _apply_line(line: str, state: dict[str, Any], config: dict[str, Any]) -> Non
         return
     if canonical == "hook.loaded":
         state["loaded"] = True
-    else:
+    elif canonical in ('tool.execute.before', 'tool.execute.after'):
         # ``tool``/``call_id`` are optional in a candidate declaration: a Hook
         # that never writes them cannot be correlated. A missing role means the
         # event cannot be paired, which is invalid, not a reason to invent a name.
@@ -400,7 +404,7 @@ def _ingest(config: dict[str, Any], state: dict[str, Any]) -> str | None:
     return None
 
 
-def snapshot(config: dict[str, Any]) -> dict[str, Any]:
+def _snapshot(config: dict[str, Any]) -> dict[str, Any]:
     """Read appended events and project the shared observation snapshot shape."""
     state = _state_for(config)
     read_error = _ingest(config, state)
@@ -453,3 +457,8 @@ def snapshot(config: dict[str, Any]) -> dict[str, Any]:
         message=reason,
     )
     return result
+
+
+def snapshot(config: dict[str, Any]) -> dict[str, Any]:
+    with _STATE_LOCK:
+        return _snapshot(config)

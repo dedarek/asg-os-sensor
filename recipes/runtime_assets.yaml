@@ -57,6 +57,8 @@ prompt: |
   When an evidenced absolute or ~/ skill root is outside the initial roots, call
   follow_related_directory with the exact path and original observation evidence_id, then enumerate it.
   Prioritize these user/workspace roots before spending the budget reading bundled reference guides.
+  find_related_files returns bounded document_metadata when present; use its actual name/description
+  rather than spending a separate read on every entry. Read missing or ambiguous metadata individually.
   Enumerate the actual skill entry manifests (SKILL.md when that is the evidenced format), page
   through results, and read each entry's name and description/frontmatter. Do not read all reference
   bodies. References, scripts, assets, README files and plugin guides are supporting material, not

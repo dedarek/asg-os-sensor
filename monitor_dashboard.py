@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT))
 
 from asg_os_sensor import Sensor, load_policies
 from runtime import analyzer, matcher, onboarding, investigation_findings, autonomous_pipeline
+from runtime import hook_data
 from runtime.observation_registry import Registry
 from runtime.status import presentation, DISABLED_REASON
 from runtime.learned_presentation import hook_state as learned_hook_state
@@ -905,6 +906,21 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
             with INVESTIGATION_LOCK:
                 INVESTIGATING_INSTANCES.pop(instance_id, None)
             return
+        # A Hook phase may be a bounded repair attempt after an installation
+        # that still has no binding or failed verification.  Persist the
+        # attempt on the frozen instance so the pipeline's retry budget and
+        # spacing survive scanner/process restarts.
+        if phase == 'hook':
+            checkpoint = autonomous_pipeline.read(instance_id)
+            verification = checkpoint.get('verification') or {}
+            if verification.get('status') in ('awaiting_binding', 'verification_failed'):
+                prior_repair = checkpoint.get('repair') or {}
+                try:
+                    attempts = int(prior_repair.get('attempts', 0) or 0)
+                except (TypeError, ValueError):
+                    attempts = 0
+                autonomous_pipeline.save(instance_id, 'repair', '',
+                                         attempts=attempts + 1, at=time.time())
     selected_recipe = (ROOT / 'recipes' / ('runtime_assets.yaml' if phase == 'assets' else 'runtime_hook_analyst.yaml')) if autonomous_pipeline.enabled() else RECIPE
     lifecycle: dict[str, Any] = {}
     try:
@@ -1874,6 +1890,20 @@ def _query_pid(path: str) -> int | None:
         return None
 
 
+def _handle_hook_control_request(handler: BaseHTTPRequestHandler) -> bool:
+    """Give the generic local Hook control API first refusal on its routes.
+
+    The control module is optional for older isolated runs.  Importing it here
+    keeps the dashboard usable with those runs while allowing the sibling
+    control implementation to own authentication and response details.
+    """
+    try:
+        from runtime.hook_control import handle_request
+    except ImportError:
+        return False
+    return bool(handle_request(handler))
+
+
 def _onboarding_target(pid: int) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     with STATE_LOCK:
         agent = next((deepcopy(a) for a in SCAN_STATE.get("agents", []) if a.get("pid") == pid), None)
@@ -1902,6 +1932,22 @@ def _update_onboarding_view(pid: int, install_result: dict[str, Any] | None = No
             return
 
 
+_GENERIC_INSTALL_STATUSES = {
+    'installed', 'bound', 'rebound', 'activation_rebound',
+    'installed_no_observation', 'installed_pending_activation', 'already_installed',
+}
+
+
+def _verify_installation(install_result: dict[str, Any] | None,
+                         target: dict[str, Any]) -> dict[str, Any]:
+    """Use the generic persisted binding verifier for generated installs."""
+    result = install_result or {}
+    if autonomous_pipeline.enabled() and result.get('status') in _GENERIC_INSTALL_STATUSES:
+        instance_id = f"{target['pid']}:{target['create_time']}"
+        return autonomous_pipeline.verify_installed(instance_id)
+    return onboarding.verify_activation(result, target)
+
+
 def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
                              current: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Run the same authorization/idempotency/verification path for exact and new plans."""
@@ -1919,8 +1965,8 @@ def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
     onboarding.record_transition(target, 'automatic_install_result', {'plan': plan, 'install': install_result})
     _wire_observe_config(install_result, target)
     verification_result = None
-    if install_result.get("status") in ("installed_pending_activation", "already_installed"):
-        verification_result = onboarding.verify_activation(install_result, target)
+    if install_result.get("status") in _GENERIC_INSTALL_STATUSES:
+        verification_result = _verify_installation(install_result, target)
     return install_result, verification_result
 
 
@@ -2189,6 +2235,17 @@ HTML_PAGE = """<!DOCTYPE html>
   .card-actions { display:flex;gap:8px;flex-wrap:wrap; }
   .latest-activity { text-align:left;background:transparent;border:0;padding:0;color:#9fbcbd;cursor:pointer;font-size:12px; }
   .detail-link { border:1px solid var(--card-border);background:transparent;border-radius:6px;padding:7px 11px;color:#a6c6d4;cursor:pointer;font-size:12px; }
+  .hook-data-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .hook-data-summary { color:var(--text-secondary); line-height:1.6; }
+  .hook-data-summary b { color:#fff; }
+  .hook-data-record { background:#090e18; border:1px solid #1c273c; border-radius:8px; padding:12px; }
+  .hook-data-record summary { cursor:pointer; color:#b8d8e2; font-size:12px; }
+  .hook-data-record pre { margin-top:9px; max-height:340px; overflow:auto; background:#05080f; border:1px solid #131c2d; border-radius:6px; padding:10px; color:#cbd5e1; font:11px/1.55 ui-monospace,monospace; white-space:pre-wrap; word-break:break-word; }
+  .coverage-missing { color:#fbbf24; }
+  .coverage-good { color:#34d399; }
+  .control-rule-row { display:grid; grid-template-columns:minmax(0,1fr) 90px; gap:8px; margin:5px 0; }
+  .control-rule-row input,.control-rule-row select { width:100%; background:#090e18; color:var(--text-primary); border:1px solid var(--card-border); border-radius:5px; padding:6px; font-size:12px; }
+  .control-pending { border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.08); border-radius:7px; padding:9px; margin:7px 0; }
   .other-card { border-left:3px solid #a39579;background:#131922; }
   .other-card .status-tiles { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .other-summary { color:var(--text-secondary);font-size:13px;line-height:1.7;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
@@ -2243,6 +2300,23 @@ HTML_PAGE = """<!DOCTYPE html>
     <div id="model-test-status" role="status" aria-live="polite"></div>
   </form>
 </details>
+<details id="hook-control-panel" style="margin:16px 0;padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px" ontoggle="if(this.open) loadHookControl()">
+  <summary style="cursor:pointer">Hook 控制策略（仅对已实现控制回调的实例生效）</summary>
+  <form onsubmit="saveHookPolicy(event)" style="display:grid;gap:10px;max-width:720px;margin-top:16px">
+    <label>默认决策
+      <select id="hook-control-default" style="margin-left:8px;background:var(--bg);color:var(--text-primary);border:1px solid var(--card-border);border-radius:6px;padding:6px">
+        <option value="allow">允许</option><option value="deny">拒绝</option><option value="ask">需确认</option>
+      </select>
+    </label>
+    <div style="color:var(--text-muted);font-size:12px">精确工具规则</div>
+    <div id="hook-control-rules"></div>
+    <button type="button" class="refresh-btn" style="width:max-content" onclick="addHookRule()">添加工具规则</button>
+    <button type="submit" class="refresh-btn" style="width:max-content">保存控制策略</button>
+    <div id="hook-control-status" role="status" aria-live="polite"></div>
+    <div><div class="section-label">待审批请求</div><div id="hook-control-pending"><span class="asset-note">打开后读取控制面状态</span></div></div>
+    <div><div class="section-label">控制事件（返回决策与实际执行分开显示）</div><div id="hook-control-events"><span class="asset-note">尚未读取</span></div></div>
+  </form>
+</details>
 <!-- 全局治理指标 KPI 栏 -->
 <div class="kpi-row">
   <div class="kpi-card">
@@ -2287,6 +2361,17 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
   <div class="drawer-body" id="inspect-drawer-body">
     <div style="text-align: center; color: var(--text-muted); padding: 40px;">正在读取深度全景信息...</div>
+  </div>
+</div>
+
+<!-- 原始 Hook 输入/输出抽屉 -->
+<div class="drawer" id="hook-data-drawer" role="dialog" aria-modal="true" aria-labelledby="hook-data-title">
+  <div class="drawer-header">
+    <div class="drawer-title" id="hook-data-title">Hook 实时数据</div>
+    <div class="hook-data-toolbar"><button id="hook-data-download" class="detail-link" type="button" onclick="downloadHookData()">下载 JSON</button><button id="hook-data-close" aria-label="关闭 Hook 实时数据" class="drawer-close" onclick="closeAllDrawers()">✕</button></div>
+  </div>
+  <div class="drawer-body" id="hook-data-drawer-body">
+    <div style="text-align:center;color:var(--text-muted);padding:40px">选择 Agent 后读取已登记的 Hook 绑定…</div>
   </div>
 </div>
 
@@ -2396,6 +2481,9 @@ function statusTile(a,key,label,value,data,tone='') {
 function assetTiles(a) {
   const labels={model_routing:'模型与网关',registered_tools_and_mcp:'工具 / MCP',system_prompt_rules:'规则',skills:'技能',network_surface:'网络端点',child_executions:'执行事件'};
   const statuses={collected:'已查到',empty:'检查范围内未发现',unknown:'待确认',not_collected:'尚未调查',failed:'采集失败',unsupported:'当前不支持'};
+  // Keep the full child-execution projection available to the card/detail
+  // renderer; the tile below remains the compact summary.
+  const childExecutionDetails = assetText(a.adapter, 'child_executions');
   return Object.entries(labels).map(([key,label])=>{
     const item=(a.adapter.assets || {})[key] || {status:'not_collected'};
     return detailButton('asset:'+a.instance_id+':'+key,a.name+' · '+label,key === 'registered_tools_and_mcp' ? toolNamesData(a.adapter,item) : item,
@@ -2582,6 +2670,95 @@ const reinvestigatingPids = new Set();
 
 let currentAgentsData = [];
 
+let hookDataTarget = null;
+let hookDataTimer = null;
+let hookDataRequest = 0;
+
+function hookDataInstanceTarget(agent) {
+  let createTime = agent && (agent.create_time || agent.instance_create_time);
+  if (createTime === undefined && agent && typeof agent.instance_id === 'string') {
+    const parts = agent.instance_id.split(':');
+    if (parts.length > 1) createTime = Number(parts.slice(1).join(':'));
+  }
+  return {pid: Number(agent && agent.pid), create_time: Number.isFinite(Number(createTime)) ? Number(createTime) : null};
+}
+
+async function openHookData(pid) {
+  if (!currentAgentsData || !currentAgentsData.length) {
+    try { const response = await fetch('/api/state'); currentAgentsData = (await response.json()).agents || []; } catch (e) {}
+  }
+  const agent = currentAgentsData.find(item => Number(item.pid) === Number(pid));
+  if (!agent) return;
+  hookDataTarget = hookDataInstanceTarget(agent);
+  document.getElementById('hook-data-title').innerText = `Hook 实时数据 · ${agent.name || 'Agent'} · PID ${agent.pid}`;
+  document.getElementById('drawer-overlay').classList.add('active');
+  document.getElementById('hook-data-drawer').classList.add('active');
+  if (hookDataTimer) clearInterval(hookDataTimer);
+  await loadHookData();
+  hookDataTimer = setInterval(loadHookData, 2000);
+}
+
+function renderHookData(data) {
+  const container = document.getElementById('hook-data-drawer-body');
+  if (!container) return;
+  if (!data || data.error) {
+    container.innerHTML = `<div class="detail-section" style="color:#ef4444">读取 Hook 数据失败：${escapeHtml(data && (data.error || data.message) || '未知错误')}</div>`;
+    return;
+  }
+  const coverage = data.coverage || {};
+  const source = coverage.source || {};
+  const missingTypes = Array.isArray(coverage.missing_event_types) ? coverage.missing_event_types : [];
+  const undeclaredTypes = Array.isArray(coverage.supported_not_declared_event_types) ? coverage.supported_not_declared_event_types : [];
+  const missingInputs = Array.isArray(coverage.missing_inputs) ? coverage.missing_inputs : [];
+  const limitations = Array.isArray(coverage.limitations) ? coverage.limitations : [];
+  const statusText = data.status === 'not_configured' ? '未登记 observation-binding'
+    : data.status === 'empty' ? '没有匹配请求目标的 binding'
+    : data.status === 'missing_source' ? 'binding 已登记，但日志文件不存在'
+    : data.status === 'partial' ? '部分读取成功，存在不可用或不完整来源'
+    : data.status === 'ok' ? '已读取登记来源' : (data.status || '未知状态');
+  let html = `<div class="detail-section"><h4>覆盖与来源</h4><div class="hook-data-summary">状态：<b>${escapeHtml(statusText)}</b> · 绑定 ${escapeHtml(coverage.binding_count || 0)} · 通过过滤 ${escapeHtml(coverage.accepted_records || 0)} 条 · 过滤/丢弃 ${escapeHtml(coverage.filtered_records || 0)} 条 · 无法解析 ${escapeHtml(coverage.malformed_records || 0)} 条</div>`;
+  html += `<div class="hook-data-summary">已观察事件：<b>${escapeHtml((coverage.observed_event_types || []).join('、') || '未观察到')}</b></div>`;
+  html += `<div class="hook-data-summary ${missingTypes.length ? 'coverage-missing' : 'coverage-good'}">未观察到的已声明事件：<b>${escapeHtml(missingTypes.join('、') || '无')}</b></div>`;
+  html += `<div class="hook-data-summary">支持但未由 binding 声明：<b>${escapeHtml(undeclaredTypes.join('、') || '无')}</b></div>`;
+  html += `<div class="hook-data-summary">日志窗口：${source.truncated ? '已截取尾部' : '未截取'} · 未完成行 ${escapeHtml(source.partial_lines || 0)} · 文件 ${source.exists ? '存在' : '不存在'}</div>`;
+  if (missingInputs.length) html += `<div class="hook-data-summary coverage-missing">缺少输入：${escapeHtml(missingInputs.join('、'))}</div>`;
+  if (limitations.length) html += `<details style="margin-top:8px"><summary>覆盖边界</summary><ul>${limitations.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></details>`;
+  html += '</div>';
+  const records = Array.isArray(data.records) ? data.records : [];
+  if (!records.length) {
+    html += '<div class="detail-section" style="color:var(--text-muted)">当前有界日志窗口内没有通过 pid、create_time、时间戳过滤的原始记录。接口没有补造缺失事件。</div>';
+  } else {
+    html += `<div class="detail-section"><h4>原始 Hook 记录 · ${records.length} 条</h4>` + records.map((record, index) => {
+      const payload = record && record.payload !== undefined ? record.payload : record;
+      const title = (record && (record.event_type || record.timestamp_iso)) || '原始记录';
+      const meta = [record && record.timestamp_iso, record && record.instance_id, record && record.line ? '行 ' + record.line : ''].filter(Boolean).join(' · ');
+      return `<details class="hook-data-record" ${index === records.length - 1 ? 'open' : ''}><summary>${escapeHtml(title)}${meta ? ' · ' + escapeHtml(meta) : ''}</summary><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre></details>`;
+    }).join('') + '</div>';
+  }
+  container.innerHTML = html;
+}
+
+async function loadHookData() {
+  if (!hookDataTarget || !hookDataTarget.pid) return;
+  const request = ++hookDataRequest;
+  const params = new URLSearchParams({pid: String(hookDataTarget.pid), limit: '500'});
+  if (hookDataTarget.create_time !== null) params.set('create_time', String(hookDataTarget.create_time));
+  try {
+    const response = await fetch('/api/hook-data?' + params.toString());
+    const data = await response.json();
+    if (request === hookDataRequest) renderHookData(data);
+  } catch (error) {
+    if (request === hookDataRequest) renderHookData({error: String(error)});
+  }
+}
+
+function downloadHookData() {
+  if (!hookDataTarget || !hookDataTarget.pid) return;
+  const params = new URLSearchParams({pid: String(hookDataTarget.pid), limit: '2000'});
+  if (hookDataTarget.create_time !== null) params.set('create_time', String(hookDataTarget.create_time));
+  window.location.href = '/api/hook-data/download?' + params.toString();
+}
+
 function openFpDrawer() {
   document.getElementById('drawer-overlay').classList.add('active');
   document.getElementById('fp-drawer').classList.add('active');
@@ -2589,9 +2766,12 @@ function openFpDrawer() {
 }
 
 function closeAllDrawers() {
+  if (hookDataTimer) { clearInterval(hookDataTimer); hookDataTimer = null; }
+  hookDataTarget = null;
   document.getElementById('drawer-overlay').classList.remove('active');
   document.getElementById('fp-drawer').classList.remove('active');
   document.getElementById('inspect-drawer').classList.remove('active');
+  document.getElementById('hook-data-drawer').classList.remove('active');
   if (drawerReturnFocus && drawerReturnFocus.isConnected) drawerReturnFocus.focus();
 }
 
@@ -2747,7 +2927,7 @@ async function updateUI() {
     let totalPorts = 0;
     let confirmedCount = 0, infraCount = 0, pendingCount = 0;
     currentAgentsData.forEach(a => {
-      totalInstances += (a.all_pids ? a.all_pids.length : 1);
+      totalInstances += ((a.process_pids || a.all_pids || [a.pid]).length);
       if (a.adapter && a.adapter.matched) matchedCount++;
       const cls = (a.adapter && a.adapter.agent_classification) || {};
       if (cls.status === 'confirmed_agent') confirmedCount++;
@@ -2830,7 +3010,7 @@ async function updateUI() {
         readableDetails('status:'+a.pid,'查看状态说明',{调查:investigation.message || '',分类:classification.label,观测:observationText,接入:onboardingText}) + '</div>';
       const partialIdentityHtml = findingText(a.adapter.investigated_identity);
       const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
-      const pidsList = `主 PID: ${a.pid} · ${(a.all_pids || [a.pid]).length} 进程`;
+      const pidsList = `主 PID: ${a.pid} · ${(a.process_pids || a.all_pids || [a.pid]).length} 进程`;
 
       const reasonTags = (a.reasons && a.reasons.length) 
         ? `<div class="score-tags">${a.reasons.map(r => `<span class="score-tag">${r}</span>`).join('')}</div>`
@@ -2877,7 +3057,7 @@ async function updateUI() {
 
       const hookLabel = learnedHook.status === 'observing' ? '工具事件已接通' : learnedHook.status === 'loaded' ? '已加载，等待活动' : learnedHook.status === 'installed_pending_activation' ? '已安装，等待加载' : '尚未接通';
       html += `<article class="overview-card">
-        <header class="overview-head"><div><div class="eyebrow">Agent / Runtime</div><h3>${escapeHtml(a.name)}</h3><div class="overview-meta">PID ${a.pid} · ${escapeHtml(formatUptime(a.uptime_sec))} · ${(a.all_pids || [a.pid]).length} 个进程</div></div><span class="role-pill">${escapeHtml(classification.label || '待确认')}</span></header>
+        <header class="overview-head"><div><div class="eyebrow">Agent / Runtime</div><h3>${escapeHtml(a.name)}</h3><div class="overview-meta">PID ${a.pid} · ${escapeHtml(formatUptime(a.uptime_sec))} · ${(a.process_pids || a.all_pids || [a.pid]).length} 个进程</div></div><span class="role-pill">${escapeHtml(classification.label || '待确认')}</span></header>
         <div class="status-tiles">
           ${statusTile(a,'investigation','调查',investigation.label || '待调查',{结论:investigation.message,状态:investigation.label,自动流程:a.adapter.pipeline},isInvestigating?'wait':'')}
           ${statusTile(a,'classification','分类',classification.label || '待确认',a.adapter.investigated_identity || classification)}
@@ -2885,7 +3065,7 @@ async function updateUI() {
           ${statusTile(a,'onboarding','接入',hookLabel,{结论:onboardingText,状态:learnedHook,安装:install,验证:verification},learnedHook.status==='observing'?'good':'wait')}
         </div>
         <section><div class="card-caption">资产概况 · 点击查看信息与依据</div><div class="asset-tiles">${assetTiles(a)}</div></section>
-        <footer class="card-footer"><div>${a.last_message && a.last_message.source==='live_hook' ? detailButton('latest:'+a.instance_id,'最近活动',a.last_message,escapeHtml('最近活动 · '+a.last_message.event_type+' · '+(a.last_message.ts || '')),'latest-activity') : '<span class="overview-meta">尚无当前实例的 Hook 活动</span>'}</div><div class="card-actions"><button class="detail-link" onclick="openInspector(${a.pid})">完整资料 ↗</button><button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="detail-link" ${btnDisabled}>${btnText}</button>${continuation}${cancelButton}</div></footer>
+        <footer class="card-footer"><div>${a.last_message && a.last_message.source==='live_hook' ? detailButton('latest:'+a.instance_id,'最近活动',a.last_message,escapeHtml('最近活动 · '+a.last_message.event_type+' · '+(a.last_message.ts || '')),'latest-activity') : '<span class="overview-meta">尚无当前实例的 Hook 活动</span>'}</div><div class="card-actions"><button class="detail-link" onclick="openHookData(${a.pid})">Hook实时数据 ↗</button><button class="detail-link" onclick="openInspector(${a.pid})">完整资料 ↗</button><button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="detail-link" ${btnDisabled}>${btnText}</button>${continuation}${cancelButton}</div></footer>
         <details id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid)?'open':''} onToggle="onActivityToggle(${a.pid},this)"><summary class="overview-meta">调查活动</summary><div id="activity-body-${a.pid}"></div></details>
       </article>`;
     });
@@ -2904,6 +3084,84 @@ async function updateUI() {
   } catch (err) {
     console.error("更新失败:", err);
   }
+}
+
+function controlDecisionLabel(value) {
+  return ({allow:'允许',deny:'拒绝',ask:'需确认'}[value] || (value === undefined || value === null || value === '' ? '接口未提供' : String(value)));
+}
+
+function renderHookRules(rules) {
+  const container = document.getElementById('hook-control-rules');
+  if (!container) return;
+  const items = Array.isArray(rules) ? rules : [];
+  container.innerHTML = items.map((rule, index) => `<div class="control-rule-row" data-rule-index="${index}" data-rule-pid="${rule && rule.pid || ''}"><input class="hook-rule-tool" value="${escapeHtml(rule && rule.tool || '')}" placeholder="精确工具名" aria-label="精确工具名"><select class="hook-rule-decision" aria-label="工具决策"><option value="allow" ${rule && rule.decision === 'allow' ? 'selected' : ''}>允许</option><option value="deny" ${rule && rule.decision === 'deny' ? 'selected' : ''}>拒绝</option><option value="ask" ${rule && rule.decision === 'ask' ? 'selected' : ''}>需确认</option></select></div>`).join('') || '<span class="asset-note">尚未添加精确规则</span>';
+}
+
+function addHookRule(tool='', decision='allow') {
+  const container = document.getElementById('hook-control-rules');
+  if (!container) return;
+  const rows = [...container.querySelectorAll('.control-rule-row')].map(row => ({tool: row.querySelector('.hook-rule-tool').value, decision: row.querySelector('.hook-rule-decision').value, ...(row.dataset.rulePid ? {pid:Number(row.dataset.rulePid)} : {})}));
+  rows.push({tool, decision});
+  renderHookRules(rows);
+  const last = container.querySelector('.control-rule-row:last-child .hook-rule-tool');
+  if (last) last.focus();
+}
+
+function renderHookControl(data) {
+  const policy = data && data.policy || {};
+  const defaultSelect = document.getElementById('hook-control-default');
+  if (defaultSelect && ['allow','deny','ask'].includes(policy.default)) defaultSelect.value = policy.default;
+  renderHookRules(policy.rules || []);
+  const pending = document.getElementById('hook-control-pending');
+  const requests = Array.isArray(data && data.pending) ? data.pending : [];
+  if (pending) pending.innerHTML = requests.length ? requests.map(item => {
+    const id = encodeURIComponent(String(item.request_id || ''));
+    return `<div class="control-pending"><div>工具：<b>${escapeHtml(item.tool || '未提供')}</b> · PID ${escapeHtml(item.pid || '未提供')} · 请求 ${escapeHtml(item.request_id || '未提供')}</div><details><summary>操作参数</summary><pre>${escapeHtml(JSON.stringify(item.input,null,2))}</pre></details><div style="margin-top:6px"><button type="button" class="detail-link" onclick="resolveHookRequest('${id}','allow')">允许</button> <button type="button" class="detail-link" onclick="resolveHookRequest('${id}','deny')">拒绝</button></div></div>`;
+  }).join('') : '<span class="asset-note">接口当前没有待审批请求</span>';
+  const events = Array.isArray(data && data.events) ? data.events.slice(-20).reverse() : [];
+  const eventBox = document.getElementById('hook-control-events');
+  if (eventBox) eventBox.innerHTML = events.length ? events.map(event => {
+    const returned = event.returned_decision || event.decision || '接口未提供';
+    const actual = event.enforced_decision || event.actual_decision || event.outcome || (event.enforcement_verified === true ? '接口标记已验证' : '未提供（不能推断）');
+    return `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--card-border)">${escapeHtml(event.event || 'control event')} · 工具 ${escapeHtml(event.tool || '未提供')} · 返回决策 ${escapeHtml(controlDecisionLabel(returned))} · Hook 回执 ${escapeHtml(controlDecisionLabel(actual))}</div>`;
+  }).join('') : '<span class="asset-note">接口当前没有控制事件</span>';
+}
+
+async function loadHookControl() {
+  const status = document.getElementById('hook-control-status');
+  try {
+    const response = await fetch('/api/hook-control/status');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '控制面读取失败');
+    renderHookControl(data);
+    if (status) status.innerText = (data.verifications || []).filter(x=>x.current).map(x=>'PID '+x.target.pid+' 实测通过：'+x.checks.map(k=>({allow_effect:'放行生效',deny_effect:'拒绝无副作用',confirmation_reject:'确认后拒绝',timeout_deny:'确认超时拒绝',restart_reuse:'重启复用'}[k] || k)).join('、')).join('；') || '已读取控制面状态；返回决策不等于实际执行已验证';
+  } catch (error) {
+    if (status) status.innerText = '控制面不可用：' + error.message;
+  }
+}
+
+async function saveHookPolicy(event) {
+  event.preventDefault();
+  const status = document.getElementById('hook-control-status');
+  const rules = [...document.querySelectorAll('#hook-control-rules .control-rule-row')].map(row => ({tool: row.querySelector('.hook-rule-tool').value.trim(), decision: row.querySelector('.hook-rule-decision').value, ...(row.dataset.rulePid ? {pid:Number(row.dataset.rulePid)} : {})})).filter(item => item.tool);
+  try {
+    const response = await fetch('/api/hook-control/policy', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({default:document.getElementById('hook-control-default').value, rules})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '控制策略保存失败');
+    renderHookControl({policy:data});
+    if (status) status.innerText = '控制策略已保存；实际 Hook 是否执行仍需事件验证';
+  } catch (error) { if (status) status.innerText = error.message; }
+}
+
+async function resolveHookRequest(encodedRequestId, decision) {
+  const status = document.getElementById('hook-control-status');
+  try {
+    const response = await fetch('/api/hook-control/resolve', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({request_id:decodeURIComponent(encodedRequestId), decision})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '审批处理失败');
+    if (status) status.innerText = '审批决定已返回，实际执行仍需 Hook 回执与事件证据';
+    await loadHookControl();
+  } catch (error) { if (status) status.innerText = error.message; }
 }
 
 let modelTestTimer = null;
@@ -3026,8 +3284,70 @@ setInterval(() => { activityOpenPids.forEach(pid => loadActivity(pid)); }, 5000)
 """
 
 
+def refresh_hook_observations(snapshot):
+    """Refresh events independently of the user's process discovery interval."""
+    observations = _observation_registry().snapshots()
+    snapshot['observation_instances'] = observations
+    for agent in snapshot.get('agents', []):
+        iid=agent.get('instance_id'); obs=observations.get(iid)
+        if not obs: continue
+        adapter=agent['adapter']
+        from runtime.hook_acceptance import snapshots as acceptance_snapshots
+        acceptance=next((v for v in acceptance_snapshots() if v.get('current') and v['target']['pid']==agent['pid']),None)
+        if acceptance: adapter['control_acceptance']=acceptance
+        adapter['observation_evidence']=observation_for_instance(obs,agent['pid'],float(iid.split(':',1)[1]))
+        if obs.get('target_alive') and (obs.get('health') or {}).get('loaded_observed'):
+            observing=bool(obs.get('paired_calls'))
+            adapter['hook_state']={'status':'observing' if observing else 'loaded',
+                'label':'工具事件已接通' if observing else '已加载，等待工具活动','verified':True,'source':'instance_event_file'}
+            adapter.setdefault('assets',{})['child_executions']={'status':'collected','label':'持续读取事件文件',
+                'value':{'events':obs.get('recent_events',[]),'paired_calls':obs.get('paired_calls',[]),
+                         'live_file_source':True,'last_event_time':obs.get('last_event_time')},'source':'instance_event_file'}
+        if obs.get('target_alive') and obs.get('recent_events'):
+            event=obs['recent_events'][-1]
+            agent['last_message']={'source':'live_hook','event_type':event['event_type'],
+                'ts':time.strftime('%H:%M:%S',time.localtime(event['timestamp'])),'detail':event}
+        if autonomous_pipeline.enabled():
+            autonomous_pipeline.verify_installed(iid)
+            adapter.setdefault('pipeline',{})['checkpoints']=autonomous_pipeline.read(iid)
+
+
 class MonitorHandler(BaseHTTPRequestHandler):
+    def _serve_hook_data(self, parsed: urllib.parse.SplitResult, *, download: bool = False) -> None:
+        """Serve the bounded raw Hook view or its JSON download."""
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        kwargs = {
+            "run_dir": os.environ.get("ASG_RUN_DIR", str(ROOT / "artifacts" / "stage1" / "dashboard")),
+            "pid": query.get("pid", [None])[0],
+            "create_time": query.get("create_time", [None])[0],
+            "instance_id": query.get("instance_id", [None])[0] or None,
+            "since": query.get("since", [None])[0] or None,
+            "until": query.get("until", [None])[0] or None,
+            "limit": query.get("limit", [None])[0],
+            "max_bytes": query.get("max_bytes", [None])[0],
+        }
+        payload = hook_data.snapshot(**kwargs)
+        code = 400 if payload.get("status") == "invalid_request" else 200
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        if download:
+            self.send_header("Content-Disposition", "attachment; filename=hook-data.json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
+        if _handle_hook_control_request(self):
+            return
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path in ("/api/hook-data", "/api/hook-events"):
+            self._serve_hook_data(parsed)
+            return
+        if parsed.path in ("/api/hook-data/download", "/api/hook-events/download"):
+            self._serve_hook_data(parsed, download=True)
+            return
         if self.path == '/api/model-settings':
             from runtime.model_settings import public
             self.send_response(200)
@@ -3090,6 +3410,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
                             'enqueued_at': queued.get('enqueued_at'), 'queue_position': position,
                         }
                         adapter['investigating'] = False
+            refresh_hook_observations(snapshot)
             data = json.dumps(snapshot, ensure_ascii=False)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -3129,6 +3450,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        if _handle_hook_control_request(self):
+            return
         if self.path == '/api/model-settings':
             from runtime.model_settings import start
             try:
@@ -3179,8 +3502,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 install_result = onboarding.execute_install(plan, target, auth)
                 _wire_observe_config(install_result, target)
                 verification_result = None
-                if install_result.get("status") == "installed_pending_activation":
-                    verification_result = onboarding.verify_activation(install_result, target)
+                if install_result.get("status") in _GENERIC_INSTALL_STATUSES:
+                    verification_result = _verify_installation(install_result, target)
                 _update_onboarding_view(pid, install_result, verification_result)
                 payload = {"status": "ok", "plan": plan, "install": install_result,
                            "verification": verification_result}
@@ -3204,7 +3527,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
                         install_result = saved.get("install")
                     except (OSError, ValueError):
                         install_result = None
-                verification_result = onboarding.verify_activation(install_result or {}, target)
+                verification_result = _verify_installation(install_result, target)
                 _update_onboarding_view(pid, verification_result=verification_result)
                 payload = {"status": "ok", "verification": verification_result}
                 code = 200

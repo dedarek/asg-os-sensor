@@ -29,6 +29,8 @@ class PipelineTests(unittest.TestCase):
                 prior.return_value = {'install': {'status': status}}
                 self.assertEqual(pipeline.next_phase('55:1', exact=True), 'hook')
             prior.return_value = {'install': {'status': 'bound'}}
+            self.assertEqual(pipeline.next_phase('55:1', exact=True), 'hook')
+            pipeline.save('55:1','repair','',attempts=2,at=0)
             self.assertIsNone(pipeline.next_phase('55:1', exact=True))
 
     def test_file_plan_uses_learned_scope_not_process_cwd(self):
