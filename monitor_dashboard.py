@@ -2313,15 +2313,34 @@ function standardDisplay(display) {
 }
 const detailRecords = new Map();
 let drawerReturnFocus = null;
-function detailButton(id, title, data, body, className='detail-link') {
-  detailRecords.set(id,{title,data});
+function detailButton(id, title, data, body, className='detail-link', view='') {
+  detailRecords.set(id,{title,data,view});
   return `<button type="button" class="${className}" data-detail-key="${escapeHtml(id)}" onclick="openDetail(this.dataset.detailKey)">${body || escapeHtml(title)}</button>`;
+}
+function toolNamesContent(data) {
+  const value = data.value === undefined ? data.数据 : data.value;
+  const names = [];
+  const add = name => { if(typeof name === 'string' && name.trim()) names.push(name.trim()); };
+  const read = entries => {
+    if (Array.isArray(entries)) entries.forEach(item => {
+      if (typeof item === 'string') add(item);
+      else if (item && typeof item === 'object') add(item.name || item.tool_name || item.server_name || item.id);
+    });
+    else if (entries && typeof entries === 'object') Object.keys(entries).forEach(add);
+  };
+  if (Array.isArray(value)) read(value);
+  else if (value && typeof value === 'object') {
+    for (const key of ['items','tools','servers','mcpServers']) if(value[key]) read(value[key]);
+    if (!names.length) add(value.name || value.tool_name || value.server_name);
+  }
+  const unique = [...new Set(names)];
+  return unique.length ? '<ul style="list-style:none;padding:0;margin:0;display:grid;gap:10px">' + unique.map(name=>`<li style="padding:12px 14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:8px;font-weight:600;overflow-wrap:anywhere">${escapeHtml(name)}</li>`).join('') + '</ul>' : '<p class="asset-note">暂未查到工具 / MCP 名称</p>';
 }
 function openDetail(id) {
   const record=detailRecords.get(id); if(!record) return;
   drawerReturnFocus=document.activeElement;
   const data=record.data || {}, display=data.display;
-  const content=display ? standardDisplay(display)+formattedValue(Object.fromEntries(Object.entries({证据:data.evidence_refs || data.证据,范围与限制:data.uncertainty || data.范围与限制,待确认事项:data.open_questions}).filter(([,v])=>v != null))) : formattedValue(data);
+  const content=record.view === 'tool_names' ? toolNamesContent(data) : display ? standardDisplay(display)+formattedValue(Object.fromEntries(Object.entries({证据:data.evidence_refs || data.证据,范围与限制:data.uncertainty || data.范围与限制,待确认事项:data.open_questions}).filter(([,v])=>v != null))) : formattedValue(data);
   document.getElementById('fp-drawer').classList.remove('active');
   document.getElementById('inspect-title').innerText=record.title;
   document.getElementById('inspect-drawer-body').innerHTML=`<div class="detail-section">${content}</div><details><summary>原始记录（JSON）</summary><pre>${escapeHtml(JSON.stringify(data,null,2))}</pre></details>`;
@@ -2351,7 +2370,7 @@ function assetTiles(a) {
   return Object.entries(labels).map(([key,label])=>{
     const item=(a.adapter.assets || {})[key] || {status:'not_collected'};
     return detailButton('asset:'+a.instance_id+':'+key,a.name+' · '+label,item,
-      `<span>${label}</span><strong>${escapeHtml(statuses[item.status] || item.label || '待确认')} ↗</strong>`,'asset-tile');
+      `<span>${label}</span><strong>${escapeHtml(statuses[item.status] || item.label || '待确认')} ↗</strong>`,'asset-tile',key === 'registered_tools_and_mcp' ? 'tool_names' : '');
   }).join('');
 }
 function readableLine(label, value) {
@@ -2401,7 +2420,7 @@ function assetText(adapter, key) {
   const note = provenance === 'configured' ? '来源：配置' : provenance === 'observed' ? '来源：运行记录' : status === 'empty' ? '' : '';
   const refs = item.evidence_refs || item.sources || [];
   const id = key + ':' + (refs.join(',') || item.source || status);
-  const details = status === 'not_collected' ? '' : readableDetails(id,'查看依据与详情', {display:item.display,说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []});
+  const details = status === 'not_collected' ? '' : detailButton(id,'查看依据与详情', {display:item.display,说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || []},null,'detail-link',key === 'registered_tools_and_mcp' ? 'tool_names' : '');
   return `<div class="asset-view"><span class="asset-badge ${status === 'collected' ? 'asset-found' : ''}">${escapeHtml(labels[status] || item.label || '未知')}</span>${note ? `<div class="asset-note">${escapeHtml(note)}</div>` : ''}${brief}${details}</div>`;
 }
 function findingText(finding) {
