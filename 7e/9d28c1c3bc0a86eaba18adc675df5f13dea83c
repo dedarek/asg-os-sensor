@@ -1,0 +1,19 @@
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_3cb3620d64cc28 2201-2207,2332-2349,2351-2361,2363-2365,2367,2372,2402,2452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7e9d28c1c3bc0a86eaba18adc675df5f13dea83c",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
