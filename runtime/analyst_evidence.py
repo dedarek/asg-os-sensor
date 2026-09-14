@@ -371,6 +371,21 @@ def _skip_file(path: Path) -> bool:
     return False
 
 
+def _related_walk(root: Path):
+    """Bounded traversal with cycle detection, including linked entry directories."""
+    seen = set()
+    for current, directories, files in os.walk(root, followlinks=True):
+        directory = Path(current)
+        resolved = directory.resolve()
+        if resolved in seen or len(directory.relative_to(root).parts) >= MAX_DEPTH:
+            directories[:] = []
+            continue
+        seen.add(resolved)
+        directories[:] = sorted(d for d in directories if not _SENSITIVE_NAME.search(d))
+        for name in sorted(files):
+            yield directory / name
+
+
 def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: str = "all",
                        limit: int = MAX_FILES, offset: int = 0) -> dict[str, Any]:
     """Enumerate names and metadata below process-derived roots only."""
@@ -411,7 +426,7 @@ def find_related_files(surface: dict[str, Any], name_pattern: str = "*", scope: 
         if not root.is_dir() or _SENSITIVE_NAME.search(root.name):
             continue
         try:
-            iterator: Iterable[Path] = root.rglob("*")
+            iterator: Iterable[Path] = _related_walk(root)
             for path in iterator:
                 try:
                     relative = path.relative_to(root)
@@ -493,6 +508,18 @@ def read_related_file(surface: dict[str, Any], path_value: str) -> dict[str, Any
         raise ValueError("path is required")
     path = _resolve(path_value)
     allowed, root = _under_roots(path, surface)
+    if not allowed:
+        # A discovered entry may be a symlink. Preserve its lexical relationship
+        # to an evidenced root while constraining the resolved target to user scope.
+        lexical = Path(os.path.abspath(os.path.expanduser(path_value)))
+        home = Path.home().resolve()
+        for item in surface.get('related_roots', []):
+            base = Path(item['path'])
+            if (str(item.get('source', '')).startswith('ev-') and base in lexical.parents
+                    and home in path.parents
+                    and not any(_SENSITIVE_NAME.search(part) for part in path.relative_to(home).parts)):
+                allowed, root = True, item.get('id')
+                break
     if not allowed:
         raise ValueError("path is outside process-derived roots")
     if _skip_file(path) or not path.is_file():
