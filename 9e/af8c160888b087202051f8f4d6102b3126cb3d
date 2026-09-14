@@ -1,0 +1,21 @@
+recipes/runtime_analyst.yaml
+  s_7a5b8096b41d01::t_894accc5198dee 55-80
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_b5b032b4429629 51-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9eaf8c160888b087202051f8f4d6102b3126cb3d",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
