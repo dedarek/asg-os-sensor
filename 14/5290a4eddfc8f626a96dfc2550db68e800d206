@@ -1,0 +1,75 @@
+runtime/hook_data.py
+  s_7a5b8096b41d01::t_17a000fde9dd97 473,477-479,486,492-498,508-510,513
+  s_7a5b8096b41d01::t_5ebe81906b52ff 153,580
+  s_7a5b8096b41d01::t_0338f008a412a5 192-210,217-219,302-304,306-309,317,328-330,333,338-340,436-439
+  s_7a5b8096b41d01::t_535ca51f998458 1-152,154-191,211-216,220-301,305,310-316,318-327,331-332,334-337,341-435,440-472,474-476,480-485,487-491,499-507,511-512,514-579,581-622
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_1cfa4c0e2e4108 36,1893-1904
+  s_7a5b8096b41d01::t_31ae705dcf6a05 2711,2722
+  s_7a5b8096b41d01::t_d3d6b67bae6c51 1935-1950,1968-1969
+  s_7a5b8096b41d01::t_9719efcc97598e 2367-2377
+  s_7a5b8096b41d01::t_59213c8afab0da 2484-2486
+  s_7a5b8096b41d01::t_c0cbe0af5fdeb7 2673-2710,2712-2721,2723-2761,2769-2770,2774
+  s_7a5b8096b41d01::t_3cea8cc90bfd25 909-923
+  s_7a5b8096b41d01::t_8eafe3f32f08f9 3068
+  s_7a5b8096b41d01::t_246a2e98dc0384 2303-2319
+  s_7a5b8096b41d01::t_8ca4c2e3b892f0 3316-3340,3342-3350,3413,3453-3454
+  s_7a5b8096b41d01::t_8bb79a8be9c846 2238-2248
+  s_7a5b8096b41d01::t_1ab77fcc4c4ef1 3089-3166
+  s_7a5b8096b41d01::t_e2f0fe14e75060 3505-3506,3530
+  s_7a5b8096b41d01::t_e84101b71b615a 2930,3013,3060
+  s_7a5b8096b41d01::t_d8c4f0cb2f3055 1905-1906,3287-3314
+test_hook_data.py
+  s_7a5b8096b41d01::t_57e60854ea78c5 78-79
+  s_7a5b8096b41d01::t_dd257ecf56f038 1-77,80-96
+docs/stage1/HOOK_VALIDATION.md
+  s_7a5b8096b41d01::t_386a5b4c0224a9 1-26
+docs/stage1/HOOK_VERIFICATION_20260914.md
+  s_7a5b8096b41d01::t_fa6a5d6a58f833 1-18
+e2e/verify_confirmation_delivery.py
+  s_7a5b8096b41d01::t_702e9b29e87bd0 1-34
+e2e/verify_control_delivery.py
+  s_7a5b8096b41d01::t_f528476468afb8 1-40
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_2ff3959e03adef 60-61
+recipes/runtime_hook_analyst.yaml
+  s_7a5b8096b41d01::t_f239c2ae5e5d34 60-75
+runtime/analyst_evidence.py
+  s_7a5b8096b41d01::t_3e739a19289f0b 20,458-471
+runtime/analyst_tools.py
+  s_7a5b8096b41d01::t_218f5d307ef45a 902-905
+runtime/autonomous_pipeline.py
+  s_7a5b8096b41d01::t_2944bc2c09b61e 31,39,50-55,60-91
+runtime/hook_acceptance.py
+  s_7a5b8096b41d01::t_32b1ce60555225 1-32
+runtime/hook_control.py
+  s_7a5b8096b41d01::t_a14ba81bf8ffdc 1-159
+runtime/hook_control_client.py
+  s_7a5b8096b41d01::t_4779f6526e4d90 1-26
+runtime/investigation_findings.py
+  s_7a5b8096b41d01::t_d5c53b2b64770b 18
+runtime/observation_source.py
+  s_7a5b8096b41d01::t_ad95beeeb59407 23,44-46,64,345,407,460-464
+test_autonomous_pipeline.py
+  s_7a5b8096b41d01::t_4c8ac9665b13ca 32-33
+test_hook_acceptance.py
+  s_7a5b8096b41d01::t_3ad1ba450dbd92 1-12
+test_hook_control.py
+  s_7a5b8096b41d01::t_b9139e55836ee6 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "145290a4eddfc8f626a96dfc2550db68e800d206",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
