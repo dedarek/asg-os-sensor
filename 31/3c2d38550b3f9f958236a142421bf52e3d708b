@@ -1,0 +1,247 @@
+.gitignore
+  s_7a5b8096b41d01::t_82fa065a715d45 9-13,39-40,42,44-45
+.gitlab-ci.yml
+  s_7a5b8096b41d01::t_f99ac383a6a09e 1-24
+README.md
+  s_7a5b8096b41d01::t_43efb4b6cf2b08 1,3,5,7,9,11-14,16,18,20,22,24,26-38
+RELEASE.md
+  s_7a5b8096b41d01::t_df7da609427954 1,3,5-28
+asg_os_sensor.py
+  s_7a5b8096b41d01::t_39b4dff1fa77c0 253
+deploy.py
+  s_7a5b8096b41d01::t_dc513b484de948 1-199
+docs/DEPLOYMENT.md
+  s_7a5b8096b41d01::t_2c2ff7b6166936 1-108
+docs/PROJECT_GUIDE.md
+  s_7a5b8096b41d01::t_210dd1a41859ce 1-769
+docs/stage1/ACCEPTANCE_TABLE_20260915.md
+  s_7a5b8096b41d01::t_06f21384d8ad50 1-109
+docs/stage1/API_INFORMATION_EXAMPLE.md
+  s_7a5b8096b41d01::t_a8d2fa22b192d7 1-203
+docs/stage1/PROTOCOL_FIRST.md
+  s_7a5b8096b41d01::t_fec4236f5419c0 1-21
+e2e/acceptance_report.py
+  s_7a5b8096b41d01::t_62a52bc18d43d4 1-492
+e2e/analyze_target_launchability.py
+  s_7a5b8096b41d01::t_6eb6e3ae9679bf 1-90
+e2e/capture_target_baselines.py
+  s_7a5b8096b41d01::t_781e30b223cbb8 1-84
+e2e/codex_acceptance_turn.mjs
+  s_7a5b8096b41d01::t_65756e796472bc 1-44
+e2e/generate_delivery_note.py
+  s_7a5b8096b41d01::t_714ce3446917e4 1-152
+e2e/real_autonomous_demo.py
+  s_7a5b8096b41d01::t_0ebf718cfb1f59 34-37
+e2e/requirement_coverage.py
+  s_7a5b8096b41d01::t_675a112ee6e379 1-152
+e2e/run_all_acceptance.py
+  s_7a5b8096b41d01::t_42d099b6721425 1-132
+e2e/verify_acceptance_rules.py
+  s_7a5b8096b41d01::t_189157c9a1c3eb 1-260
+e2e/verify_access_wrapper.py
+  s_7a5b8096b41d01::t_881602a73ed2b9 1-162
+e2e/verify_ai_trust_connector.py
+  s_7a5b8096b41d01::t_5c677931dea234 1-163
+e2e/verify_browser_latency_dsh.mjs
+  s_7a5b8096b41d01::t_9c050b38d81aa4 1-170
+e2e/verify_browser_latency_workbuddy.mjs
+  s_7a5b8096b41d01::t_7ac2abf3c007d3 1-125
+e2e/verify_capture_bound.py
+  s_7a5b8096b41d01::t_bb6222634342c2 1-68
+e2e/verify_codex_control_delivery.py
+  s_7a5b8096b41d01::t_503df36792cdcb 1-63
+e2e/verify_control_actions.py
+  s_7a5b8096b41d01::t_4de34236d7fdb0 1-151
+e2e/verify_control_batch.py
+  s_7a5b8096b41d01::t_b9862f6763fa7f 1-178
+e2e/verify_control_confirm_batch.py
+  s_7a5b8096b41d01::t_8ceeba19df13ee 1-309
+e2e/verify_control_delivery.py
+  s_7a5b8096b41d01::t_89d540c4bb524c 32
+e2e/verify_deployment.py
+  s_7a5b8096b41d01::t_a365365b630251 1-39
+e2e/verify_independent_runtime.py
+  s_7a5b8096b41d01::t_808cb4a81727dc 1-309
+e2e/verify_independent_soak.py
+  s_7a5b8096b41d01::t_fdc190bb58f359 1-155
+e2e/verify_io_batch.py
+  s_7a5b8096b41d01::t_19b688719c05b5 1-403
+e2e/verify_io_extra.py
+  s_7a5b8096b41d01::t_3c6e2696b30fb1 1-174
+e2e/verify_latency_metrics.py
+  s_7a5b8096b41d01::t_ab170d0b4c0c8e 1-126
+e2e/verify_missing_events.py
+  s_7a5b8096b41d01::t_3ff0ffbb1f991b 1-87
+e2e/verify_model_capture_delivery.py
+  s_7a5b8096b41d01::t_2516e231b6ae04 1-79
+e2e/verify_multi_target.py
+  s_7a5b8096b41d01::t_be28db7397b9bb 1-116
+e2e/verify_normal_conversation.py
+  s_7a5b8096b41d01::t_3dac3551149611 1-128
+e2e/verify_portable_install.py
+  s_7a5b8096b41d01::t_b319e7f42cee40 1-139
+e2e/verify_recipe_reuse.py
+  s_7a5b8096b41d01::t_b46256fa295f1b 1-127
+e2e/verify_restart_batch.py
+  s_7a5b8096b41d01::t_f9d1d6ff8dc4a8 1-169
+e2e/verify_retry_batch.py
+  s_7a5b8096b41d01::t_7d85dc5afcb51b 1-188
+e2e/verify_zcode_control_delivery.py
+  s_7a5b8096b41d01::t_72888350b46b61 1-48
+hook_runtime.py
+  s_7a5b8096b41d01::t_4ae78ed242e1ea 1-80
+llm.yaml
+  s_7a5b8096b41d01::t_695eb9d562f16b 1,6-7,12
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_f50c687137e506 42,637-695,947-955,1555-1557,1559-1560,1568-1570,1575-1587,1864,1927,2313-2324,2476-2485,2729-2754,2826-2829,2838-2873,2887-2889,2896-2904,2909,2914-2922,2930-2931,2934-2936,2938-2940,2946-2948,2966-3016,3026,3031,3316-3320,3327,3329,3550-3705,3708-3712,3739-3745,3820,3825-3881,3916-3917,3920-3954
+recipes/runtime_analyst.yaml
+  s_7a5b8096b41d01::t_c46bb4d2fddd6c 10-15
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_58dc9558e2dc1d 31-34
+recipes/runtime_hook_analyst.yaml
+  s_7a5b8096b41d01::t_dd3f5b764d568c 10-25,41-46,48-50,52-54,85-88,98-111,113-117,123-124
+requirements.txt
+  s_7a5b8096b41d01::t_2799988e5638ee 6-8
+runtime/access_wrapper.py
+  s_7a5b8096b41d01::t_3309c525b868c9 1-165
+runtime/acp_bridge.py
+  s_7a5b8096b41d01::t_2dea20e8a95b5d 1-139
+runtime/ai_trust.py
+  s_7a5b8096b41d01::t_298bbe48b90e7f 1-272
+runtime/analyst_evidence.py
+  s_7a5b8096b41d01::t_d9b2b4eaca6638 142-174,194-200,243-244,246-248,257-259,274-277,282
+runtime/analyst_tools.py
+  s_7a5b8096b41d01::t_eebe90a2bf43cf 35,465-466,629,650-659,661-662,671,712-713,747-749,758,763-775,778,795-811,920,952-955,957-960,1028-1030,1034
+runtime/autonomous_pipeline.py
+  s_7a5b8096b41d01::t_12e7e6528f529d 10,90-103
+runtime/capability.py
+  s_7a5b8096b41d01::t_98364de656b770 1-268
+runtime/collection.py
+  s_7a5b8096b41d01::t_b73d9b8f54585c 33,52-53,95
+runtime/command_protocol_hook.py
+  s_7a5b8096b41d01::t_057f5ca6f332e1 1-100
+runtime/event_vocabulary.py
+  s_7a5b8096b41d01::t_36d8482b4c843f 1-233
+runtime/file_lock.py
+  s_7a5b8096b41d01::t_cf5b33659afe19 1-62
+runtime/fingerprints.json
+  s_7a5b8096b41d01::t_9f9d7cee688870 1
+runtime/hook_acceptance.py
+  s_7a5b8096b41d01::t_01905aad040172 11-13,21
+runtime/hook_control.py
+  s_7a5b8096b41d01::t_73ba156fa6074a 122-145,163-164
+runtime/hook_data.py
+  s_7a5b8096b41d01::t_aadf426b8ad30c 26,56-81,271-488,549-550,558-559,578-582,600-601,623,669-675,687-688,703-705,746,766-767,774-828,844-845,920-937,949,953-957
+runtime/hook_service.py
+  s_7a5b8096b41d01::t_947f3c8f97e8e7 1-232
+runtime/identity.py
+  s_7a5b8096b41d01::t_af292d28481712 9,120-218
+runtime/integration_protocol.py
+  s_7a5b8096b41d01::t_65e69c308b61cf 1-123
+runtime/integration_selfcheck.py
+  s_7a5b8096b41d01::t_bc226943362359 1-45
+runtime/investigation_findings.py
+  s_7a5b8096b41d01::t_b3c52f5d1d1857 161-162
+runtime/io_acceptance.py
+  s_7a5b8096b41d01::t_049f800d59db3f 1-117
+runtime/learned_install.py
+  s_7a5b8096b41d01::t_a726fcbc00b5d1 17,124,194
+runtime/llm_proxy.py
+  s_7a5b8096b41d01::t_c5a608c6c21f8f 5-6,74,113-123,136,143-146,149-152,164-167,170-176,185-187
+runtime/matcher.py
+  s_7a5b8096b41d01::t_097b5e967f6c8f 27,219-243,249-251,255-257
+runtime/model_capture.py
+  s_7a5b8096b41d01::t_41ea8d576c81ab 1-534
+runtime/native_trust.py
+  s_7a5b8096b41d01::t_1b2195ec550f40 1-307
+runtime/observation_registry.py
+  s_7a5b8096b41d01::t_457388cd40f341 5,9,24,30-32,35,37-38,42,47-54,56,59-61
+runtime/observation_source.py
+  s_7a5b8096b41d01::t_6e5b762064d796 28-29,331-332
+runtime/otlp_ingest.py
+  s_7a5b8096b41d01::t_6a35079bd06a1a 1-140
+runtime/protocol_discovery.py
+  s_7a5b8096b41d01::t_50fc58293ce23f 1-116
+runtime/protocol_events.py
+  s_7a5b8096b41d01::t_2ecabc76d12cb4 1-77
+runtime/protocol_fastpath.py
+  s_7a5b8096b41d01::t_9c005a4eb87ae5 1-186
+runtime/recipe_bundle.py
+  s_7a5b8096b41d01::t_2337ee6cea85fe 1-330
+runtime/recipe_schema.py
+  s_7a5b8096b41d01::t_02059280e3df62 18,22-30
+runtime/recipe_validation.py
+  s_7a5b8096b41d01::t_28455435df3e0c 70,99,177,179-180,191-192
+setup.bat
+  s_7a5b8096b41d01::t_21567521cee058 1-5
+setup.ps1
+  s_7a5b8096b41d01::t_1d30bcbc289ce2 1-37
+setup.sh
+  s_7a5b8096b41d01::t_a25120eec566c9 1-20
+test_acceptance_integrity.py
+  s_7a5b8096b41d01::t_bd6e940df7dcd0 1-94
+test_access_wrapper.py
+  s_7a5b8096b41d01::t_884a48292edfbb 1-36
+test_activity_ui.py
+  s_7a5b8096b41d01::t_331735a7f272c1 35-37
+test_ai_trust.py
+  s_7a5b8096b41d01::t_13120e7b0e61d6 1-101
+test_analyst_evidence.py
+  s_7a5b8096b41d01::t_771529ca424dcf 9,13,18-93
+test_auto_bind_observation.py
+  s_7a5b8096b41d01::t_0f88162cbee833 1-67
+test_autonomous_pipeline.py
+  s_7a5b8096b41d01::t_d8462b2cd90973 86
+test_buffered_transport.py
+  s_7a5b8096b41d01::t_c4ecf414289c4f 22-42
+test_capability.py
+  s_7a5b8096b41d01::t_e1a8d2dcfe7b56 1-98
+test_conversation_view.py
+  s_7a5b8096b41d01::t_3ef4d1e9912d11 1-40
+test_discovery.py
+  s_7a5b8096b41d01::t_66492fec99b1ed 6-8,12,27-95
+test_event_vocabulary.py
+  s_7a5b8096b41d01::t_9dd60d2c94b295 1-88
+test_follow_related_directory.py
+  s_7a5b8096b41d01::t_e550b2212aaf41 9-25
+test_goose_stage1.py
+  s_7a5b8096b41d01::t_66b66ce0b7a810 59-84
+test_hook_data.py
+  s_7a5b8096b41d01::t_62128cfc3f37bb 82-88,101-247
+test_independent_runtime_scope.py
+  s_7a5b8096b41d01::t_cdfd5bac3a502a 1-50
+test_integration_protocol.py
+  s_7a5b8096b41d01::t_d15c8077f59b00 1-125
+test_io_acceptance.py
+  s_7a5b8096b41d01::t_086d8f58b35d7d 1-61
+test_model_capture.py
+  s_7a5b8096b41d01::t_8be26a83258daa 1-166
+test_observation_file_source.py
+  s_7a5b8096b41d01::t_5f09207430fa6d 117-122
+test_observation_registry.py
+  s_7a5b8096b41d01::t_b3ee938ae1c0b9 1-54
+test_protocol_fastpath.py
+  s_7a5b8096b41d01::t_081664f4a0eee8 1-110
+test_protocol_transports.py
+  s_7a5b8096b41d01::t_685ed84bc8bbf0 1-139
+test_recipe_bundle.py
+  s_7a5b8096b41d01::t_b62eb486c63b5d 1-67
+test_recipe_portability.py
+  s_7a5b8096b41d01::t_4a5847d2b3abe1 1-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "313c2d38550b3f9f958236a142421bf52e3d708b",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yangyc18 <yangyc18@users.noreply.gitlab.xpaas.lenovo.com>"
+    }
+  }
+}
