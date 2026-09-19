@@ -1,0 +1,23 @@
+e2e/capture_target_baselines.py
+  s_7a5b8096b41d01::t_558e6bd197610c 19-21,32-34,36
+e2e/verify_multi_target.py
+  s_7a5b8096b41d01::t_bfdebbcad8bb0b 109-110
+  s_7a5b8096b41d01::t_2a3ab8340eeded 97
+  s_7a5b8096b41d01::t_6486353390b974 38-40,42,44-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1f77b8cf8198551d2d92bad1527d3ee43f15c58e",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
