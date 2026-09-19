@@ -1,0 +1,25 @@
+e2e/verify_io_batch.py
+  s_7a5b8096b41d01::t_04798321900026 126-135,139-142
+runtime/learned_onboarding.py
+  s_7a5b8096b41d01::t_1417312128a713 39-41,266,284-289,291-314,316-317,339-350
+runtime/onboarding.py
+  s_7a5b8096b41d01::t_d002067a2d2c13 697-717,726-729,731-733
+test_activation_coordinate_gates.py
+  s_7a5b8096b41d01::t_769c89efd6767e 158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ef80b61eec8cb3e5b9169145448d23ca7542a59c",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
