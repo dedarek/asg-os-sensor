@@ -110,10 +110,38 @@ def main():
     ap=argparse.ArgumentParser();ap.add_argument('--pid', type=int, required=True);args=ap.parse_args()
     data=json.load(urllib.request.urlopen('http://127.0.0.1:8081/api/hook-data?pid=%s&limit=4000'%args.pid,timeout=30))
     records=data.get('records', [])
+    if not records:
+        # Short-lived normal instances (codex exec turns) exit before the
+        # registry retains a binding, so the canonical API has no rows.
+        # Fall back to the Hook log itself; content matching still uses the
+        # target's own rollout transcript as the independent baseline.
+        records=[]
+        log=Path.home()/'.codex/asg-observer/events.jsonl'
+        want={'user.input':'user.input','assistant.output':'assistant.output'}
+        for line in log.read_text().splitlines():
+            try: row=json.loads(line)
+            except ValueError: continue
+            if row.get('pid')!=args.pid or row.get('event') not in want: continue
+            body=row.get('content')
+            payload={'prompt':body} if row['event']=='user.input' else {'assistant_output':body}
+            payload.update({'turn_id':row.get('turn_id'),'session_id':row.get('session_id'),'transcript_path':row.get('transcript_path')})
+            records.append({'event_type':want[row['event']],'payload':payload})
+    # Codex transcripts are named with the thread/session id; when the hook
+    # payload lacks an explicit transcript_path, locate the rollout file by
+    # session id so live desktop and exec instances reconcile identically.
+    sessions={r.get('payload',{}).get('session_id') for r in records if r.get('payload',{}).get('session_id')}
+    sessions|={r.get('payload',{}).get('turn_id') for r in records if r.get('payload',{}).get('turn_id')}
     paths={r.get('payload',{}).get('transcript_path') for r in records}
+    for sid in sorted(s for s in sessions if s):
+        if any(p and sid in p for p in paths):
+            continue
+        import subprocess
+        found=subprocess.run(['find',str(Path.home()/'.codex/sessions'),'-name','*'+sid+'*.jsonl'],capture_output=True,text=True).stdout.split()
+        for f in found:
+            paths.add(f)
     reports=[]
     for path in sorted(p for p in paths if p):
-        relevant=[r for r in records if r.get('payload',{}).get('transcript_path')==path]
+        relevant=[r for r in records if r.get('payload',{}).get('transcript_path')==path or any(s and s in path for s in (r.get('payload',{}).get('session_id'), r.get('payload',{}).get('turn_id')))]
         report=reconcile(relevant,Path(path));report['transcript_path']=path;reports.append(report)
     completed_total=sum(r['completed_turns_exact'] for r in reports)
     mismatch_total=sum(r['mismatches'] for r in reports)
