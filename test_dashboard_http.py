@@ -88,6 +88,15 @@ class _MalformedEventsFixture(BaseHTTPRequestHandler):
 class DashboardHttpRegressionTests(unittest.TestCase):
     def setUp(self):
         self.old_state = deepcopy(dashboard.SCAN_STATE)
+        # Isolate the persisted observation pointer: without this, a live
+        # dashboard binding under artifacts/stage1/dashboard permanently wires
+        # OBSERVE_CONFIG and every fixture below reads production state.
+        self.old_run_dir = os.environ.get('ASG_RUN_DIR')
+        os.environ['ASG_RUN_DIR'] = tempfile.mkdtemp(prefix='asg-test-')
+        self.old_observe_config = dashboard.OBSERVE_CONFIG
+        self.old_observe_error = dashboard.OBSERVE_CONFIG_ERROR
+        dashboard.OBSERVE_CONFIG = ''
+        dashboard.OBSERVE_CONFIG_ERROR = ''
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard.MonitorHandler)
         self.worker = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.worker.start()
@@ -98,6 +107,12 @@ class DashboardHttpRegressionTests(unittest.TestCase):
         self.worker.join(timeout=3)
         dashboard.SCAN_STATE.clear()
         dashboard.SCAN_STATE.update(self.old_state)
+        if self.old_run_dir is None:
+            os.environ.pop('ASG_RUN_DIR', None)
+        else:
+            os.environ['ASG_RUN_DIR'] = self.old_run_dir
+        dashboard.OBSERVE_CONFIG = self.old_observe_config
+        dashboard.OBSERVE_CONFIG_ERROR = self.old_observe_error
 
     def _get(self, path):
         with urlopen("http://127.0.0.1:%d%s" % (self.server.server_port, path), timeout=3) as response:
