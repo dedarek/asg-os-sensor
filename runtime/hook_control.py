@@ -30,6 +30,36 @@ def token_path():
         with os.fdopen(fd,'w') as f:f.write(secrets.token_hex(32))
     return p
 
+
+def candidate_tokens() -> list:
+    """Tokens of every known state root.
+
+    Hooks installed while ASG used a different state root carry that root's
+    token.  Dropping them would fail-close every existing Hook after a root
+    change, so authentication accepts a token from any known root; all of
+    these files are local 0600 supervisor state.
+    """
+    roots=[root(), Path('artifacts/stage1/dashboard'), Path('artifacts/autonomous-service')]
+    out=[]
+    seen=set()
+    for base in roots:
+        p=base/'hook-control.token'
+        if p in seen:
+            continue
+        seen.add(p)
+        try:
+            out.append(p.read_text().strip())
+        except OSError:
+            continue
+    return out
+
+
+def token_matches(header: str) -> bool:
+    for token in candidate_tokens():
+        if hmac.compare_digest(header,'Bearer '+token):
+            return True
+    return False
+
 def contract():
     config={'base_url':'http://127.0.0.1:'+os.environ.get('ASG_PORT','8081')+'/api/hook-control','token_file':str(token_path())}
     config_path=root()/'hook-control-client.json'
@@ -137,8 +167,7 @@ def authorized(handler):
         return True,None
     if not remote_enabled():
         return False,'loopback only (set ASG_HOOK_REMOTE=1 to allow authenticated remote callers)'
-    expected='Bearer '+token_path().read_text().strip()
-    if hmac.compare_digest(handler.headers.get('Authorization',''),expected):
+    if token_matches(handler.headers.get('Authorization','')):
         return True,None
     return False,'bearer token required for remote access'
 
@@ -173,8 +202,7 @@ def handle_request(handler):
             if not isinstance(data,dict):raise ValueError('object required')
             action=path.rsplit('/',1)[-1]
             if action in ('decision','ack'):
-                expected='Bearer '+token_path().read_text().strip()
-                if not hmac.compare_digest(handler.headers.get('Authorization',''),expected):raise PermissionError('Hook credential required')
+                if not token_matches(handler.headers.get('Authorization','')):raise PermissionError('Hook credential required')
             result={'decision':decide,'ack':ack,'policy':set_policy,'resolve':resolve}[action](data)
         else:raise ValueError('unknown endpoint')
         code=200
