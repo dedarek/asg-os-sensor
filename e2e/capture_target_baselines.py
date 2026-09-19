@@ -16,11 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DASH = 'http://127.0.0.1:8081'
 OUT = ROOT / 'artifacts/acceptance'
-CHOSEN = {
-    'access_base': 'OpenCode',
-    'workbuddy': 'WorkBuddy AI',
-    'undisclosed': '@deepseek-ai/dsh',
-}
+# Baseline selection is generic: every distinct live agent in the current scan
+# is captured, no hard-coded product list. Labels follow discovery order.
+CHOSEN = None
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -31,8 +29,11 @@ def state():
 def main():
     snapshot = state()
     by_name = {agent.get('name'): agent for agent in snapshot.get('agents', [])}
+    chosen = CHOSEN or {f'target_{index + 1}': agent.get('name')
+                        for index, agent in enumerate(
+                            sorted(snapshot.get('agents', []), key=lambda a: a.get('pid') or 0))}
     baselines = {}
-    for label, name in CHOSEN.items():
+    for label, name in chosen.items():
         agent = by_name.get(name)
         if not agent:
             baselines[label] = {'name': name, 'status': 'not_in_current_scan'}

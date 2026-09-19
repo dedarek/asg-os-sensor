@@ -35,15 +35,14 @@ def agents_by_pid():
 
 
 def main():
-    # Pick three real targets: an existing access base, WorkBuddy, and one that
-    # has not been the focus target.
+    # Select any three live targets by discovery order, not by product name:
+    # the acceptance machine must generalize across whatever Agents the host
+    # actually runs instead of hard-coding yesterday's test cases.
     live = agents_by_pid()
-    by_name = {a.get('name'): pid for pid, a in live.items()}
+    ordered = sorted(live.values(), key=lambda a: a.get('pid') or 0)
     chosen = {}
-    for label, name in (('access_base', 'OpenCode'), ('workbuddy', 'WorkBuddy AI'),
-                        ('undisclosed', '@deepseek-ai/dsh')):
-        if name in by_name:
-            chosen[label] = {'name': name, 'pid': by_name[name]}
+    for index, agent in enumerate(ordered[:3]):
+        chosen[f'target_{index + 1}'] = {'name': agent.get('name'), 'pid': agent.get('pid')}
     report = {'chosen': chosen, 'started_at': time.time()}
 
     # 1) candidate discovery latency after a manual scan
@@ -95,6 +94,7 @@ def main():
         'coverage_recorded_per_target': all('stages' in x and x['proven'] > 0 for x in per_target),
     }
     report['gates'] = gates
+    report['passed'] = all(gates.values())
     report['external_conditions'] = [
         '每个目标 10 轮输入输出与 ≥10 次工具记录：需要在隔离实例上驱动真实产品，当前仅 OpenCode 有隔离实例',
         '每个目标放行 5 / 拒绝 5：会对真实桌面应用产生副作用，需要隔离实例',
@@ -106,7 +106,8 @@ def main():
     out = __import__('pathlib').Path(__file__).resolve().parents[1] / 'artifacts/acceptance'
     out.mkdir(parents=True, exist_ok=True)
     (out / 'multi-target.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
-    print(json.dumps({'chosen': chosen, 'discovery_latency_s': report['discovery_latency_s'],
+    print(json.dumps({'passed': report['passed'], 'chosen': chosen,
+                      'discovery_latency_s': report['discovery_latency_s'],
                       'gates': gates}, ensure_ascii=False))
     for x in per_target:
         print(json.dumps(x, ensure_ascii=False))
