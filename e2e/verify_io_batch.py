@@ -214,6 +214,33 @@ def reconcile(instance_id, since, rounds):
     for c in conv:
         if c.get('role') == 'user':
             user_texts.setdefault(c.get('session_id'), []).append(str(c.get('text') or ''))
+    def session_of(rec):
+        payload = rec.get('payload') or {}
+        detail = payload.get('detail') if isinstance(payload.get('detail'), dict) else {}
+        return detail.get('session_id') or payload.get('session_id')
+
+    def content_json_text(payload, want_role=None):
+        # Newer capture layers serialise the whole message object into
+        # payload['content'] instead of detail.parts/detail.text.value.
+        raw = payload.get('content')
+        if not isinstance(raw, str) or not raw.startswith('{'):
+            return None
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            return None
+        msg = obj.get('message') if isinstance(obj.get('message'), dict) else obj
+        if want_role and msg.get('role') not in (want_role, None):
+            return None
+        parts = obj.get('parts')
+        if isinstance(parts, list):
+            joined = ''.join(str(p.get('text') or '') for p in parts if isinstance(p, dict) and p.get('type') == 'text')
+            if joined:
+                return joined
+        if isinstance(obj.get('text'), str):
+            return obj['text']
+        return None
+
     for rec in records:
         payload = rec.get('payload') or {}
         detail = payload.get('detail') if isinstance(payload.get('detail'), dict) else {}
@@ -223,29 +250,32 @@ def reconcile(instance_id, since, rounds):
                 assist_msgs.add(mid)
             value = (detail.get('message') or {}).get('value')
             if isinstance(value, str):
-                assist_texts.setdefault(detail.get('session_id'), []).append(value)
+                assist_texts.setdefault(session_of(rec), []).append(value)
             if (detail.get('message') or {}).get('truncated') is True:
-                assist_trunc_sessions.add(detail.get('session_id'))
+                assist_trunc_sessions.add(session_of(rec))
     for rec in records:
         payload = rec.get('payload') or {}
         detail = payload.get('detail') if isinstance(payload.get('detail'), dict) else {}
         if rec.get('event_type') == 'user.input':
-            text = _parts_text(detail.get('parts'))
+            text = _parts_text(detail.get('parts')) or content_json_text(payload, 'user')
             if text:
-                user_texts.setdefault(detail.get('session_id'), []).append(text)
-        if rec.get('event_type') == 'assistant.output' and detail.get('part_type') == 'text' and detail.get('message_id') in assist_msgs:
+                user_texts.setdefault(session_of(rec), []).append(text)
+        if rec.get('event_type') == 'assistant.output' and detail.get('part_type') == 'text' and (
+                detail.get('message_id') in assist_msgs or detail.get('message_role') in (None, 'assistant')):
             value = (detail.get('text') or {}).get('value')
+            if not isinstance(value, str) and isinstance(payload.get('content'), str) and not payload['content'].startswith('{'):
+                value = payload['content']
             if isinstance(value, str):
-                assist_texts.setdefault(detail.get('session_id'), []).append(value)
-            if (detail.get('text') or {}).get('truncated') is True:
-                assist_trunc_sessions.add(detail.get('session_id'))
+                assist_texts.setdefault(session_of(rec), []).append(value)
+            if (detail.get('text') or {}).get('truncated') is True or payload.get('content_truncated') is True:
+                assist_trunc_sessions.add(session_of(rec))
 
     truncated_sessions = set()
     for rec in records:
         if rec.get('event_type') == 'user.input':
             parts = ((rec.get('payload') or {}).get('detail') or {}).get('parts')
-            if isinstance(parts, dict) and parts.get('truncated') is True:
-                truncated_sessions.add((((rec.get('payload') or {}).get('detail') or {}).get('session_id')))
+            if (isinstance(parts, dict) and parts.get('truncated') is True) or ((rec.get('payload') or {}).get('content_truncated') is True) and rec.get('event_type') == 'user.input':
+                truncated_sessions.add(session_of(rec))
 
     def hit(bucket, session, canary):
         return any(canary in t for t in bucket.get(session, []))
