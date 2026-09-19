@@ -1,0 +1,16 @@
+artifacts/acceptance/acceptance-report.json
+  h_fb70d633629572 2,13,374-376,605,626-627,632-633,639,644-645,686
+docs/stage1/ACCEPTANCE_TABLE_20260920.md
+  h_fb70d633629572 29-32,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d2ed361d584d55908894f01d262dde746f349213",
+  "prompts": {},
+  "humans": {
+    "h_fb70d633629572": {
+      "author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
