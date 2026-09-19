@@ -23,7 +23,7 @@ import re
 from typing import Any, Iterable
 
 from runtime.observation_registry import Registry
-from runtime import observation_source
+from runtime import event_vocabulary, observation_source
 
 
 SCHEMA_VERSION = 1
@@ -52,6 +52,32 @@ _PRIVATE_KEY = re.compile(
     r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
     re.S,
 )
+
+_NETWORK_REQUEST_TYPES = {
+    "network.request", "network.request.sent", "http.request",
+    "http.request.sent", "model.network.request", "model.http.request",
+}
+_NETWORK_RESPONSE_TYPES = {
+    "network.response", "network.response.received", "http.response",
+    "http.response.received", "model.network.response", "model.http.response",
+}
+_NETWORK_TRANSPORT_KEYS = (
+    "capture_layer", "transport_layer", "transport", "network_transport",
+)
+_NETWORK_CORRELATION_KEYS = (
+    "correlation_id", "correlationId", "trace_id", "traceId",
+    "request_id", "requestId", "call_id", "callId",
+)
+_NETWORK_BODY_KEYS = ("body", "request_body", "response_body")
+_NETWORK_COMPLETE_KEYS = ("body_complete", "bodyComplete", "complete_body", "completeBody")
+_NETWORK_TRUNCATION_KEYS = (
+    "truncated", "body_truncated", "bodyTruncated", "is_truncated", "isTruncated",
+    "partial", "body_partial", "bodyPartial",
+)
+_MODEL_CANDIDATE_TYPES = {
+    "model.request", "model.response", "assistant.output",
+    *_NETWORK_REQUEST_TYPES, *_NETWORK_RESPONSE_TYPES,
+}
 
 
 def _default_run_dir() -> Path:
@@ -242,6 +268,224 @@ def _optional_create_time(event: dict[str, Any]) -> float | None | str:
     return None
 
 
+def _scalar_text(value: Any) -> str | None:
+    if isinstance(value, bool) or value is None or isinstance(value, (dict, list, tuple, set)):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _network_transport(event: dict[str, Any]) -> str | None:
+    """Read an explicitly named transport layer; never infer it from event kind."""
+    for key in _NETWORK_TRANSPORT_KEYS:
+        if key not in event:
+            continue
+        value = event.get(key)
+        if key == "capture_layer":
+            # The generated Hook contract uses capture_layer="transport".
+            # Do not treat capture_layer="model" (or an arbitrary label) as
+            # proof that a model summary came from the network.
+            text = _scalar_text(value)
+            if text and text.lower() in {"transport", "network", "http", "https", "wire"}:
+                return text
+            continue
+        if isinstance(value, dict):
+            for nested in ("layer", "transport_layer", "protocol", "name"):
+                text = _scalar_text(value.get(nested))
+                if text:
+                    return text
+            continue
+        text = _scalar_text(value)
+        if text:
+            return text
+    return None
+
+
+def _network_correlation_id(event: dict[str, Any]) -> str | None:
+    for key in _NETWORK_CORRELATION_KEYS:
+        text = _scalar_text(event.get(key)) if key in event else None
+        if text:
+            return text
+    return None
+
+
+def _network_body(event: dict[str, Any]) -> tuple[str | None, bool]:
+    for key in _NETWORK_BODY_KEYS:
+        if key in event and event.get(key) is not None:
+            return key, True
+    return None, False
+
+
+def _network_body_flags(event: dict[str, Any]) -> tuple[bool, bool]:
+    """Return (body_complete, explicitly_not_truncated).
+
+    A complete-body marker is required, together with either an explicit false
+    truncation/partial marker or no truncation marker.  A body-looking
+    ``input``/``output`` value is deliberately not enough evidence for a
+    network capture.
+    """
+    complete = False
+    for key in _NETWORK_COMPLETE_KEYS:
+        if key in event:
+            complete = event.get(key) is True
+            break
+    markers = [event.get(key) for key in _NETWORK_TRUNCATION_KEYS if key in event]
+    no_truncation = bool(markers) and all(value is False for value in markers)
+    # An explicit body_complete=true is itself an assertion that the body was
+    # not truncated when no truncation marker was emitted.  Keep an explicit
+    # false truncation flag authoritative, but still require body_complete=true
+    # so an arbitrary body plus truncated=false cannot be promoted to a full
+    # transport capture.
+    if complete and not markers:
+        no_truncation = True
+    return complete, no_truncation
+
+
+def _network_direction(event: dict[str, Any], event_type: Any) -> str | None:
+    for key in ("direction", "network_direction", "message_direction"):
+        if key in event:
+            value = _scalar_text(event.get(key))
+            if not value:
+                continue
+            value = value.lower().replace("-", "_")
+            if value in {"request", "req", "outbound", "egress", "sent"}:
+                return "request"
+            if value in {"response", "resp", "inbound", "ingress", "received", "recv"}:
+                return "response"
+    normalized = _scalar_text(event_type)
+    if normalized:
+        normalized = normalized.lower()
+        if normalized in _NETWORK_REQUEST_TYPES:
+            return "request"
+        if normalized in _NETWORK_RESPONSE_TYPES:
+            return "response"
+        # Canonical model events carry parameters/results by default.  They
+        # only become request/response transport evidence when an explicit
+        # transport capture marker accompanies the event.
+        if normalized == "model.request" and _network_transport(event):
+            return "request"
+        if normalized == "model.response" and _network_transport(event):
+            return "response"
+        if ("network" in normalized or normalized.startswith("http.")):
+            if normalized.endswith("request") or ".request." in normalized:
+                return "request"
+            if normalized.endswith("response") or ".response." in normalized:
+                return "response"
+    return None
+
+
+def _network_event_evidence(event: dict[str, Any], event_type: Any) -> dict[str, Any]:
+    """Assess explicit network evidence without promoting model IO summaries."""
+    normalized_type = _scalar_text(event_type)
+    transport = _network_transport(event)
+    correlation_id = _network_correlation_id(event)
+    body_key, has_body = _network_body(event)
+    body_complete, no_truncation = _network_body_flags(event)
+    direction = _network_direction(event, event_type)
+    explicit_transport = bool(transport) or bool(
+        normalized_type and normalized_type.lower() in (_NETWORK_REQUEST_TYPES | _NETWORK_RESPONSE_TYPES)
+    )
+    candidate = bool(
+        normalized_type and normalized_type.lower() in _MODEL_CANDIDATE_TYPES
+    ) or bool(transport)
+    missing: list[str] = []
+    if transport is None:
+        missing.append("transport_layer")
+    if correlation_id is None:
+        missing.append("correlation_id")
+    if not has_body:
+        missing.append("body")
+    elif not body_complete:
+        missing.append("body_complete")
+    if has_body and not no_truncation:
+        missing.append("not_truncated")
+    if direction is None:
+        missing.append("direction")
+    qualified = not missing
+    return {
+        "candidate": candidate,
+        "transport_candidate": explicit_transport,
+        "qualified": qualified,
+        "event_type": normalized_type,
+        "direction": direction,
+        "correlation_id": correlation_id,
+        "body_key": body_key,
+        "missing_requirements": missing,
+    }
+
+
+def _network_capture_coverage(
+    candidates: list[dict[str, Any]],
+    *,
+    source: dict[str, Any] | None = None,
+    records_truncated: bool = False,
+    malformed: int = 0,
+) -> dict[str, Any]:
+    """Summarize explicit network captures separately from model IO summaries."""
+    candidates = list(candidates)
+    # Model parameter/message summaries are useful evidence, but they are not
+    # transport records.  Once an explicit transport stream is present, do not
+    # let those summaries make an otherwise complete request/response pair look
+    # partial merely because they lack wire-level fields.
+    transport_candidates = [item for item in candidates if item.get("transport_candidate")]
+    assessed = transport_candidates or candidates
+    qualified = [item for item in assessed if item.get("qualified")]
+    requests = [item for item in qualified if item.get("direction") == "request"]
+    responses = [item for item in qualified if item.get("direction") == "response"]
+    request_ids = {item.get("correlation_id") for item in requests if item.get("correlation_id")}
+    response_ids = {item.get("correlation_id") for item in responses if item.get("correlation_id")}
+    pairs = request_ids & response_ids
+    missing: set[str] = set()
+    for item in assessed:
+        missing.update(item.get("missing_requirements") or [])
+    source_incomplete = bool(source and (
+        source.get("truncated") or source.get("partial_lines") or source.get("read_error")
+    ))
+    if source_incomplete or records_truncated:
+        missing.add("not_truncated")
+    if malformed:
+        missing.add("complete_source")
+    if not candidates:
+        status = "not_observed"
+        reason = "没有模型或网络候选事件；未据模型摘要推断网络捕获"
+    elif not qualified:
+        status = "partial"
+        reason = "候选事件缺少显式网络传输、关联、完整 body 或方向证据"
+    elif not pairs:
+        status = "partial"
+        reason = "存在带显式网络字段的单向事件，但未形成 request/response 关联对"
+    elif source_incomplete or records_truncated or malformed:
+        status = "partial"
+        reason = "已形成关联对，但当前有界来源存在截断、未完成行、解析错误或记录上限"
+    else:
+        status = "complete"
+        reason = "request/response 均有显式传输层、关联 ID、完整 body 和无截断证据"
+    complete = status == "complete"
+    return {
+        "scope": "explicit_network_payload",
+        "status": status,
+        "complete": complete,
+        "captured": bool(qualified),
+        "candidate_events": len(candidates),
+        "qualified_events": len(qualified),
+        "request_events": len(requests),
+        "response_events": len(responses),
+        "complete_pairs": len(pairs),
+        "requirements": {
+            "transport_layer": bool(qualified),
+            "correlation_id": bool(qualified),
+            "complete_body": bool(qualified),
+            "not_truncated": bool(qualified and not source_incomplete and not records_truncated),
+        },
+        "missing_requirements": sorted(missing),
+        "reason": reason,
+        "limitations": [
+            "model.request 参数和 assistant.output 摘要本身不代表模型网络请求或响应",
+            "complete 仅表示当前登记 binding 的有界日志窗口内存在显式关联对，不证明全局网络覆盖",
+        ],
+    }
+
+
 def _read_jsonl(path: Path, max_bytes: int) -> tuple[list[tuple[int, str]], dict[str, Any]]:
     """Read a bounded, complete-line tail from a JSONL source."""
     meta: dict[str, Any] = {
@@ -302,6 +546,8 @@ def _coverage(
     declared_event_types: Iterable[str] | None = None,
     declared_event_keys: Iterable[str] | None = None,
     supported_event_types: Iterable[str] | None = None,
+    network_candidates: list[dict[str, Any]] | None = None,
+    records_truncated: bool = False,
 ) -> dict[str, Any]:
     declared = list(dict.fromkeys(str(item) for item in (declared_event_types or [])))
     declared_keys = list(dict.fromkeys(str(item) for item in (declared_event_keys or [])))
@@ -309,7 +555,8 @@ def _coverage(
                                    (supported_event_types or observation_source.CANONICAL_EVENTS)))
     counts: dict[str, int] = {}
     for item in records:
-        name = item.get("event_type")
+        raw_name = item.get("event_type")
+        name = event_vocabulary.canonical(raw_name) or raw_name
         name = str(name) if name is not None else "<missing>"
         counts[name] = counts.get(name, 0) + 1
     observed = sorted(counts)
@@ -328,6 +575,11 @@ def _coverage(
     if supported_not_declared:
         limitations.append("以下通用事件类型由观测契约支持，但当前 binding 未声明，不能据此判定缺失：" +
                            "、".join(supported_not_declared))
+    network_capture = _network_capture_coverage(
+        network_candidates or [], source=source,
+        records_truncated=records_truncated,
+        malformed=malformed,
+    )
     complete = bool(source and source.get("source_readable") and not source.get("read_error") and
                     not source.get("truncated") and not source.get("partial_lines") and
                     not malformed and not missing and not filtered and not supported_not_declared)
@@ -345,6 +597,8 @@ def _coverage(
         "malformed_records": malformed,
         "filtered_records": filtered,
         "filtered_reasons": dict(filtered_reasons or {}),
+        "network_capture": network_capture,
+        "network_capture_complete": bool(network_capture.get("complete")),
         "source": {
             "exists": bool(source and source.get("source_exists")),
             "readable": bool(source and source.get("source_readable")),
@@ -366,6 +620,7 @@ def _read_binding(binding: dict[str, Any], *, since: float | None, until: float 
     log_path = Path(config["log_path"])
     lines, source = _read_jsonl(log_path, max_bytes)
     records: list[dict[str, Any]] = []
+    network_candidates: list[dict[str, Any]] = []
     malformed = 0
     filtered = 0
     reasons: dict[str, int] = {}
@@ -411,6 +666,13 @@ def _read_binding(binding: dict[str, Any], *, since: float | None, until: float 
         event_type = event.get(fields.get("event", "event"))
         if event_type is not None and not isinstance(event_type, (str, int, float, bool)):
             event_type = str(event_type)
+        network_evidence = _network_event_evidence(event, event_type)
+        if network_evidence.get("candidate"):
+            network_candidates.append({
+                **network_evidence,
+                "line": line_number,
+                "timestamp": timestamp,
+            })
         records.append({
             "line": line_number,
             "timestamp": timestamp,
@@ -422,6 +684,8 @@ def _read_binding(binding: dict[str, Any], *, since: float | None, until: float 
     truncated_by_records = len(records) > limit
     if truncated_by_records:
         records = records[-limit:]
+        kept_lines = {record.get("line") for record in records}
+        network_candidates = [item for item in network_candidates if item.get("line") in kept_lines]
     alive = observation_source.target_liveness(target)
     missing_inputs: list[str] = []
     if not source.get("source_exists"):
@@ -436,7 +700,9 @@ def _read_binding(binding: dict[str, Any], *, since: float | None, until: float 
                          missing_inputs=missing_inputs,
                          declared_event_types=binding.get("declared_event_types"),
                          declared_event_keys=binding.get("declared_event_keys"),
-                         supported_event_types=binding.get("supported_event_types"))
+                         supported_event_types=binding.get("supported_event_types"),
+                         network_candidates=network_candidates,
+                         records_truncated=truncated_by_records)
     if truncated_by_records:
         coverage["truncated_records"] = True
         coverage["limitations"].append("记录数量超过单次读取上限，仅展示最新有界记录")
@@ -477,6 +743,7 @@ def _aggregate(bindings: list[dict[str, Any]], errors: list[dict[str, Any]],
     source_exists = source_readable = False
     source_size = bytes_read = partial_lines = 0
     source_truncated = False
+    network_items: list[dict[str, Any]] = []
     for item in bindings:
         coverage = item.get("coverage") or {}
         for key, value in (coverage.get("counts") or {}).items():
@@ -496,12 +763,69 @@ def _aggregate(bindings: list[dict[str, Any]], errors: list[dict[str, Any]],
         bytes_read += int(source.get("bytes_read") or 0)
         partial_lines += int(source.get("partial_lines") or 0)
         source_truncated = source_truncated or bool(source.get("truncated"))
+        if isinstance(coverage.get("network_capture"), dict):
+            network_items.append(coverage["network_capture"])
     if errors:
         complete = False
         missing_inputs.append("valid_binding_config")
     if no_match:
         complete = False
         missing_inputs.append("binding_for_requested_target")
+    network_candidates = sum(int(item.get("candidate_events") or 0) for item in network_items)
+    network_qualified = sum(int(item.get("qualified_events") or 0) for item in network_items)
+    network_requests = sum(int(item.get("request_events") or 0) for item in network_items)
+    network_responses = sum(int(item.get("response_events") or 0) for item in network_items)
+    network_pairs = sum(int(item.get("complete_pairs") or 0) for item in network_items)
+    network_missing: set[str] = set()
+    # A binding can legitimately expose model summaries without any transport
+    # capture.  Those bindings must remain visible, but they must not downgrade
+    # a separate explicit transport binding that has a complete pair.
+    transport_items = [item for item in network_items if int(item.get("qualified_events") or 0) > 0]
+    assessed_network_items = transport_items or network_items
+    for item in assessed_network_items:
+        network_missing.update(item.get("missing_requirements") or [])
+    if errors or no_match:
+        network_missing.add("complete_binding_set")
+    # An aggregate cannot claim complete network coverage while any registered
+    # binding is unavailable or the requested instance had no matching
+    # binding.  The valid binding may still expose a qualified pair, so keep
+    # that evidence in the counts and report the aggregate as partial.
+    network_complete = (
+        bool(transport_items) and not errors and not no_match and
+        all(item.get("complete") for item in transport_items)
+    )
+    if not network_items or network_candidates == 0:
+        network_status = "not_observed"
+        network_reason = "没有模型或网络候选事件；未据模型摘要推断网络捕获"
+    elif network_complete:
+        network_status = "complete"
+        network_reason = "request/response 均有显式网络字段和完整关联对"
+    else:
+        network_status = "partial"
+        network_reason = "网络候选事件存在，但尚不足以证明完整模型网络请求响应"
+    network_capture = {
+        "scope": "explicit_network_payload",
+        "status": network_status,
+        "complete": network_complete,
+        "captured": network_qualified > 0,
+        "candidate_events": network_candidates,
+        "qualified_events": network_qualified,
+        "request_events": network_requests,
+        "response_events": network_responses,
+        "complete_pairs": network_pairs,
+        "requirements": {
+            "transport_layer": network_qualified > 0,
+            "correlation_id": network_qualified > 0,
+            "complete_body": network_qualified > 0,
+            "not_truncated": bool(network_complete),
+        },
+        "missing_requirements": sorted(network_missing),
+        "reason": network_reason,
+        "limitations": [
+            "模型摘要事件不代表网络捕获；仅显式网络 payload 可进入此计数",
+            "complete 仅表示当前登记 binding 的有界日志窗口内存在完整关联对",
+        ],
+    }
     return {
         "complete": complete,
         "scope": "registered_bindings",
@@ -517,6 +841,8 @@ def _aggregate(bindings: list[dict[str, Any]], errors: list[dict[str, Any]],
         "filtered_records": filtered,
         "binding_count": len(bindings),
         "unavailable_binding_count": len(errors),
+        "network_capture": network_capture,
+        "network_capture_complete": bool(network_capture.get("complete")),
         "missing_inputs": list(dict.fromkeys(missing_inputs)),
         "limitations": [
             "这是已登记绑定和当前有界日志窗口的覆盖，不是所有 Agent 行为的全局覆盖证明",
@@ -591,6 +917,24 @@ def snapshot(run_dir: Path | str | None = None, *, pid: int | str | None = None,
     if not entries:
         coverage.update(complete=False, binding_count=0)
         coverage["missing_inputs"] = ["observation_binding"]
+    from runtime.io_acceptance import assess
+    from runtime import event_vocabulary
+    acceptance_coverage = dict(coverage)
+    if any((item.get('coverage') or {}).get('truncated_records') for item in results):
+        acceptance_coverage['missing_inputs'] = [*coverage.get('missing_inputs', []), 'full_record_window']
+    from runtime.protocol_events import normalize
+    from runtime.integration_selfcheck import assess as selfcheck
+    from runtime.hook_acceptance import snapshots as acceptance_snapshots
+    normalized = [normalize(r) for r in flat_records]
+    coverage['io_acceptance'] = assess(normalized, acceptance_coverage)
+    proofs = acceptance_snapshots()
+    coverage['integration_selfchecks'] = []
+    for iid in dict.fromkeys(item['instance_id'] for item in filtered_entries):
+        local_results = [item for item in results if item['instance_id'] == iid]
+        local_coverage = _aggregate(local_results, [], no_match=False)
+        if any((item.get('coverage') or {}).get('truncated_records') for item in local_results):
+            local_coverage['missing_inputs'] = [*local_coverage.get('missing_inputs', []), 'full_record_window']
+        coverage['integration_selfchecks'].append(selfcheck(normalized, local_coverage, iid, proofs))
     return {
         "schema_version": SCHEMA_VERSION,
         "status": status,
@@ -602,9 +946,15 @@ def snapshot(run_dir: Path | str | None = None, *, pid: int | str | None = None,
                    "max_bytes": _safe_max_bytes(max_bytes)},
         "bindings": results + errors,
         "records": flat_records,
+        "normalized_records": normalized,
         # ``events`` is a convenient direct raw-payload view for API clients;
         # ``records`` carries line/time/instance metadata used by the drawer.
         "events": [record["payload"] for record in flat_records],
+        # Normalized conversation and translation coverage: producers name the
+        # same stage differently, so the raw labels alone cannot show whether a
+        # user's own words were captured.
+        "conversation": event_vocabulary.conversation(normalized, limit=200),
+        "vocabulary": event_vocabulary.vocabulary_summary(flat_records),
         "coverage": coverage,
     }
 

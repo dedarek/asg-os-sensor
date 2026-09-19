@@ -1,5 +1,4 @@
 """Execute the real page script: numeric historical bindings must not stop rendering."""
-import ast
 from pathlib import Path
 import shutil
 import subprocess
@@ -7,9 +6,7 @@ import unittest
 
 class HistoryRenderTests(unittest.TestCase):
     def test_real_update_ui_renders_history_and_continues_to_grid(self):
-        tree=ast.parse(Path('monitor_dashboard.py').read_text())
-        html=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign)
-            and any(isinstance(t,ast.Name) and t.id=='HTML_PAGE' for t in n.targets))
+        html=(Path(__file__).resolve().parent / 'web/dashboard.html').read_text(encoding='utf-8')
         script=html.split('<script>',1)[1].split('</script>',1)[0]
         bootstrap='''
 const assert=require('assert');

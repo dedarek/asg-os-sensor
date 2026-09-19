@@ -114,6 +114,12 @@ class FileEventSourceTests(unittest.TestCase):
         self.assertEqual(snap["events"]["invalid"], 0)
         self.assertEqual(snap["events"]["ignored"], 1)
 
+    def test_known_native_alias_is_normalized_without_product_config(self):
+        self.append({"ts": _ts(), "pid": 4242, "event": "user.prompt.submitted"})
+        snap = self.read()
+        self.assertEqual(snap["events"]["valid"], 1)
+        self.assertEqual(snap["recent_events"][-1]["event_type"], "user.input")
+
     def test_broken_line_is_invalid_but_does_not_stop_later_lines(self):
         with self.log.open("a", encoding="utf-8") as handle:
             handle.write("{ not json\n")

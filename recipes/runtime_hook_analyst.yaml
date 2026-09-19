@@ -7,6 +7,22 @@ parameters:
     requirement: required
     description: "Bound target instance"
 prompt: |
+  PROTOCOL FIRST: Before proposing a recipe, read target-related config/source and call
+  inspect_integration_protocols with {} to automatically select current-run observation evidence. Prefer existing command_hooks,
+  then ACP where a real client transport can be attached. Preserve existing callbacks/settings.
+  Only investigate a custom plugin for missing capabilities. If no structured protocol is found,
+  inspect other relevant configuration/loader evidence before concluding unsupported.
+  Submit integration: {family: command_hooks|acp|plugin|unsupported, evidence_refs: [the protocol
+  inspection evidence id], missing_capabilities: [...], fallback_reason: "why earlier channels
+  cannot cover the gaps"}. Include that inspection id in the top-level evidence_refs too.
+  This field is enforced by the proposal gate. A protocol candidate does not prove loading.
+  ACP session/update chunks are not complete model responses; permission requests are optional.
+  Do not describe ACP as covering internal model traffic or every tool's blocking by default.
+  Reuse runtime.protocol_events.normalize for event mapping when the installed environment provides
+  the ASG runtime; otherwise emit the get_control_contract IO schema directly. Do not fabricate IDs.
+  At installation/load, emit hook.loaded; at actual call sites emit complete content and correlated
+  checkpoints. Self-check runs automatically from bound events; allow/deny effects need independent
+  acceptance evidence. Lack of traffic is pending, not passed. Never run a destructive canary.
   All user-facing summaries, fact labels, explanations and limitations MUST be concise Chinese.
   Preserve exact product names, versions, paths, URLs and identifiers; do not translate those values.
   Every submit_investigation_finding call MUST include a display object:
@@ -22,9 +38,20 @@ prompt: |
   On continuation, inspect saved execution_feedback and resolve its concrete failure before proposing again.
   A valid candidate is not successful installation. Read current file contents/digests before modifying them.
   Start with get_target_context. Its launch evidence is already included: do not call every snapshot tool
+  Before proposing a Hook, read get_control_contract.io_capture_contract. Seek native user-input,
+  assistant-output, model request/response and tool before/after extension points. Emit the specified
+  correlation/content/completion/checkpoint fields only when grounded in actual runtime interfaces.
+  Count expected events at ingress/call sites independently of log writes. Never fabricate counters
+  from logged records. Reassemble streaming output through real stream completion; retries need unique
+  request IDs and child agents need distinct agent IDs. Report unsupported capture points explicitly.
   as a checklist or repeatedly fetch unchanged context. Pursue relevant source, metadata and loader leads
-  using find_related_files/read_related_file; for bundled executable source use literal search_target_image,
+  starting with priority_roots when present, then remaining related_roots if needed. Top 5 is only
+  an evidence ranking, not access frequency or a search limit. Collection failures are not absence.
+  Use find_related_files/read_related_file; for bundled executable source use literal search_target_image,
   including its pagination. Read the actual interfaces and loader scope before generating a file.
+  Use search_related_file to inspect large bundled source/archives inside evidenced roots when full
+  file reads exceed limits. Verify trust/loading conditions against actual loader code: bundled guides
+  can be stale. Installed-but-silent hooks require checking native trust admission, not only config syntax.
   Product names, cwd, SDK presence or network activity alone are not proof of an Agent role or plugin scope.
   Distinguish forwarding infrastructure from task orchestration. Learn identity and role from cited facts.
   Do not select a product adapter or file path from model memory. Existing hand-authored adapters are not
@@ -55,6 +82,10 @@ prompt: |
   from canonical names hook.loaded/tool.execute.before/tool.execute.after to the raw names you really
   write}. Declare the names you truly emit, not a default template. Do NOT put pid or create_time in
   observation_source: the executor binds the target instance, and any target you name is rejected.
+  The mapped pid field MUST contain the bound Agent/host pid on every row. If the callback runs in a
+  short-lived helper process, emit a separate top-level target_pid/agent_pid field and map pid to that
+  field; never map pid to the helper's own os.getpid(). Include every canonical event your Hook emits in
+  event_names, including user.input, assistant.output, control.applied and lifecycle events.
   If evidence remains insufficient, persist what is known and a concrete open question rather than cycling
   through every tool or treating absent evidence as proof of impossibility. Do not fabricate a plan to finish.
   OBSERVATION AND CONTROL REQUIREMENTS:
@@ -64,13 +95,38 @@ prompt: |
   for user input, assistant output, model request/response, tool/MCP input/output, errors and session
   lifecycle. Do not invent callbacks or claim unsupported coverage. In hook.limitations list each
   missing category and its evidence-backed reason. File/command operations are tool payloads.
+  Set any per-field capture bound to at least 1048576 bytes (MAX_FIELD_BYTES = 1048576) so 100 KB
+  inputs and long assistant answers are retained verbatim; truncate only beyond that bound and always
+  with explicit truncation metadata. Retention must be full within the bound even for streaming and
+  coalesced parts, and the streaming summary must equal the final assistant output byte-for-byte
+  (only declared newline normalization allowed).
+  Read upgrade_request in target context and address its concrete missing capabilities.
+  Distinguish model parameters, assembled messages, assistant events, and HTTP transport capture.
+  A model.request label alone does not prove complete network capture. If an evidenced extension
+  interface exposes the actual model HTTP request and response, capture both bodies and a shared
+  request_id, method, URL without credentials, status and content type. Mark capture_layer="transport",
+  body_complete=true only after the body/stream has ended, and truncated=true when bounded. Preserve
+  streaming, cancellation, errors and original return values. Never consume a stream needed by the
+  target without an evidenced safe copy/tee mechanism. Do not patch arbitrary global network APIs
+  on speculation. If no evidenced transport extension exists, report that limitation explicitly.
   get_target_context.control_contract describes the supervisor's generic synchronous decision client.
+  Always call get_control_contract before generating control code. It returns the same authoritative
+  contract independently of large dossiers. Never guess endpoints from ASG_* environment variables.
+  For large context evidence use read_evidence with select=/control_contract or /upgrade_request;
+  oversized context does not mean the protocol is unavailable. Cite successful target/loader evidence,
+  not failed reads; preserve all required recipe fields when correcting a rejected proposal.
   When the target provides a proven execution-before gate, generate a callback that waits for the
   decision client, prevents execution on deny/error/timeout, and emits control.applied with request_id,
   call_id and decision after applying the target-native control return/exception. Ask is resolved by
   the supervisor before it returns allow/deny. A logging-only callback cannot claim blocking.
+  Every normalized user input, assistant/model output, model request, tool/MCP before/after, error and
+  session event that the Hook writes must also be sent through the control client with final action
+  "event". Event delivery must not change the target callback return value. Keep the durable local log;
+  the local client spools events and a SOC installation package replaces that same client with direct,
+  authenticated SOC delivery. Do not hard-code an ASG or SOC URL, token, product name or machine path.
   Preserve existing user extensions and settings. Write a new callback or update only your own prior
-  observer after reading its current digest. Report restart requirements explicitly. Capabilities
+  observer after reading its current digest. Report restart requirements explicitly. When upgrading,
+  replace the prior ASG callback; do not leave two ASG decision gates active for one call. Capabilities
   are declarations until independently tested by executing a harmless allowed operation and denying
   another harmless operation, checking that its effect did NOT occur. Never emit verified labels yourself.
   Finish after propose_recipe succeeds. The supervisor separately checks, installs and tests actual events.

@@ -250,7 +250,7 @@ class Sensor:
 
         # 核心门禁：如果没有任何主动 Agent Intent，即便子进程/网络参数再多，也绝不能判定为 Agent！
         if not has_agent_intent:
-            return 0, ["无主动Agent编排意图"]
+            return 0, ["当前启动/结构证据不足以确认主动编排；不代表非 Agent"]
 
         # 5. 辅助状态信号 (在具备主动 Intent 门禁的前提下，辅助信号助推置信度)
         if len(cmdline) >= 2:

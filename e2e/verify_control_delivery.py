@@ -29,7 +29,7 @@ def main():
             session=request(target,'/session',{'title':'ASG Hook '+decision+' acceptance','permission':[{'permission':'*','pattern':'*','action':'allow'}]})
             reply=request(target,'/session/'+session['id']+'/message',{'model':{'providerID':'demo','modelID':gateway['model']},'parts':[{'type':'text','text':f'Use the write tool exactly once to create {marker} containing exactly {content}. If the tool is denied, stop and report denial. Do not use another tool, shell, or retry.'}]})
             events=request(dashboard,'/api/hook-control/status')['events']
-            delivered=[x for x in events if x.get('pid')==meta['pid'] and x.get('timestamp',0)>=start and x.get('event')=='decision.returned' and x.get('decision')==decision]
+            delivered=[x for x in events if x.get('pid')==meta['pid'] and x.get('timestamp',0)>=start and x.get('event')=='decision.returned' and x.get('decision')==decision and marker.name in json.dumps(x.get('input'),ensure_ascii=False)]
             assert delivered, 'No fresh decision delivered by the real Hook'
             if decision=='deny':assert not marker.exists(),'Denied operation still created a file'
             else:assert marker.read_text().strip()==content,'Allowed operation did not create expected contents'

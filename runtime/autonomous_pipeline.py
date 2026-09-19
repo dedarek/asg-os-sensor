@@ -7,6 +7,7 @@ from pathlib import Path
 from runtime.learned_install import _atomic
 
 _LOCK = threading.RLock()
+_SELF_CHECK_CACHE = {}
 
 def enabled():
     return os.environ.get('ASG_PIPELINE', '0') == '1'
@@ -34,9 +35,24 @@ def save(instance_id, phase, run_dir, **details):
 
 def next_phase(instance_id, exact=False):
     state = read(instance_id)
+    if state.get('upgrade',{}).get('requested'): return 'hook'
+    # Compatible recipes take the deterministic installer path. A new instance
+    # keeps unknown assets until observed; it does not require another LLM census.
+    from runtime import onboarding
+    if exact:
+        prior = onboarding.instance_state(instance_id) or {}
+        install = prior.get('install') or {}
+        if install.get('status') in ('failed', 'reuse_requires_validation', 'unsupported'):
+            return 'hook'
+        verification = state.get('verification') or {}
+        if verification.get('status') == 'verification_failed':
+            repair = state.get('repair') or {}
+            import time
+            if repair.get('attempts', 0) < 2 and time.time() - repair.get('at', 0) > 300:
+                return 'hook'
+        return None
     if not state.get('assets'):
         return 'assets'
-    if state.get('upgrade',{}).get('requested'): return 'hook'
     if state['assets'].get('infrastructure'):
         return None
     # A matching build/candidate is not a successful installation. Read the
@@ -86,6 +102,20 @@ def verify_installed(instance_id):
         except (ValueError,OSError) as exc:result.update(status='verification_failed',reason=str(exc))
     from runtime.hook_acceptance import snapshots as acceptances
     result['control_verified']=any(v.get('current') and str(v['target']['pid'])+':'+str(v['target']['create_time'])==instance_id for v in acceptances())
+    if binding:
+        from runtime.hook_data import snapshot as hook_snapshot
+        import time
+        key = (str(path().resolve()), instance_id)
+        cached = _SELF_CHECK_CACHE.get(key)
+        if cached and time.monotonic() - cached[0] < 5:
+            result['selfcheck'] = cached[1]
+        else:
+            data = hook_snapshot(path().parent, instance_id=instance_id, limit=2000, max_bytes=4*1024*1024)
+            checks = (data.get('coverage') or {}).get('integration_selfchecks', [])
+            result['selfcheck'] = checks[0] if checks else {'status': 'pending', 'next_checks': ['observation_binding']}
+            if len(_SELF_CHECK_CACHE) > 256: _SELF_CHECK_CACHE.clear()
+            _SELF_CHECK_CACHE[key] = (time.monotonic(), result['selfcheck'])
+        result['control_verified'] = bool(result['selfcheck'].get('control', {}).get('blocking_verified'))
     previous=read(instance_id).get('verification',{})
     if any(previous.get(k)!=v for k,v in result.items()):save(instance_id,'verification','',**result)
     return result

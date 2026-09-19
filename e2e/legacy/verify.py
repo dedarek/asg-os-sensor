@@ -6,7 +6,7 @@
   3. good 进程绝不能有 BLOCK (误报=0, 呼应 Guard 评测铁律)
   4. 每个 BLOCK 都有对应 rule + disposition 字段齐全
 
-用法: python verify.py [--events events.jsonl]
+用法: python e2e/legacy/verify.py [--events events.jsonl]
 退出码 0=全过, 1=有失败.
 """
 import argparse
@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(__file__).resolve().parents[2]
 
 
 def load_events(p):

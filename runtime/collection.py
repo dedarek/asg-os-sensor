@@ -13,7 +13,7 @@ _JSON_KEYS = ('config', 'setting', 'mcp')
 _CWD_FILES = ('config.json', 'settings.json', 'AGENTS.md', 'CLAUDE.md')
 
 
-def collect(p):
+def collect(p, workspace=None):
     info = {'pid': p.pid, 'exe': p.exe(), 'cmdline': p.cmdline(), 'name': p.name()}
     identity = metadata_identity(info)
     assets = {}
@@ -29,7 +29,18 @@ def collect(p):
         candidates.update(cwd / n for n in _CWD_FILES)
     except (psutil.AccessDenied, psutil.NoSuchProcess) as exc:
         sys_errors.append(type(exc).__name__)
+    # Explicit target workspace from the installation plan, not a global home scan.
+    if workspace:
+        root = Path(workspace)
+        try:
+            candidates.update(root / name for name in _CWD_FILES)
+            for directory in sorted(root.iterdir())[:100]:
+                if directory.is_dir() and not directory.is_symlink() and directory.name.startswith('.') and directory.name != '.git':
+                    candidates.update(directory / name for name in ('config.json', 'settings.json', 'mcp.json', 'AGENTS.md'))
+        except OSError as exc:
+            sys_errors.append(type(exc).__name__)
     observations = []
+    protocol_observations = []
     cfg_parse_ok = 0
     for path in sorted(candidates)[:100]:
         # 仅处理白名单规则路径；.env 与任意命令行路径从不读取
@@ -48,6 +59,8 @@ def collect(p):
                 cfg_failures.append(path.name + ':not_object')
                 continue
             cfg_parse_ok += 1
+            from runtime.integration_protocol import detect
+            protocol_observations.extend({**v, 'source': str(path)} for v in detect(data))
             observations.append({'field': 'parsed_config', 'value': {'file': path.name}, 'source': str(path)})
             model = data.get('model')
             if isinstance(model, str):
@@ -89,7 +102,7 @@ def collect(p):
     except (psutil.AccessDenied, psutil.NoSuchProcess) as exc:
         assets['network_surface'] = {'status': 'failed', 'source': 'psutil.net_connections:target-only',
                                      'message': '观测未完成: ' + type(exc).__name__ + '（无数据≠无连接，更≠安全）'}
-    return {'identity': identity, 'assets': assets,
+    return {'identity': identity, 'assets': assets, 'protocol_observations': protocol_observations,
             'limitations': ['仅本机读取受限 JSON 配置解析字段名；原始配置内容/凭据只读不导出（read_text 为本地读取，外发结果已脱敏）',
                             '未覆盖: 非 JSON 配置、任意路径参数、.env、插件/市场集合、依赖版本、网络行为',
                             '字段缺失 = 未采集，不是空值']}

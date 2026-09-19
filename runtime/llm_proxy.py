@@ -2,7 +2,8 @@
 
 This is a route-scoped compatibility path. It binds to loopback, forwards
 only the origin selected by the active route, never follows redirects, and
-never logs request bodies or keys.
+never logs keys. Body capture is off by default and requires an explicit,
+live-instance-bound test/observation configuration (runtime.model_capture).
 """
 from __future__ import annotations
 
@@ -70,6 +71,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length)
+        client_request_body = body
         options = _STATE.get('request_options') or {}
         if options and self.path.endswith('/chat/completions'):
             body = json.dumps(apply_request_options(json.loads(body), options), ensure_ascii=False).encode('utf-8')
@@ -108,6 +110,17 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "Accept": self.headers.get("Accept", "*/*"),
         }
         headers.update(_STATE.get("extra_headers") or {})
+        from runtime.model_capture import begin_capture
+        capture = begin_capture(peer=getattr(self, 'client_address', None),
+                                server_port=getattr(getattr(self, 'server', None), 'server_port', None))
+        if capture:
+            capture.request(client_request_body, {'method': 'POST',
+                'url': 'http://127.0.0.1:' + str(self.server.server_port) + self.path,
+                'content_type': self.headers.get('Content-Type', 'application/json'),
+                'transport_side': 'agent-facing'})
+        response_meta = {}
+        upstream = None
+        response_started = False
         try:
             upstream = requests.post(
                 target,
@@ -120,14 +133,23 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             )
             if buffered and upstream.status_code == 200:
                 wire = completion_as_sse(upstream.json())
+                response_started = True
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/event-stream')
                 self.send_header('Content-Length', str(len(wire)))
                 self.send_header('Connection', 'close')
                 self.end_headers()
                 self.wfile.write(wire)
+                if capture:
+                    capture.feed(wire)
+                    capture.finish(metadata={'status': 200, 'content_type': 'text/event-stream',
+                                             'transport_side': 'agent-facing'})
                 self.close_connection = True
                 return
+            response_meta = {'status': upstream.status_code,
+                             'content_type': upstream.headers.get('Content-Type', ''),
+                             'transport_side': 'agent-facing'}
+            response_started = True
             self.send_response(upstream.status_code)
             for name in ("Content-Type", "Cache-Control", "X-Request-Id"):
                 value = upstream.headers.get(name)
@@ -139,8 +161,19 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 if chunk:
                     self.wfile.write(chunk)
                     self.wfile.flush()
+                    if capture:
+                        capture.feed(chunk)
+            if capture:
+                capture.finish(metadata=response_meta)
             self.close_connection = True
         except Exception as exc:
+            if capture:
+                capture.finish(complete=False, error=type(exc).__name__, metadata=response_meta)
+            self.close_connection = True
+            # Never append a second HTTP response to a partial stream or write
+            # an error response into a socket the client already closed.
+            if response_started or isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+                return
             body = (type(exc).__name__ + ": " + str(exc)).encode("utf-8", errors="replace")[:1000]
             self.send_response(502)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -149,6 +182,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             self.close_connection = True
+        finally:
+            if upstream is not None:
+                upstream.close()
 
     def log_message(self, format: str, *args: Any) -> None:
         return

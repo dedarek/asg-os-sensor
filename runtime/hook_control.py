@@ -36,10 +36,10 @@ def contract():
     _atomic(config_path,json.dumps(config).encode())
     return {'version':1,'base_url':'http://127.0.0.1:'+os.environ.get('ASG_PORT','8081')+'/api/hook-control',
             'client_command':[sys.executable,str(Path(__file__).with_name('hook_control_client.py')),str(config_path),'decision'],
-            'client_usage':'Send one JSON request on stdin; parse stdout. Client fills process create_time and authentication. Change final argument to ack for acknowledgement. Nonzero exit or decision other than allow means deny in control mode.',
+            'client_usage':'Send one JSON request on stdin; parse stdout. Client fills process create_time and authentication. Change final argument to ack for acknowledgement or event for a normalized observation event. Nonzero exit or decision other than allow means deny in control mode.',
             'request':{'pid':'actual Agent PID','create_time':'actual Agent process creation time (epoch seconds)',
                        'call_id':'unique call identifier','tool':'actual tool name','input':'actual input'},
-            'protocol':'Read token_file at runtime; Authorization: Bearer <token>. POST /decision before execution; await response. decision=allow permits execution; deny prevents execution; ask waits for UI resolution up to timeout_s (1..60, default 30) then denies. Transport/error/malformed response must deny in control mode. After applying decision POST /ack {request_id, applied: true, outcome: allowed|blocked}. Never claim an ack proves the action was prevented; verification must check actual effects.',
+            'protocol':'Read token_file at runtime; Authorization: Bearer <token>. POST /decision before execution; await response. decision=allow permits execution; deny prevents execution; ask waits for UI resolution up to timeout_s (1..60, default 30) then denies. Transport/error/malformed response must deny in control mode. After applying decision POST /ack {request_id, applied: true, outcome: allowed|blocked}. Send each normalized user/model/tool/session event using client action event; this local client durably spools it and a SOC package replaces the transport with direct authenticated delivery. Never claim an ack proves the action was prevented; verification must check actual effects.',
             'scope':'Use only if the evidenced target Hook can synchronously gate execution. Do not claim unsupported target callbacks can block.'}
 
 def redact(v):
@@ -119,6 +119,30 @@ def ack(data):
         _log({'event':'decision.acknowledged',**r,'outcome':expected,'enforcement_verified':False})
     return {'status':'producer_acknowledged','enforcement_verified':False}
 
+def remote_enabled():
+    """Opt-in flag for serving decisions to a remote caller."""
+    return os.environ.get('ASG_HOOK_REMOTE','').strip().lower() in ('1','true','yes','on')
+
+
+def authorized(handler):
+    """Loopback is always allowed; a remote caller needs the shared token.
+
+    Enabling remote access does not weaken the credential: the same bearer
+    token the generated Hooks use is required, and cross-origin browser
+    requests are still refused.  The returned reason keeps a 403 explainable
+    in the UI instead of looking like a generic failure.
+    """
+    host=handler.client_address[0]
+    if host in ('127.0.0.1','::1'):
+        return True,None
+    if not remote_enabled():
+        return False,'loopback only (set ASG_HOOK_REMOTE=1 to allow authenticated remote callers)'
+    expected='Bearer '+token_path().read_text().strip()
+    if hmac.compare_digest(handler.headers.get('Authorization',''),expected):
+        return True,None
+    return False,'bearer token required for remote access'
+
+
 def status():
     path=root()/'hook-control-events.jsonl';events=[]
     if path.exists():
@@ -136,7 +160,8 @@ def handle_request(handler):
     path=urlparse(handler.path).path
     if not path.startswith('/api/hook-control/'):return False
     try:
-        if handler.client_address[0] not in ('127.0.0.1','::1'):raise PermissionError('loopback only')
+        allowed,reason=authorized(handler)
+        if not allowed:raise PermissionError(reason)
         origin=handler.headers.get('Origin')
         if origin and urlparse(origin).netloc!=handler.headers.get('Host'):raise PermissionError('cross-origin request denied')
         if handler.command=='GET' and path.endswith('/status'):

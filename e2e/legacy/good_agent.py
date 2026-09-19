@@ -1,13 +1,13 @@
 """良性 agent 模拟器: 只写项目内 tmp 文件 + 睡眠, 不碰敏感文件/不出网.
 
 期望: sensor 可能给低分或 R1 上线提醒, 但绝不能出现 BLOCK.
-用法: python good_agent.py --task summarize
+用法: python e2e/legacy/good_agent.py --task summarize
 """
 import sys
 import time
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(__file__).resolve().parents[2]
 tmp = BASE / "tmp" / "good_agent_note.txt"
 tmp.parent.mkdir(parents=True, exist_ok=True)
 tmp.write_text("benign task output\n", encoding="utf-8")

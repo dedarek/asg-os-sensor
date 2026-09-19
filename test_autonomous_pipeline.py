@@ -11,13 +11,13 @@ from runtime import onboarding
 class PipelineTests(unittest.TestCase):
     def test_restart_and_exact_reuse_keep_instance_assets_separate(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}):
-            self.assertEqual(pipeline.next_phase('11:1', exact=True), 'assets')
+            self.assertIsNone(pipeline.next_phase('11:1', exact=True))
             pipeline.save('11:1', 'assets', '/run/a')
             self.assertEqual(pipeline.next_phase('11:1'), 'hook')
-            self.assertEqual(pipeline.next_phase('11:1', exact=True), 'hook')
+            self.assertIsNone(pipeline.next_phase('11:1', exact=True))
             pipeline.save('11:1', 'hook', '/run/b')
             self.assertEqual(pipeline.next_phase('11:1'), 'hook')
-            self.assertEqual(pipeline.next_phase('11:2', exact=True), 'assets')
+            self.assertIsNone(pipeline.next_phase('11:2', exact=True))
             self.assertTrue(json.loads(pipeline.path().read_text())['11:1']['hook'])
 
     def test_candidate_and_failed_reuse_do_not_complete_pipeline(self):
@@ -29,6 +29,8 @@ class PipelineTests(unittest.TestCase):
                 prior.return_value = {'install': {'status': status}}
                 self.assertEqual(pipeline.next_phase('55:1', exact=True), 'hook')
             prior.return_value = {'install': {'status': 'bound'}}
+            self.assertIsNone(pipeline.next_phase('55:1', exact=True))
+            pipeline.save('55:1', 'verification', '', status='verification_failed')
             self.assertEqual(pipeline.next_phase('55:1', exact=True), 'hook')
             pipeline.save('55:1','repair','',attempts=2,at=0)
             self.assertIsNone(pipeline.next_phase('55:1', exact=True))
@@ -83,7 +85,7 @@ class RegistryTests(unittest.TestCase):
             config = root / 'config.json'
             config.write_text(json.dumps({'target':{'pid':42,'create_time':1.0}, 'log_path':str(root/'events')}))
             iid = registry.register(config)
-            (root/'observation-bindings'/(iid+'.json')).write_text('broken')
+            Path(json.loads(registry.path.read_text())[iid]['config_path']).write_text('broken')
             self.assertEqual(registry.snapshots()[iid]['status'], 'unavailable')
 
 class PhaseIntegrationTests(unittest.TestCase):

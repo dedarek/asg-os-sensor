@@ -1,4 +1,4 @@
-> 唯一最新日志入口：docs/stage1/WORKLOG.md（本文件）。根目录同名文件只存历史轮次概览。
+> 历史阶段日志。当前入口见 ../../README.md；原根目录日志现位于 ../archive/WORKLOG.md。本文旧状态只描述对应批次。
 # Stage1 WORKLOG
 
 ## 2026-09-09 S0 — 基线核查与计划

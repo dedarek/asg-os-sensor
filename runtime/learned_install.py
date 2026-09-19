@@ -14,7 +14,7 @@ import os
 import re
 import tempfile
 from pathlib import Path, PurePosixPath
-from runtime import matcher
+from runtime import file_lock
 
 MAX_BYTES = 512 * 1024
 
@@ -121,7 +121,7 @@ def install(plan: dict, workspace: Path, state_dir: Path, *,
     if state == ws or ws in state.parents:
         raise ValueError('installer state must be outside the target workspace')
     manifest = state / (pid + '.json')
-    with matcher._THREAD_LOCK, matcher._FileLock(manifest):
+    with file_lock._THREAD_LOCK, file_lock._FileLock(manifest):
         if manifest.is_symlink():
             raise ValueError('manifest symlink')
         prior = json.loads(manifest.read_text()) if manifest.exists() else None
@@ -191,7 +191,7 @@ def rollback(workspace: Path, state_dir: Path, *, approved_workspace: Path, appr
     if ws != _root(approved_workspace) or not re.fullmatch(r'[a-f0-9]{64}', approved_digest):
         raise PermissionError('invalid rollback approval')
     manifest = state / (approved_digest + '.json')
-    with matcher._THREAD_LOCK, matcher._FileLock(manifest):
+    with file_lock._THREAD_LOCK, file_lock._FileLock(manifest):
         if manifest.is_symlink():
             raise ValueError('manifest symlink')
         tx = json.loads(manifest.read_text())

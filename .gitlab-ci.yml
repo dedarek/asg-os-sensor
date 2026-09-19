@@ -1,0 +1,24 @@
+stages: [test]
+variables:
+  PYTHONUTF8: "1"
+  ASG_AUTONOMOUS_ANALYSIS: "0"
+  ASG_ONBOARDING_AUTO_INSTALL: "0"
+  ASG_WINDOWS_RUNNER_TAG: "windows"
+
+linux-tests:
+  stage: test
+  image: python:3.12
+  script:
+    - python -m pip install -r requirements.txt
+    - python -m unittest discover -p 'test_*.py'
+    - python e2e/verify_deployment.py
+
+windows-protocol-deploy:
+  stage: test
+  tags: ["$ASG_WINDOWS_RUNNER_TAG"]
+  rules:
+    - if: '$ASG_RUN_WINDOWS_TESTS == "1"'
+  script:
+    - python -m pip install -r requirements.txt
+    - python -m unittest test_protocol_transports test_protocol_fastpath test_acceptance_integrity test_io_acceptance test_event_vocabulary
+    - python e2e/verify_deployment.py

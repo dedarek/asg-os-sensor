@@ -1,5 +1,4 @@
 """Render-only checks: debug payloads remain escaped and collapsed by default."""
-import ast
 import subprocess
 import unittest
 from pathlib import Path
@@ -9,9 +8,7 @@ import shutil
 class ReadableAssetTests(unittest.TestCase):
     def test_summary_and_expandable_evidence(self):
         node = shutil.which('node') or '/Users/mac/.nvm/versions/node/v24.16.0/bin/node'
-        source = Path(__file__).with_name('monitor_dashboard.py').read_text()
-        tree = ast.parse(source)
-        source = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'HTML_PAGE' for t in n.targets))
+        source = (Path(__file__).resolve().parent / 'web/dashboard.html').read_text(encoding='utf-8')
         renderer = source[source.index('const readableOpen ='):source.index('function classificationText(')]
         checks = r'''
 const assert = require('assert');

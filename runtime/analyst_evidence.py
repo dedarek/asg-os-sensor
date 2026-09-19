@@ -139,6 +139,39 @@ def _candidate_entries(cmdline: list[str], cwd: Path | None) -> list[dict[str, A
     return candidates
 
 
+def rank_related_roots(roots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prioritize evidence, never discard low-ranked roots or infer asset activation."""
+    ranked = []
+    for root in roots:
+        sources = root.get("sources") or [root.get("source", "")]
+        weights = []
+        reasons = []
+        for source in sources:
+            if source == "process.open_files directory":
+                weight, reason = 100, "target currently has a file open here"
+            elif source.startswith("process.environment path:"):
+                weight, reason = 80, "configuration directory declared by target environment"
+            elif source == "process.cwd":
+                weight, reason = 60, "target working directory"
+            elif "ancestor[" in source:
+                weight, reason = 20, "ancestor of launch path; indirect lead"
+            else:
+                weight, reason = 50, "launch or followed evidence path"
+            weights.append(weight)
+            if reason not in reasons:
+                reasons.append(reason)
+        score = max(weights, default=0) + min(15, 5 * (len(set(sources)) - 1))
+        # Noise is a ranking hint, not an exclusion: plugins can live in caches
+        # and dependency directories. Direct evidence must remain searchable.
+        if any(part.lower() in {"cache", "caches", "log", "logs", "node_modules", ".git"}
+               for part in Path(root["path"]).parts):
+            score -= 15
+            reasons.append("possible cache/log/dependency noise; retained for investigation")
+        ranked.append({**root, "sources": sources, "priority_score": score,
+                       "priority_reasons": reasons})
+    return sorted(ranked, key=lambda item: (-item["priority_score"], item["path"]))
+
+
 def entry_surface(process: psutil.Process) -> dict[str, Any]:
     """Return raw/resolved launch evidence without selecting an identity."""
     exe = _safe_call(process.exe, "")
@@ -158,9 +191,13 @@ def entry_surface(process: psutil.Process) -> dict[str, Any]:
         if path in {Path("/"), Path.home()}:
             return
         value = str(path)
-        if any(item["path"] == value for item in roots):
-            return
-        roots.append({"id": f"root-{len(roots)}", "path": value, "source": source})
+        for item in roots:
+            if item["path"] == value:
+                if source not in item["sources"]:
+                    item["sources"].append(source)
+                return
+        roots.append({"id": f"root-{len(roots)}", "path": value, "source": source,
+                      "sources": [source]})
 
     add_root(cwd, "process.cwd")
     # Configuration-directory environment names are launch facts, not product
@@ -203,8 +240,12 @@ def entry_surface(process: psutil.Process) -> dict[str, Any]:
     children = _safe_call(lambda: process.children(recursive=True), []) or []
     child_rows = [_process_identity_row(child, 1, "child") for child in children[:40]]
     opened_files: list[dict[str, Any]] = []
+    file_collection = {"status": "collected", "kind": "open_file_snapshot",
+                       "limit": 80, "truncated": False}
     try:
-        for opened in (_safe_call(process.open_files, []) or [])[:80]:
+        observed_files = process.open_files() or []
+        file_collection["truncated"] = len(observed_files) > 80
+        for opened in observed_files[:80]:
             value = str(getattr(opened, "path", "") or "")
             if not value:
                 continue
@@ -213,8 +254,9 @@ def entry_surface(process: psutil.Process) -> dict[str, Any]:
             item = _path_record(value, "process.open_files")
             opened_files.append(item)
             add_root(Path(item["resolved"]).parent, "process.open_files directory")
-    except (OSError, psutil.Error):
-        pass
+    except (OSError, psutil.Error) as exc:
+        file_collection.update(status="unavailable", reason=type(exc).__name__)
+    ranked_roots = rank_related_roots(roots)
     return {
         "status": "collected",
         "source": "bound process launch snapshot",
@@ -229,11 +271,15 @@ def entry_surface(process: psutil.Process) -> dict[str, Any]:
         "parent_chain": parent_rows,
         "children": child_rows,
         "opened_files": opened_files,
-        "related_roots": roots[:12],
+        "open_file_collection": file_collection,
+        "related_roots": ranked_roots,
+        "priority_roots": ranked_roots[:5],
+        "remaining_root_count": max(0, len(ranked_roots) - 5),
         "uncertainty": [
             "entry_candidates are paths observed in argv; they are not an identity decision",
             "a resolved path may be a launcher or symlink target; package ownership needs corroboration",
             "process and file observations are point-in-time and may disappear during investigation",
+            "priority is an investigation heuristic, not file access frequency or proof of loading; remaining roots remain searchable",
         ],
     }
 

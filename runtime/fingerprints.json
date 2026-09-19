@@ -316,6 +316,651 @@
    },
    "observed_exe_full": "C:\\Users\\yyyyc\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe",
    "last_seen": "2026-09-09T10:06:13"
+  },
+  {
+   "id": "harness-2472c6a51dc6",
+   "features": {
+    "exe": "zcode",
+    "runtime": "native",
+    "entry_token": "",
+    "flags": [],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-19T14:34:11",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "ZCode",
+      "integration": {
+       "family": "unsupported",
+       "evidence_refs": [
+        "ev-1789799538790652000-469d687277"
+       ],
+       "missing_capabilities": [
+        "当前运行实例没有已验证的 command_hooks 配置或事件回调",
+        "没有可附着的 ACP client/transport",
+        "未发现能捕获 user.input、assistant.output、model request/response 的插件回调",
+        "未发现能同步阻断工具执行的 target-native execution-before gate",
+        "未发现可安全写入且已确认作用域的 workspace"
+       ],
+       "fallback_reason": "command_hooks 在当前配置、加载器和插件证据中未发现；ACP 只有协议定义，没有真实 client transport；已检查的插件机制仅证明 MCP、skills、commands 组件解析，内置 hooks.json 为空，且 MCP 只覆盖路由工具调用，不能覆盖完整遥测或通用阻断。"
+      },
+      "match_features": {
+       "runtime": "ZCode 3.11.2 Electron app bundle with zcode-cli and zcode-node-repl-mcp children"
+      },
+      "hook": {
+       "method": "unsupported_no_safe_hook",
+       "restart_required": "unknown",
+       "workspace": "/Applications/ZCode.app/Contents/Resources",
+       "capabilities": [],
+       "verification": "不安装、不加载、不执行；仅在后续发现真实 Hook 回调、可附着 ACP transport 或明确插件事件接口后重新验证。当前不能把静态加载器证据当作已加载或已观测。",
+       "rollback": "无文件变更，因此无需回滚；若未来产生候选文件，须先读取现有内容与摘要并由 Supervisor 独立验证。",
+       "limitations": [
+        "不覆盖 user.input：未发现目标回调入口。",
+        "不覆盖 assistant.output：未发现目标回调入口。",
+        "不覆盖 model.request/model.response 或 HTTP transport：当前只有网络快照，没有安全复制/tee 接口证据。",
+        "不覆盖 tool/MCP before/after 的通用事件：MCP 子进程和插件 manifest 仅证明工具路由机制。",
+        "不提供 allow/deny：未发现同步执行前 gate。",
+        "插件加载未被运行时证实，当前目标 cwd=/ 也不是已确认的插件 workspace。",
+        "没有生成 install_plan，避免向 ZCode.app 内置资源写入未经验证的适配文件。"
+       ]
+      },
+      "observation": "PID 999 的身份由 ZCode 3.11.2 bundle metadata、进程树和 app.asar 证据确认。加载器字符串显示 .zcode-plugin/plugin.json、skills、commands、hooks/hooks.json 与 mcpServers 组件解析；实际内置 android-emulator-plugin manifest 声明 MCP、skills、commands，而其 hooks/hooks.json 为 {hooks:{}}。inspect_integration_protocols 明确返回 not_detected_in_scope。因没有真实事件接口、同步阻断点或已确认 workspace，无法生成诚实的 ASG Hook 文件计划。",
+      "fallback": "保持当前 ZCode 设置不变并暂不安装。下一步应由运行时提供或暴露真实 command_hooks、ACP client transport 或带完整输入输出/执行前回调的插件 API；随后重新读取目标相关文件、校验既有摘要，并仅为已证明作用域生成完整 Hook。MCP 可单独用于路由工具，但不能作为完整观测或内部模型流量控制的替代。",
+      "evidence_refs": [
+       "ev-1789799534002489000-88bcc0ec92",
+       "ev-1789799538816796000-25d27e52ab",
+       "ev-1789799561648204000-d74b916e53",
+       "ev-1789799561779714000-61a951f3e9",
+       "ev-1789799574308653000-8bff3a9a7c",
+       "ev-1789799577658096000-e4f64412c2",
+       "ev-1789799538790652000-469d687277"
+      ],
+      "confidence": 0.94,
+      "investigation": {
+       "identity_evidence": {
+        "sources": [
+         "ev-1789799534002489000-88bcc0ec92",
+         "ev-1789799538816796000-25d27e52ab",
+         "ev-1789799561648204000-d74b916e53"
+        ],
+        "uncertainty": [
+         "静态 bundle 加载器证据不证明插件已加载",
+         "当前运行时没有观察到结构化协议候选"
+        ],
+        "summary": "ZCode 3.11.2 是当前 PID 999 的桌面 Agent 宿主；运行实例的可用接入协议未知且未检测到。"
+       },
+       "assets": {
+        "model_gateway": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789799534002489000-88bcc0ec92",
+          "ev-1789799538825993000-27cff9d33b"
+         ],
+         "summary": "观察到目标及子进程网络快照，但未确认模型网关身份、完整请求/响应或传输接口。",
+         "uncertainty": [
+          "仅瞬时网络形状；未调查模型配置或 HTTP 内容"
+         ]
+        },
+        "mcp": {
+         "status": "collected",
+         "sources": [
+          "ev-1789799538816796000-25d27e52ab",
+          "ev-1789799561648204000-d74b916e53",
+          "ev-1789799561892984000-ee671e3a3c"
+         ],
+         "summary": "发现 zcode-node-repl-mcp 子进程及 app.asar 中 MCP server、stdio 与 HTTP 传输实现线索；未证明 ASG 观测或阻断能力。",
+         "uncertainty": [
+          "未枚举当前项目 MCP 配置；MCP 仅覆盖路由工具调用"
+         ]
+        },
+        "skills": {
+         "status": "collected",
+         "sources": [
+          "ev-1789799561648204000-d74b916e53",
+          "ev-1789799561779714000-61a951f3e9"
+         ],
+         "summary": "内置插件 manifest/loader 支持 skills 组件；未证明当前 Agent 已加载某个 skill。",
+         "uncertainty": [
+          "仅内置 bundle 资产，未确认运行时启用状态"
+         ]
+        },
+        "rules": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789799538828641000-7c1057593b",
+          "ev-1789799561648204000-d74b916e53"
+         ],
+         "summary": "未采集可确认的当前 Agent 规则内容。",
+         "uncertainty": [
+          "受限于配置表面与凭据保护，未知不代表为空"
+         ]
+        }
+       }
+      }
+     },
+     "validated_at_ns": 1789799651538021000,
+     "compatibility": {
+      "executable": "a6fbb0f6229efd80d9e6216e21ef33e52b3e75e10cb6372ac26fc9166a60b253",
+      "entry": "native",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "native",
+      "Contents/Info.plist": "48440d76bf7e4e52c68e34cf010f9922e492f32f20ac9342c9b22b848204a369",
+      "Contents/Resources/app.asar": "0317216fc08f374162e5cc1b779bae5f94ef70c5eaa585cb71b8ffedc537b668",
+      "launch": "8c136660268c87643ac93653e77a601d753ee6a0d06d151c3fbb668bfb0ed96e",
+      "entry_path": "/Applications/ZCode.app/Contents/MacOS/ZCode"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789799534002489000-88bcc0ec92",
+       "tool": "get_target_context"
+      },
+      {
+       "evidence_id": "ev-1789799538816796000-25d27e52ab",
+       "tool": "inspect_entry_surface"
+      },
+      {
+       "evidence_id": "ev-1789799561648204000-d74b916e53",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799561779714000-61a951f3e9",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799574308653000-8bff3a9a7c",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799577658096000-e4f64412c2",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799538790652000-469d687277",
+       "tool": "inspect_integration_protocols"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 441,
+   "name": "ZCode",
+   "hook_recipe": {
+    "agent_identity_name": "ZCode",
+    "integration": {
+     "family": "unsupported",
+     "evidence_refs": [
+      "ev-1789799538790652000-469d687277"
+     ],
+     "missing_capabilities": [
+      "当前运行实例没有已验证的 command_hooks 配置或事件回调",
+      "没有可附着的 ACP client/transport",
+      "未发现能捕获 user.input、assistant.output、model request/response 的插件回调",
+      "未发现能同步阻断工具执行的 target-native execution-before gate",
+      "未发现可安全写入且已确认作用域的 workspace"
+     ],
+     "fallback_reason": "command_hooks 在当前配置、加载器和插件证据中未发现；ACP 只有协议定义，没有真实 client transport；已检查的插件机制仅证明 MCP、skills、commands 组件解析，内置 hooks.json 为空，且 MCP 只覆盖路由工具调用，不能覆盖完整遥测或通用阻断。"
+    },
+    "match_features": {
+     "runtime": "ZCode 3.11.2 Electron app bundle with zcode-cli and zcode-node-repl-mcp children"
+    },
+    "hook": {
+     "method": "unsupported_no_safe_hook",
+     "restart_required": "unknown",
+     "workspace": "/Applications/ZCode.app/Contents/Resources",
+     "capabilities": [],
+     "verification": "不安装、不加载、不执行；仅在后续发现真实 Hook 回调、可附着 ACP transport 或明确插件事件接口后重新验证。当前不能把静态加载器证据当作已加载或已观测。",
+     "rollback": "无文件变更，因此无需回滚；若未来产生候选文件，须先读取现有内容与摘要并由 Supervisor 独立验证。",
+     "limitations": [
+      "不覆盖 user.input：未发现目标回调入口。",
+      "不覆盖 assistant.output：未发现目标回调入口。",
+      "不覆盖 model.request/model.response 或 HTTP transport：当前只有网络快照，没有安全复制/tee 接口证据。",
+      "不覆盖 tool/MCP before/after 的通用事件：MCP 子进程和插件 manifest 仅证明工具路由机制。",
+      "不提供 allow/deny：未发现同步执行前 gate。",
+      "插件加载未被运行时证实，当前目标 cwd=/ 也不是已确认的插件 workspace。",
+      "没有生成 install_plan，避免向 ZCode.app 内置资源写入未经验证的适配文件。"
+     ]
+    },
+    "observation": "PID 999 的身份由 ZCode 3.11.2 bundle metadata、进程树和 app.asar 证据确认。加载器字符串显示 .zcode-plugin/plugin.json、skills、commands、hooks/hooks.json 与 mcpServers 组件解析；实际内置 android-emulator-plugin manifest 声明 MCP、skills、commands，而其 hooks/hooks.json 为 {hooks:{}}。inspect_integration_protocols 明确返回 not_detected_in_scope。因没有真实事件接口、同步阻断点或已确认 workspace，无法生成诚实的 ASG Hook 文件计划。",
+    "fallback": "保持当前 ZCode 设置不变并暂不安装。下一步应由运行时提供或暴露真实 command_hooks、ACP client transport 或带完整输入输出/执行前回调的插件 API；随后重新读取目标相关文件、校验既有摘要，并仅为已证明作用域生成完整 Hook。MCP 可单独用于路由工具，但不能作为完整观测或内部模型流量控制的替代。",
+    "evidence_refs": [
+     "ev-1789799534002489000-88bcc0ec92",
+     "ev-1789799538816796000-25d27e52ab",
+     "ev-1789799561648204000-d74b916e53",
+     "ev-1789799561779714000-61a951f3e9",
+     "ev-1789799574308653000-8bff3a9a7c",
+     "ev-1789799577658096000-e4f64412c2",
+     "ev-1789799538790652000-469d687277"
+    ],
+    "confidence": 0.94,
+    "investigation": {
+     "identity_evidence": {
+      "sources": [
+       "ev-1789799534002489000-88bcc0ec92",
+       "ev-1789799538816796000-25d27e52ab",
+       "ev-1789799561648204000-d74b916e53"
+      ],
+      "uncertainty": [
+       "静态 bundle 加载器证据不证明插件已加载",
+       "当前运行时没有观察到结构化协议候选"
+      ],
+      "summary": "ZCode 3.11.2 是当前 PID 999 的桌面 Agent 宿主；运行实例的可用接入协议未知且未检测到。"
+     },
+     "assets": {
+      "model_gateway": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789799534002489000-88bcc0ec92",
+        "ev-1789799538825993000-27cff9d33b"
+       ],
+       "summary": "观察到目标及子进程网络快照，但未确认模型网关身份、完整请求/响应或传输接口。",
+       "uncertainty": [
+        "仅瞬时网络形状；未调查模型配置或 HTTP 内容"
+       ]
+      },
+      "mcp": {
+       "status": "collected",
+       "sources": [
+        "ev-1789799538816796000-25d27e52ab",
+        "ev-1789799561648204000-d74b916e53",
+        "ev-1789799561892984000-ee671e3a3c"
+       ],
+       "summary": "发现 zcode-node-repl-mcp 子进程及 app.asar 中 MCP server、stdio 与 HTTP 传输实现线索；未证明 ASG 观测或阻断能力。",
+       "uncertainty": [
+        "未枚举当前项目 MCP 配置；MCP 仅覆盖路由工具调用"
+       ]
+      },
+      "skills": {
+       "status": "collected",
+       "sources": [
+        "ev-1789799561648204000-d74b916e53",
+        "ev-1789799561779714000-61a951f3e9"
+       ],
+       "summary": "内置插件 manifest/loader 支持 skills 组件；未证明当前 Agent 已加载某个 skill。",
+       "uncertainty": [
+        "仅内置 bundle 资产，未确认运行时启用状态"
+       ]
+      },
+      "rules": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789799538828641000-7c1057593b",
+        "ev-1789799561648204000-d74b916e53"
+       ],
+       "summary": "未采集可确认的当前 Agent 规则内容。",
+       "uncertainty": [
+        "受限于配置表面与凭据保护，未知不代表为空"
+       ]
+      }
+     }
+    }
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 120862,
+   "recipe_source": "goose",
+   "last_seen": "2026-09-19T22:18:05"
+  },
+  {
+   "id": "harness-f4891e902ef6",
+   "features": {
+    "exe": "codex",
+    "runtime": "native",
+    "entry_token": "",
+    "flags": [
+     "--analytics-default-enabled",
+     "-c"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-19T14:38:33",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "ChatGPT Codex app-server",
+      "integration": {
+       "family": "command_hooks",
+       "evidence_refs": [
+        "ev-1789799808505037000-592bdd1aca"
+       ],
+       "missing_capabilities": [
+        "未发现模型请求/响应或HTTP transport回调。",
+        "未发现完整流式输出、取消和重试回调。",
+        "运行时加载与事件计数尚未独立验收。"
+       ],
+       "fallback_reason": "command_hooks是当前唯一已有配置、现有回调命令和已确认作用域的结构化通道；ACP没有真实client transport，MCP只覆盖路由工具调用，不能覆盖完整输入输出或通用阻断。"
+      },
+      "match_features": {
+       "runtime": "ChatGPT 26.915.31945 原生 codex app-server，features.code_mode_host=true，启用 codex-app-tools MCP",
+       "evolves_prior_harness": null
+      },
+      "hook": {
+       "method": "file_plan",
+       "workspace": "/Users/mac/.codex/asg-observer",
+       "restart_required": "unknown",
+       "capabilities": [
+        "使用现有SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop回调记录真实payload。",
+        "PreToolUse同步调用控制客户端，只有allow放行，错误/超时fail-closed。",
+        "保留现有hooks.json、config.toml、git-ai回调和hook.state，仅替换ASG observer自身hook。",
+        "事件正文上限1048576 bytes，超限显式记录truncation。"
+       ],
+       "verification": "Supervisor确认hooks.state信任和加载；比较入口计数与events.jsonl；执行无副作用allow及deny验收并检查拒绝效果未发生。无流量保持pending。",
+       "rollback": "修改前校验hook.cjs sha256 aaab67d927049fa7df76a414cd312b16458972b84f32adf5a8dba2834e29feb2；失败恢复该版本，不改其他配置。",
+       "limitations": [
+        "不覆盖model.request、model.response或HTTP transport。",
+        "不覆盖完整streaming assistant output、取消和重试关联。",
+        "不覆盖通用MCP before/after。",
+        "候选文件和配置不证明本轮已加载。",
+        "无法解析Agent PID时控制请求fail-closed。"
+       ]
+      },
+      "observation": "PID 1296由ChatGPT bundle、原生codex entry和app-server argv确认。已读/Users/mac/.codex/hooks.json、config.toml及既有ASG observer；现有command hooks提供SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop入口。本候选只替换既有ASG observer hook.cjs，保留其他回调和设置；写入hook.loaded、user.input、tool.execute.before/after、assistant.output、control.applied和tool.error，实际事件同时调用control client。未声称覆盖未证实模型或HTTP入口。",
+      "fallback": "若未加载，检查hooks.state/trusted_hash及重启要求，不新增插件或修改产品bundle。无真实回调流量保持pending；模型/流式入口出现后再单独升级。",
+      "evidence_refs": [
+       "ev-1789799803233561000-f746b5bd1a",
+       "ev-1789799803244366000-399bee8fcc",
+       "ev-1789799816225250000-917bf9814d",
+       "ev-1789799816200725000-ff41162b93",
+       "ev-1789799816225250000-917bf9814d",
+       "ev-1789799837157984000-260b828483",
+       "ev-1789799843781103000-03af33d65b",
+       "ev-1789799808505037000-592bdd1aca"
+      ],
+      "confidence": 0.9,
+      "install_plan": {
+       "version": 1,
+       "files": [
+        {
+         "path": "hook.cjs",
+         "expected_sha256": "aaab67d927049fa7df76a414cd312b16458972b84f32adf5a8dba2834e29feb2",
+         "content": "#!/usr/bin/env node\n'use strict';\nconst fs=require('node:fs'),cp=require('node:child_process');\nconst D='/Users/mac/.codex/asg-observer',LOG=D+'/events.jsonl',PY='/Library/Developer/CommandLineTools/usr/bin/python3',CLIENT='/Users/mac/个人项目/asg-os-sensor-advisor-20260911/runtime/hook_control_client.py',CFG='/Users/mac/个人项目/asg-os-sensor-advisor-20260911/artifacts/stage1/dashboard/hook-control-client.json',MAX_FIELD_BYTES=1048576;\nconst MAP={SessionStart:'hook.loaded',UserPromptSubmit:'user.input',PreToolUse:'tool.execute.before',PostToolUse:'tool.execute.after',Stop:'assistant.output'},BAD=/(token|secret|password|api[_-]?key|authorization|cookie)/i;\nfunction clean(v,k,p,m){if(typeof v==='string'){if(BAD.test(k||''))return'[REDACTED]';let n=Buffer.byteLength(v);if(n<=MAX_FIELD_BYTES)return v;let x=Buffer.from(v).subarray(0,MAX_FIELD_BYTES).toString();m.push({field:p,original_bytes:n,retained_bytes:Buffer.byteLength(x),truncated:true});return x}if(v===null||typeof v==='number'||typeof v==='boolean')return v;if(Array.isArray(v))return v.map((x,i)=>clean(x,k,p+'['+i+']',m));if(typeof v==='object'){let o={};for(let x of Object.keys(v))o[x]=clean(v[x],x,p+'.'+x,m);return o}return null}\nfunction pid(){let p=Number(process.env.ASG_AGENT_PID);if(p>1)return p;return null}\nfunction log(x){try{fs.mkdirSync(D,{recursive:true});fs.appendFileSync(LOG,JSON.stringify(x)+'\\n')}catch(_) {}}\nfunction call(body,mode,t){try{let r=cp.spawnSync(PY,[CLIENT,CFG,mode],{input:JSON.stringify(body),encoding:'utf8',timeout:t,maxBuffer:8388608}),o;try{o=JSON.parse(r.stdout||'')}catch(_){}return{ok:r.status===0&&o,body:o,error:r.error}}catch(e){return{ok:false,error:e}}}\nfunction main(s){let p;try{p=s.trim()?JSON.parse(s):{}}catch(e){if(s.includes('PreToolUse'))process.stdout.write(JSON.stringify({decision:'block',hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'deny',permissionDecisionReason:'invalid input'}}));return}let m=[],a=pid(),n=String(p.hook_event_name||''),b={event:MAP[n]||n||'hook.event',timestamp:new Date().toISOString(),pid:a,session_id:p.session_id,turn_id:p.turn_id,agent_id:p.agent_id,tool:p.tool_name,call_id:p.tool_use_id};let k=n==='UserPromptSubmit'?'prompt':n==='Stop'?'last_assistant_message':n==='PostToolUse'?'tool_response':n==='PreToolUse'?'tool_input':null;b.content=k?clean(p[k],k,k,m):null;b.content_complete=b.content!==null||n==='SessionStart';b.truncation=m.length?{truncated:true,fields:m}:{truncated:false};log(b);call(b,'event',3000);if(n==='PreToolUse'){let r=a?call({pid:a,call_id:p.tool_use_id,tool:p.tool_name,input:b.content},'decision',60000):{ok:false,error:'agent pid unresolved'},allow=!!(r.ok&&String(r.body.decision).toLowerCase()==='allow'),id=r.ok&&r.body.request_id;let q=id?call({request_id:id,applied:true,outcome:allow?'allowed':'blocked'},'ack',3000):null, c={event:'control.applied',timestamp:new Date().toISOString(),pid:a,call_id:p.tool_use_id,request_id:id||null,decision:allow?'allow':'deny',content_complete:true,ack_ok:!!(q&&q.ok)};log(c);call(c,'event',3000);if(!allow)process.stdout.write(JSON.stringify({decision:'block',hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'deny',permissionDecisionReason:'control unavailable or denied'}}))}}\nlet s='';process.stdin.on('data',x=>{if(Buffer.byteLength(s+x)<=8388608)s+=x});process.stdin.on('end',()=>main(s));"
+        }
+       ]
+      },
+      "observation_source": {
+       "log_path": "events.jsonl",
+       "fields": {
+        "event": "event",
+        "pid": "pid",
+        "timestamp": "timestamp",
+        "tool": "tool",
+        "call_id": "call_id"
+       },
+       "event_names": {
+        "hook.loaded": "hook.loaded",
+        "user.input": "user.input",
+        "tool.execute.before": "tool.execute.before",
+        "tool.execute.after": "tool.execute.after",
+        "assistant.output": "assistant.output",
+        "control.applied": "control.applied",
+        "tool.error": "tool.error"
+       }
+      },
+      "investigation": {
+       "identity_evidence": {
+        "sources": [
+         "ev-1789799803233561000-f746b5bd1a",
+         "ev-1789799803244366000-399bee8fcc",
+         "ev-1789799808505037000-592bdd1aca"
+        ],
+        "uncertainty": [
+         "未暴露内部模型和流式回调"
+        ],
+        "summary": "PID 1296是ChatGPT 26.915.31945原生codex app-server。"
+       },
+       "assets": {
+        "model_gateway": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789799803241105000-44532f1eb7",
+          "ev-1789799816225250000-917bf9814d"
+         ],
+         "summary": "观察到模型配置和loopback URL，但未确认完整transport。",
+         "uncertainty": [
+          "未采集HTTP正文"
+         ]
+        },
+        "mcp": {
+         "status": "collected",
+         "sources": [
+          "ev-1789799803233561000-f746b5bd1a",
+          "ev-1789799816225250000-917bf9814d"
+         ],
+         "summary": "观察到MCP/插件子进程与配置，未证明ASG观测或阻断。",
+         "uncertainty": [
+          "未独立验收每项启用状态"
+         ]
+        },
+        "skills": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789799803244366000-399bee8fcc",
+          "ev-1789799816225250000-917bf9814d"
+         ],
+         "summary": "观察到插件启用项，未确认实际加载skills。",
+         "uncertainty": [
+          "静态配置不等于运行时加载"
+         ]
+        },
+        "rules": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789799816225250000-917bf9814d"
+         ],
+         "summary": "未采集当前Agent规则正文。",
+         "uncertainty": [
+          "未知不代表为空"
+         ]
+        }
+       }
+      }
+     },
+     "validated_at_ns": 1789799913512762000,
+     "compatibility": {
+      "executable": "9280c0754e8f1f6b72f495d30c8c82a006dbc4995bf0492916fa0901f6bfd1f9",
+      "entry": "native",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "native",
+      "Contents/Info.plist": "c2fb3359c596b749c548766c6a9b5a643511be08f43a98504de2a5586a385626",
+      "Contents/Resources/app.asar": "1f7939c1c781887c167043c4d1d307af3400d324685cfc315dfe2f80e634f483",
+      "launch": "2c17151b94b065b770b808abf4ceee52a7c2503b86d069a61aec5b7eda9a6461",
+      "entry_path": "/Applications/ChatGPT.app/Contents/Resources/codex"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789799803233561000-f746b5bd1a",
+       "tool": "inspect_entry_surface"
+      },
+      {
+       "evidence_id": "ev-1789799803244366000-399bee8fcc",
+       "tool": "inspect_loader_surface"
+      },
+      {
+       "evidence_id": "ev-1789799816225250000-917bf9814d",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799816200725000-ff41162b93",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799816225250000-917bf9814d",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799837157984000-260b828483",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799843781103000-03af33d65b",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789799808505037000-592bdd1aca",
+       "tool": "inspect_integration_protocols"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 437,
+   "name": "ChatGPT Codex app-server",
+   "hook_recipe": {
+    "agent_identity_name": "ChatGPT Codex app-server",
+    "integration": {
+     "family": "command_hooks",
+     "evidence_refs": [
+      "ev-1789799808505037000-592bdd1aca"
+     ],
+     "missing_capabilities": [
+      "未发现模型请求/响应或HTTP transport回调。",
+      "未发现完整流式输出、取消和重试回调。",
+      "运行时加载与事件计数尚未独立验收。"
+     ],
+     "fallback_reason": "command_hooks是当前唯一已有配置、现有回调命令和已确认作用域的结构化通道；ACP没有真实client transport，MCP只覆盖路由工具调用，不能覆盖完整输入输出或通用阻断。"
+    },
+    "match_features": {
+     "runtime": "ChatGPT 26.915.31945 原生 codex app-server，features.code_mode_host=true，启用 codex-app-tools MCP",
+     "evolves_prior_harness": null
+    },
+    "hook": {
+     "method": "file_plan",
+     "workspace": "/Users/mac/.codex/asg-observer",
+     "restart_required": "unknown",
+     "capabilities": [
+      "使用现有SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop回调记录真实payload。",
+      "PreToolUse同步调用控制客户端，只有allow放行，错误/超时fail-closed。",
+      "保留现有hooks.json、config.toml、git-ai回调和hook.state，仅替换ASG observer自身hook。",
+      "事件正文上限1048576 bytes，超限显式记录truncation。"
+     ],
+     "verification": "Supervisor确认hooks.state信任和加载；比较入口计数与events.jsonl；执行无副作用allow及deny验收并检查拒绝效果未发生。无流量保持pending。",
+     "rollback": "修改前校验hook.cjs sha256 aaab67d927049fa7df76a414cd312b16458972b84f32adf5a8dba2834e29feb2；失败恢复该版本，不改其他配置。",
+     "limitations": [
+      "不覆盖model.request、model.response或HTTP transport。",
+      "不覆盖完整streaming assistant output、取消和重试关联。",
+      "不覆盖通用MCP before/after。",
+      "候选文件和配置不证明本轮已加载。",
+      "无法解析Agent PID时控制请求fail-closed。"
+     ]
+    },
+    "observation": "PID 1296由ChatGPT bundle、原生codex entry和app-server argv确认。已读/Users/mac/.codex/hooks.json、config.toml及既有ASG observer；现有command hooks提供SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop入口。本候选只替换既有ASG observer hook.cjs，保留其他回调和设置；写入hook.loaded、user.input、tool.execute.before/after、assistant.output、control.applied和tool.error，实际事件同时调用control client。未声称覆盖未证实模型或HTTP入口。",
+    "fallback": "若未加载，检查hooks.state/trusted_hash及重启要求，不新增插件或修改产品bundle。无真实回调流量保持pending；模型/流式入口出现后再单独升级。",
+    "evidence_refs": [
+     "ev-1789799803233561000-f746b5bd1a",
+     "ev-1789799803244366000-399bee8fcc",
+     "ev-1789799816225250000-917bf9814d",
+     "ev-1789799816200725000-ff41162b93",
+     "ev-1789799816225250000-917bf9814d",
+     "ev-1789799837157984000-260b828483",
+     "ev-1789799843781103000-03af33d65b",
+     "ev-1789799808505037000-592bdd1aca"
+    ],
+    "confidence": 0.9,
+    "install_plan": {
+     "version": 1,
+     "files": [
+      {
+       "path": "hook.cjs",
+       "expected_sha256": "aaab67d927049fa7df76a414cd312b16458972b84f32adf5a8dba2834e29feb2",
+       "content": "#!/usr/bin/env node\n'use strict';\nconst fs=require('node:fs'),cp=require('node:child_process');\nconst D='/Users/mac/.codex/asg-observer',LOG=D+'/events.jsonl',PY='/Library/Developer/CommandLineTools/usr/bin/python3',CLIENT='/Users/mac/个人项目/asg-os-sensor-advisor-20260911/runtime/hook_control_client.py',CFG='/Users/mac/个人项目/asg-os-sensor-advisor-20260911/artifacts/stage1/dashboard/hook-control-client.json',MAX_FIELD_BYTES=1048576;\nconst MAP={SessionStart:'hook.loaded',UserPromptSubmit:'user.input',PreToolUse:'tool.execute.before',PostToolUse:'tool.execute.after',Stop:'assistant.output'},BAD=/(token|secret|password|api[_-]?key|authorization|cookie)/i;\nfunction clean(v,k,p,m){if(typeof v==='string'){if(BAD.test(k||''))return'[REDACTED]';let n=Buffer.byteLength(v);if(n<=MAX_FIELD_BYTES)return v;let x=Buffer.from(v).subarray(0,MAX_FIELD_BYTES).toString();m.push({field:p,original_bytes:n,retained_bytes:Buffer.byteLength(x),truncated:true});return x}if(v===null||typeof v==='number'||typeof v==='boolean')return v;if(Array.isArray(v))return v.map((x,i)=>clean(x,k,p+'['+i+']',m));if(typeof v==='object'){let o={};for(let x of Object.keys(v))o[x]=clean(v[x],x,p+'.'+x,m);return o}return null}\nfunction pid(){let p=Number(process.env.ASG_AGENT_PID);if(p>1)return p;return null}\nfunction log(x){try{fs.mkdirSync(D,{recursive:true});fs.appendFileSync(LOG,JSON.stringify(x)+'\\n')}catch(_) {}}\nfunction call(body,mode,t){try{let r=cp.spawnSync(PY,[CLIENT,CFG,mode],{input:JSON.stringify(body),encoding:'utf8',timeout:t,maxBuffer:8388608}),o;try{o=JSON.parse(r.stdout||'')}catch(_){}return{ok:r.status===0&&o,body:o,error:r.error}}catch(e){return{ok:false,error:e}}}\nfunction main(s){let p;try{p=s.trim()?JSON.parse(s):{}}catch(e){if(s.includes('PreToolUse'))process.stdout.write(JSON.stringify({decision:'block',hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'deny',permissionDecisionReason:'invalid input'}}));return}let m=[],a=pid(),n=String(p.hook_event_name||''),b={event:MAP[n]||n||'hook.event',timestamp:new Date().toISOString(),pid:a,session_id:p.session_id,turn_id:p.turn_id,agent_id:p.agent_id,tool:p.tool_name,call_id:p.tool_use_id};let k=n==='UserPromptSubmit'?'prompt':n==='Stop'?'last_assistant_message':n==='PostToolUse'?'tool_response':n==='PreToolUse'?'tool_input':null;b.content=k?clean(p[k],k,k,m):null;b.content_complete=b.content!==null||n==='SessionStart';b.truncation=m.length?{truncated:true,fields:m}:{truncated:false};log(b);call(b,'event',3000);if(n==='PreToolUse'){let r=a?call({pid:a,call_id:p.tool_use_id,tool:p.tool_name,input:b.content},'decision',60000):{ok:false,error:'agent pid unresolved'},allow=!!(r.ok&&String(r.body.decision).toLowerCase()==='allow'),id=r.ok&&r.body.request_id;let q=id?call({request_id:id,applied:true,outcome:allow?'allowed':'blocked'},'ack',3000):null, c={event:'control.applied',timestamp:new Date().toISOString(),pid:a,call_id:p.tool_use_id,request_id:id||null,decision:allow?'allow':'deny',content_complete:true,ack_ok:!!(q&&q.ok)};log(c);call(c,'event',3000);if(!allow)process.stdout.write(JSON.stringify({decision:'block',hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'deny',permissionDecisionReason:'control unavailable or denied'}}))}}\nlet s='';process.stdin.on('data',x=>{if(Buffer.byteLength(s+x)<=8388608)s+=x});process.stdin.on('end',()=>main(s));"
+      }
+     ]
+    },
+    "observation_source": {
+     "log_path": "events.jsonl",
+     "fields": {
+      "event": "event",
+      "pid": "pid",
+      "timestamp": "timestamp",
+      "tool": "tool",
+      "call_id": "call_id"
+     },
+     "event_names": {
+      "hook.loaded": "hook.loaded",
+      "user.input": "user.input",
+      "tool.execute.before": "tool.execute.before",
+      "tool.execute.after": "tool.execute.after",
+      "assistant.output": "assistant.output",
+      "control.applied": "control.applied",
+      "tool.error": "tool.error"
+     }
+    },
+    "investigation": {
+     "identity_evidence": {
+      "sources": [
+       "ev-1789799803233561000-f746b5bd1a",
+       "ev-1789799803244366000-399bee8fcc",
+       "ev-1789799808505037000-592bdd1aca"
+      ],
+      "uncertainty": [
+       "未暴露内部模型和流式回调"
+      ],
+      "summary": "PID 1296是ChatGPT 26.915.31945原生codex app-server。"
+     },
+     "assets": {
+      "model_gateway": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789799803241105000-44532f1eb7",
+        "ev-1789799816225250000-917bf9814d"
+       ],
+       "summary": "观察到模型配置和loopback URL，但未确认完整transport。",
+       "uncertainty": [
+        "未采集HTTP正文"
+       ]
+      },
+      "mcp": {
+       "status": "collected",
+       "sources": [
+        "ev-1789799803233561000-f746b5bd1a",
+        "ev-1789799816225250000-917bf9814d"
+       ],
+       "summary": "观察到MCP/插件子进程与配置，未证明ASG观测或阻断。",
+       "uncertainty": [
+        "未独立验收每项启用状态"
+       ]
+      },
+      "skills": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789799803244366000-399bee8fcc",
+        "ev-1789799816225250000-917bf9814d"
+       ],
+       "summary": "观察到插件启用项，未确认实际加载skills。",
+       "uncertainty": [
+        "静态配置不等于运行时加载"
+       ]
+      },
+      "rules": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789799816225250000-917bf9814d"
+       ],
+       "summary": "未采集当前Agent规则正文。",
+       "uncertainty": [
+        "未知不代表为空"
+       ]
+      }
+     }
+    }
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 120750,
+   "recipe_source": "goose",
+   "last_seen": "2026-09-19T22:18:05"
   }
  ],
  "version": 1

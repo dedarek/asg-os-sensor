@@ -6,6 +6,23 @@ from unittest.mock import patch
 from runtime import analyst_tools as at
 
 class FollowDirectoryTests(unittest.TestCase):
+    def test_observed_file_authorizes_only_its_immediate_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp).resolve(); folder = home/'some-runtime'/'config'; folder.mkdir(parents=True)
+            source = folder/'settings.json'; source.write_text('{}')
+            ref = 'ev-123456789-0123456789'
+            (home/(ref+'.json')).write_text(json.dumps({'tool':'read_related_file',
+                'target':{'pid':123,'create_time':45},'result':{'content':f'Configuration: {source}'}}))
+            with patch.object(at,'EVIDENCE_DIR',home), patch.object(at,'TARGET_PID',123), \
+                 patch.object(at,'TARGET_CREATE_TIME',45), patch.object(at,'target_process'), \
+                 patch.object(Path,'home',return_value=home), patch.dict(at._RELATED_EVIDENCE_ROOTS,{},clear=True):
+                args = {'path':str(folder),'source_file':str(source),'evidence_id':ref}
+                self.assertEqual(at.call_tool('follow_related_directory',args)['status'],'collected')
+                with self.assertRaises(ValueError):
+                    at.call_tool('follow_related_directory',{**args,'path':str(folder.parent)})
+                with self.assertRaises(ValueError):
+                    at.call_tool('follow_related_directory',{**args,'source_file':str(folder/'guessed.json')})
+
     def test_follows_observed_directory_not_guesses_or_other_instances(self):
         with tempfile.TemporaryDirectory() as tmp:
             home=Path(tmp).resolve(); folder=home/'user-extensions'; folder.mkdir()

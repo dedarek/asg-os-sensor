@@ -67,7 +67,7 @@ def validate_evolution_target(recipe, known_harness_ids=None):
                 'match_features.evolves_prior_harness "' + target + '" is not a known prior harness id; known ids: '
                 + listed + '. Omit the field to propose a new family, or use an exact id returned by get_prior_recipe.')
 
-OBSERVATION_TOOLS = ('get_target_context', 'inspect_config_surface',
+OBSERVATION_TOOLS = ('inspect_integration_protocols', 'get_target_context', 'get_control_contract', 'search_related_file', 'follow_related_directory', 'inspect_config_surface',
                      'observe_tree', 'observe_runtime_surface',
                      'inspect_network_peers', 'inspect_execution_trace',
                      'inspect_stream', 'inspect_loader_surface',
@@ -96,7 +96,7 @@ def _real_success(item) -> bool:
     return True
 
 
-def validate(recipe, evidence_dir, target=None, known_harness_ids=None):
+def validate(recipe, evidence_dir, target=None, known_harness_ids=None, require_protocol=False):
     """校验配方结构 + 证据质量 + 目标实例绑定。
 
     target: {'pid': int, 'create_time': float} 调查启动时冻结的实例身份。
@@ -174,9 +174,10 @@ def validate(recipe, evidence_dir, target=None, known_harness_ids=None):
             raise ValueError('Evidence spans multiple target instances: ' + ref)
         evidence.append({'evidence_id': ref, 'tool': item['tool']})
 
-    if not any(e['tool'] in ('get_target_context', 'inspect_config_surface',
+    if not any(e['tool'] in ('get_target_context', 'get_control_contract', 'inspect_config_surface',
                              'inspect_loader_surface') for e in evidence):
-        raise ValueError('Bound target evidence required')
+        raise ValueError('Bound target evidence required: cite a successful get_target_context, '
+                         'get_control_contract, inspect_config_surface or inspect_loader_surface evidence_id')
     if target is not None:
         exp = (int(target['pid']), float(target['create_time']))
         if seen_target != exp:
@@ -187,4 +188,6 @@ def validate(recipe, evidence_dir, target=None, known_harness_ids=None):
     # verifies the hook.method entrypoint. Until an explicit mapping exists,
     # hook_evidence_supported is always False (proposed/unverified).
     hook_evidence_supported = False
+    from runtime.integration_protocol import validate_selection
+    validate_selection(recipe, evidence_dir, target or {'pid': seen_target[0], 'create_time': seen_target[1]}, required=require_protocol)
     return {'evidence': evidence, 'hook_evidence_supported': hook_evidence_supported}

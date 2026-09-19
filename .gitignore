@@ -6,6 +6,11 @@ __pycache__/
 .coverage
 htmlcov/
 *.log
+.venv/
+data/
+deployment.local.json
+vendor/wheels/
+dist/
 # analyst credentials: ignore real .env but keep the template
 .env
 !.env.example
@@ -18,16 +23,10 @@ e2e/hooked_stdout.txt
 *.png
 snap_drawer.js
 *.tmp
-e2e/artifacts/autonomous-governance/
-# stage1 isolated run artifacts (never commit raw runs)
-artifacts/stage1/
-# e2e per-run isolation dirs (timestamp run-ids); keep prior tracked evidence
-e2e/artifacts/unknown-runtime/[0-9]*
-
-# Existing local MCP audit evidence (preserved)
-e2e/artifacts/analyst_tool_calls.jsonl
-e2e/artifacts/evidence/
-
-# Local autonomous service and real-model acceptance artifacts
-artifacts/autonomous-service/
-artifacts/autonomous-demo/
+# Private runtime and acceptance records. Existing tracked evidence is retained.
+artifacts/
+e2e/artifacts/
+e2e/data/
+tmp/
+.tools/
+.DS_Store

@@ -31,6 +31,10 @@ def spawn_target(meta):
     env = {k:v for k,v in os.environ.items() if not k.startswith(('ASG','OPENCODE','OPENAI','ANTHROPIC','GOOSE'))}
     env.update(HOME=str(run/'home'), XDG_CONFIG_HOME=str(run/'config'), XDG_CACHE_HOME=str(run/'cache'),
         XDG_DATA_HOME=str(run/'data'), XDG_STATE_HOME=str(run/'state'), OPENCODE_CONFIG_DIR=str(run/'config/opencode'))
+    # The acceptance gateway is local. Preserve external proxy routing while
+    # ensuring its client socket belongs to this Agent, not an ambient proxy.
+    for key in ('NO_PROXY', 'no_proxy'):
+        env[key] = ','.join(filter(None, [env.get(key, ''), '127.0.0.1,localhost,::1']))
     with (run/'target.log').open('ab') as log:
         process = subprocess.Popen([meta['cli'],'serve','--hostname','127.0.0.1','--port',str(meta['port'])],
             cwd=meta['workspace'], env=env, stdout=log, stderr=log, start_new_session=True)

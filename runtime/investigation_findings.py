@@ -158,6 +158,8 @@ class _FileLock:
         if _POSIX:
             fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
         elif _WINDOWS:  # pragma: no cover - exercised on Windows CI
+            if self.handle.seek(0, 2) == 0:
+                self.handle.write(b'0'); self.handle.flush()
             self.handle.seek(0)
             msvcrt.locking(self.handle.fileno(), msvcrt.LK_LOCK, 1)
         return self

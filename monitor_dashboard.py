@@ -39,7 +39,7 @@ from runtime.status import presentation, DISABLED_REASON
 from runtime.learned_presentation import hook_state as learned_hook_state
 from runtime.tool_transport_health import ToolTransportHealth
 from runtime.recipe_validation import validate as validate_recipe
-from runtime.identity import identify, ownership, metadata_identity
+from runtime.identity import identify, ownership, metadata_identity, runtime_discovery_candidate
 from runtime.stream_parser import redact
 from runtime.llm_config import analyst_key as load_analyst_key
 from runtime.llm_config import analyst_route as load_analyst_route
@@ -134,8 +134,8 @@ def set_scan_interval(value):
         SCAN_TIMER_CONDITION.notify_all()
     return value
 MAX_ANALYSTS = _env_int("ASG_MAX_ANALYSTS", 2)
-GOOSE_MAX_TURNS = _env_optional_positive_int("ASG_GOOSE_MAX_TURNS")
-GOOSE_MAX_TOOL_REPETITIONS = _env_optional_positive_int("ASG_GOOSE_MAX_TOOL_REPETITIONS")
+GOOSE_MAX_TURNS = _env_optional_positive_int("ASG_GOOSE_MAX_TURNS") if "ASG_GOOSE_MAX_TURNS" in os.environ else 40
+GOOSE_MAX_TOOL_REPETITIONS = _env_optional_positive_int("ASG_GOOSE_MAX_TOOL_REPETITIONS") if "ASG_GOOSE_MAX_TOOL_REPETITIONS" in os.environ else 3
 GOOSE_TIMEOUT_S = _env_optional_positive_float("ASG_GOOSE_TIMEOUT")
 GOOSE_IDLE_DIAGNOSTIC_S = _env_optional_positive_float("ASG_GOOSE_IDLE_DIAGNOSTIC") or 300.0
 GOOSE_STDOUT_MAX_BYTES = _env_int("ASG_GOOSE_STDOUT_MAX_BYTES", 4 * 1024 * 1024)
@@ -634,6 +634,65 @@ def _observation_registry():
     return Registry(Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard'))))
 
 
+def _auto_bind_observations(agents):
+    """Re-create the observation binding for a live instance whose learned recipe
+    already declares an observation source.
+
+    A restart changes pid/create_time, which invalidates the previous binding;
+    without this, a restarted instance silently stops being observable and
+    controllable until someone rebinds by hand. Best effort: it never raises,
+    never fabricates events, and only binds when the declared log already exists
+    on disk (so a source nothing writes is never published).
+    """
+    try:
+        from runtime import learned_onboarding
+        from runtime.learned_install import _atomic
+        registry = _observation_registry()
+        try:
+            known = set(registry._read().keys())
+        except (OSError, ValueError):
+            known = set()
+        run_dir = Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard')))
+        for agent in agents:
+            adapter = agent.get('adapter') or {}
+            if adapter.get('match_status') != 'exact':
+                continue
+            recipe = adapter.get('historical_recipe')
+            if not isinstance(recipe, dict) or not recipe.get('observation_source'):
+                continue
+            workspace = (recipe.get('hook') or {}).get('workspace')
+            instance_id = str(agent.get('instance_id') or '')
+            if not workspace or ':' not in instance_id or instance_id in known:
+                continue
+            pid_text, _, created_text = instance_id.partition(':')
+            try:
+                target = {'pid': int(pid_text), 'create_time': float(created_text)}
+            except ValueError:
+                continue
+            try:
+                prepared = learned_onboarding._prepare_observation(recipe, Path(workspace), target)
+            except (ValueError, OSError, TypeError):
+                continue
+            if prepared.get('status') != 'configured':
+                continue
+            config = prepared['config']
+            if not Path(config.get('log_path') or '').is_file():
+                continue
+            state_dir = run_dir / 'auto-bind' / instance_id.replace(':', '_')
+            try:
+                state_dir.mkdir(parents=True, exist_ok=True)
+                path = state_dir / learned_onboarding.OBSERVATION_FILE
+                payload = {key: config[key] for key in
+                           ('version', 'mapping_mode', 'target', 'log_path', 'fields', 'event_names')}
+                _atomic(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode('utf-8'))
+                registry.register(str(path), target)
+                known.add(instance_id)
+            except (OSError, ValueError):
+                continue
+    except Exception as exc:  # noqa: BLE001 - best effort; never break a scan
+        print('[auto-bind] skipped:', type(exc).__name__, file=sys.stderr)
+
+
 def _observation_pointer_path():
     return Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard'))) / 'active_observation.json'
 
@@ -885,6 +944,15 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                            create_time: float | None, force: bool = False,
                            resume_from: Path | None = None) -> None:
     """执行一次调查；调用方必须已持有并发槽位并登记 INVESTIGATING_INSTANCES。"""
+    # A reusable protocol gets first refusal, even when Goose is unavailable.
+    if ONBOARDING_AUTO_INSTALL_ENABLED and create_time is not None and not force:
+        from runtime.protocol_fastpath import attempt as protocol_attempt
+        fast = protocol_attempt({'pid': pid, 'create_time': create_time})
+        if fast.get('handled'):
+            _record_investigation_result(instance_id, pid, create_time, 'partial', fast.get('reason', '协议直接接入自检中'))
+            with INVESTIGATION_LOCK:
+                INVESTIGATING_INSTANCES.pop(instance_id, None)
+            return
     goose_bin = _goose_executable()
     if not goose_bin:
         message = f"未找到 Goose CLI（当前解析值: {GOOSE}）。请安装 block-goose-cli 或设置 ASG_GOOSE_BIN。"
@@ -1463,11 +1531,6 @@ def _scan_agents_once():
     sensor = Sensor(policies)
     threshold = int(policies.get("agent_score_threshold", 50))
     observation_snapshot = read_observation_snapshot()
-    observation_snapshots = _observation_registry().snapshots()
-    # Preserve the legacy receiver until it has been migrated to file bindings.
-    legacy_id = observation_snapshot.get('instance_id')
-    if legacy_id and legacy_id not in observation_snapshots:
-        observation_snapshots[legacy_id] = observation_snapshot
     
     found_agents = []
     
@@ -1475,12 +1538,14 @@ def _scan_agents_once():
     candidates = []
     snapshot = {}
     identities = {}
+    discovery_audit = {}
     for proc in psutil.process_iter(["pid", "ppid", "exe", "name", "cmdline", "create_time"]):
         try:
             pinfo = proc.info
             pid = pinfo.get("pid")
             name = pinfo.get("name") or ""
             cmdline = pinfo.get("cmdline") or []
+            discovery_audit[pid] = {"pid": pid, "name": name, "status": "excluded", "reason": "缺少可读取的启动信息或系统进程"}
             snapshot[pid] = pinfo
             identities[pid] = identify(pinfo, sensor.identity_catalog)
 
@@ -1489,8 +1554,13 @@ def _scan_agents_once():
 
             w = sensor.wrap_pid(pid)
             score, reasons = sensor.agent_score(w)
-            if score >= threshold:
+            discovery = runtime_discovery_candidate(pinfo, proc) if 0 <= score < threshold else {}
+            pinfo['discovery_evidence'] = discovery
+            discovery_audit[pid] = {'pid': pid, 'name': name, 'status': 'candidate' if score >= threshold or discovery else 'below_threshold', 'score': score, 'reason': '; '.join(reasons) or '当前快照没有足够 Agent 线索', 'evidence': discovery}
+            if score >= threshold or discovery:
                 identities[pid] = identities[pid] or metadata_identity(pinfo)
+                if discovery:
+                    reasons = [*reasons, discovery['reason']]
                 candidates.append((proc, pinfo, score, reasons))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -1498,14 +1568,31 @@ def _scan_agents_once():
     # 进程树去重 (Root Deduplication):
     # 若候选集合中存在 A 包含子进程 B (A 是 B 的父级且两者均在候选集合中)，
     # 优先由根节点/主编排进程 A 代表 Agent 实体进行纳管与逆向，避免一个 Agent 派生的子进程反复在看板盖楼
+    # Strong behavior leads first; newly opened opaque apps precede old desktop
+    # residents without changing their role or confidence score.
+    candidates.sort(key=lambda row: (-row[2], -(row[1].get('create_time') or 0)))
     candidate_pids = {pinfo["pid"] for _, pinfo, _, _ in candidates}
     process_groups = ownership(snapshot, identities, candidate_pids)
     sub_worker_pids = candidate_pids - set(process_groups)
+
+    # Historical bindings are kept for audit, but a scan only needs live
+    # candidate instances.  Limiting the read prevents old multi-megabyte logs
+    # from delaying every manual scan and every page refresh.
+    current_instance_ids = {
+        f"{pinfo['pid']}:{pinfo.get('create_time')}"
+        for _, pinfo, _, _ in candidates
+    }
+    observation_snapshots = _observation_registry().snapshots(current_instance_ids)
+    # Preserve the legacy receiver until it has been migrated to file bindings.
+    legacy_id = observation_snapshot.get('instance_id')
+    if legacy_id and legacy_id not in observation_snapshots:
+        observation_snapshots[legacy_id] = observation_snapshot
 
     for proc, pinfo, score, reasons in candidates:
         pid = pinfo["pid"]
         # 如果当前候选只是其他已纳管 Agent 的派生子进程，将其归为子 Worker 忽略，聚焦根编排进程
         if pid in sub_worker_pids:
+            discovery_audit[pid].update(status='associated', reason='归入候选父进程', owner=next((root for root, members in process_groups.items() if pid in members), None))
             continue
 
         try:
@@ -1778,14 +1865,14 @@ def _scan_agents_once():
                 "score": score,
                 "reasons": reasons,
                 "cmdline": name + " · 参数内容未展示",
+                "discovery_evidence": pinfo.get('discovery_evidence', {}),
                 "adapter": adapter_info,
                 "last_message": last_msg,
                 "uptime_sec": int(time.time() - (pinfo.get("create_time") or time.time()))
             })
 
-            # 自动接入闭环：若发现陌生 Agent 或尚未拥有深度治理全景档案的已匹配 Agent，立即在后台拉起 Goose 进行自主逆向！
-            # exact 命中复用 Hook 配方，但资产快照属于实例而非家族：assets 阶段里
-            # 已匹配但本实例尚无资产 checkpoint 时仍需调度；重复由队列去重拦截。
+            # Exact builds use deterministic reuse. Missing instance assets do not
+            # justify another model call; failures/upgrades use the pipeline below.
             needs_deep_governance = _needs_asset_followup(
                 is_matched=is_matched, investigation_result=investigation_result,
                 assets_phase=os.environ.get('ASG_INVESTIGATION_PHASE', '').strip() == 'assets')
@@ -1796,7 +1883,7 @@ def _scan_agents_once():
                 needs_deep_governance = autonomous_pipeline.next_phase(instance_id, exact=is_matched) is not None
                 should_investigate = needs_deep_governance
             else:
-                should_investigate = not is_matched or needs_deep_governance
+                should_investigate = not is_matched
             if target_allowed and AUTONOMOUS_ANALYSIS_ENABLED and should_investigate and not is_investigating and retry_ready:
                 _schedule_investigation(pid, struct)
 
@@ -1840,6 +1927,7 @@ def _scan_agents_once():
 
     final_agents = list(grouped_agents.values())
     final_agents.sort(key=lambda item: item.get('adapter', {}).get('hook_state', {}).get('status') != 'observing')
+    _auto_bind_observations(final_agents)
 
     # 更新指纹库统计
     fp_count = 0
@@ -1855,6 +1943,7 @@ def _scan_agents_once():
         SCAN_STATE["last_scan_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
         SCAN_STATE["scan_count"] += 1
         SCAN_STATE["agents"] = final_agents
+        SCAN_STATE["discovery_audit"] = list(discovery_audit.values())
         SCAN_STATE["fingerprints_count"] = fp_count
         SCAN_STATE['observation_instances'] = observation_snapshots
         SCAN_STATE["observation_adapter"] = {
@@ -1970,1323 +2059,196 @@ def _auto_execute_onboarding(plan: dict[str, Any], target: dict[str, Any],
     return install_result, verification_result
 
 
-HTML_PAGE = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ASG 运行时治理 · 实时 Agent 监控看板</title>
-<style>
-  :root {
-    --bg: #090d16;
-    --card-bg: #111827;
-    --card-border: #1f293d;
-    --card-hover-border: #334155;
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --text-dim: #64748b;
-    --accent: #38bdf8;
-    --accent-glow: rgba(56, 189, 248, 0.15);
-    --green: #34d399;
-    --green-bg: rgba(52, 211, 153, 0.12);
-    --green-border: rgba(52, 211, 153, 0.35);
-    --amber: #fbbf24;
-    --amber-bg: rgba(251, 191, 36, 0.12);
-    --amber-border: rgba(251, 191, 36, 0.35);
-    --indigo: #818cf8;
-    --indigo-bg: rgba(129, 140, 248, 0.12);
-    --indigo-border: rgba(129, 140, 248, 0.35);
-    --code-bg: #070b12;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-  body { background: var(--bg); color: var(--text-primary); padding: 24px; line-height: 1.5; min-height: 100vh; }
-  
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 16px; flex-wrap: wrap; gap: 16px; }
-  .title { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; letter-spacing: -0.3px; }
-  .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s infinite; }
-  @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-  
-  .meta-bar { display: flex; align-items: center; gap: 18px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
-  .meta-item b { color: var(--accent); font-family: monospace; font-size: 13px; }
-  .refresh-btn { 
-    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); 
-    border: 1px solid #334155; 
-    color: #e2e8f0; 
-    padding: 7px 16px; 
-    border-radius: 6px; 
-    cursor: pointer; 
-    font-size: 12px; 
-    font-weight: 600;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    transition: all 0.2s ease; 
-  }
-  .refresh-btn:hover { 
-    background: linear-gradient(180deg, #334155 0%, #1e293b 100%); 
-    border-color: #475569; 
-    color: #fff; 
-    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
-  }
-  
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); gap: 22px; align-items: stretch; }
-  .card { 
-    background: var(--card-bg); 
-    border: 1px solid var(--card-border); 
-    border-radius: 12px; 
-    padding: 20px; 
-    display: flex; 
-    flex-direction: column; 
-    gap: 16px; 
-    box-shadow: 0 6px 20px rgba(0,0,0,0.35); 
-    transition: border-color 0.2s ease, transform 0.2s ease;
-    height: 100%;
-  }
-  .card:hover { border-color: var(--card-hover-border); }
-  
-  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 56px; }
-  .agent-name { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 1.3; }
-  .pid-tag { font-size: 11px; background: #0f172a; color: var(--accent); padding: 2px 8px; border-radius: 4px; border: 1px solid #1e293b; font-family: monospace; font-weight: 600; }
-  
-  .score-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
-  .score-high { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
-  .score-mid { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
-  .score-low { background: rgba(148, 163, 184, 0.12); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.3); }
-  
-  .score-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; justify-content: flex-end; max-width: 240px; }
-  .score-tag { font-size: 10px; background: #0f172a; color: #94a3b8; padding: 2px 7px; border-radius: 4px; border: 1px solid #1e293b; white-space: nowrap; }
-  
-  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; letter-spacing: 0.6px; }
-  
-  .cmdline { 
-    font-size: 11px; 
-    color: #cbd5e1; 
-    background: var(--code-bg); 
-    padding: 10px 12px; 
-    border-radius: 6px; 
-    border: 1px solid #162032; 
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; 
-    line-height: 1.45; 
-    max-height: 80px;
-    scrollbar-width: thin;
-    scrollbar-color: #334155 #0b0f19;
-  }
-  
-  .adapter-box { 
-    background: rgba(10, 15, 26, 0.65); 
-    border: 1px solid #1c273c; 
-    border-radius: 8px; 
-    padding: 14px; 
-    display: flex; 
-    flex-direction: column; 
-    gap: 9px; 
-    font-size: 12px; 
-    flex: 1;
-  }
-  .adapter-group-title { 
-    font-size: 11px; 
-    font-weight: 700; 
-    color: #94a3b8; 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    margin-top: 5px; 
-    padding-bottom: 4px; 
-    border-bottom: 1px solid rgba(31, 41, 61, 0.8); 
-    letter-spacing: 0.3px;
-  }
-  .adapter-row { display: grid; grid-template-columns: 115px 1fr; gap: 8px; align-items: start; line-height: 1.45; }
-  .adapter-label { color: var(--text-muted); font-size: 11px; font-weight: 500; }
-  .adapter-val { color: var(--text-secondary); font-size: 11px; word-break: break-word; }
-  
-  .adapter-status { color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
-  .adapter-unmatched { color: var(--amber); }
-  .adapter-working { color: var(--indigo); animation: blink 1.5s infinite; }
-  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-  
-  .tool-list { display: flex; flex-direction: column; gap: 6px; }
-  .tool-item { 
-    background: #090e17; 
-    border: 1px solid #1b263b; 
-    border-radius: 5px; 
-    padding: 7px 9px; 
-    font-size: 11px; 
-    line-height: 1.45;
-  }
-  .tool-badge { 
-    display: inline-block; 
-    background: rgba(56, 189, 248, 0.15); 
-    color: #38bdf8; 
-    border: 1px solid rgba(56, 189, 248, 0.35); 
-    padding: 1px 6px; 
-    border-radius: 4px; 
-    font-family: monospace; 
-    font-size: 10px; 
-    font-weight: 600;
-    margin-right: 5px;
-  }
-  .tool-detail { color: #94a3b8; font-family: monospace; font-size: 10.5px; word-break: break-word; margin-top: 4px; }
-  
-  .stream-badge { 
-    display: flex; 
-    align-items: center; 
-    gap: 8px; 
-    font-size: 11px; 
-    color: #cbd5e1; 
-    padding: 8px 12px; 
-    background: rgba(30, 41, 59, 0.45); 
-    border-radius: 6px; 
-    border: 1px solid #334155; 
-    margin-top: auto;
-  }
-  .stream-badge b { color: #f8fafc; font-weight: 600; }
-  
-  .msg-box { background: var(--code-bg); border: 1px solid #1e293b; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; margin-top: auto; }
-  .msg-header { display: flex; justify-content: space-between; color: var(--accent); margin-bottom: 6px; font-weight: 600; border-bottom: 1px dashed #1e293b; padding-bottom: 4px; }
-  .msg-content { color: #e2e8f0; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; }
-  
-  .btn-reinvestigate { 
-    background: linear-gradient(180deg, rgba(99, 102, 241, 0.22) 0%, rgba(79, 70, 229, 0.12) 100%); 
-    border: 1px solid rgba(129, 140, 248, 0.45); 
-    color: #a5b4fc; 
-    font-size: 11px; 
-    font-weight: 600;
-    border-radius: 5px; 
-    padding: 4px 10px; 
-    cursor: pointer; 
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    transition: all 0.2s ease; 
-  }
-  .btn-reinvestigate:hover { 
-    background: linear-gradient(180deg, rgba(99, 102, 241, 0.35) 0%, rgba(79, 70, 229, 0.25) 100%); 
-    border-color: rgba(165, 180, 252, 0.6);
-    color: #fff;
-    box-shadow: 0 0 8px rgba(99, 102, 241, 0.35);
-  }
-  .btn-reinvestigate:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-  
-  .footer { margin-top: 36px; text-align: center; font-size: 12px; color: var(--text-dim); display: flex; justify-content: center; gap: 15px; }
+HTML_PAGE = (ROOT / "web" / "dashboard.html").read_text(encoding="utf-8")
 
-  /* KPI 指标卡片 */
-  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-  .kpi-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
-  .kpi-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; }
-  .kpi-val { font-size: 22px; font-weight: 700; color: #fff; font-family: monospace; display: flex; align-items: baseline; gap: 6px; }
-  .kpi-sub { font-size: 11px; color: var(--text-dim); font-weight: normal; }
 
-  /* 抽屉与模态框 */
-  .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
-  .drawer-overlay.active { opacity: 1; pointer-events: auto; }
-  .drawer { visibility:hidden;pointer-events:none; position: fixed; top: 0; right: -640px; width: 600px; height: 100vh; background: #0f1626; border-left: 1px solid var(--card-border); z-index: 1001; box-shadow: -8px 0 30px rgba(0,0,0,0.6); display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .drawer.active { visibility:visible;pointer-events:auto; right: 0 !important; transform: translateX(0) !important; }
-  .drawer-header { padding: 18px 24px; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(10, 15, 26, 0.8); }
-  .drawer-title { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
-  .drawer-close { background: transparent; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; border-radius: 4px; }
-  .drawer-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
-  .drawer-body { padding: 20px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; font-size: 12px; }
-  
-  .fp-item { background: #090e18; border: 1px solid #1c273c; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-  .fp-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #162032; padding-bottom: 6px; }
-  .fp-badge { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 7px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: 600; }
-  .fp-code { background: #05080f; border: 1px solid #131c2d; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; color: #cbd5e1; max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+_INSTALLED_ONBOARDING = ('installed', 'bound', 'rebound', 'activation_rebound', 'installed_no_observation')
+_ACTIVE_HOOK_STATE = ('observing', 'loaded', 'installed_pending_activation')
 
-  .inspect-trigger { cursor: pointer; border-bottom: 1px dotted rgba(56, 189, 248, 0.4); transition: color 0.2s; }
-  .inspect-trigger:hover { color: #38bdf8 !important; }
 
-/* Readable summaries keep diagnostic payloads available, but out of the overview. */
-.asset-view {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#dbe5f0; font-size:13px; line-height:1.6; min-width:0;}
-.asset-badge {display:inline-block; padding:1px 7px; border:1px solid #405064; border-radius:4px; color:#b9c7d9; font-size:11px; margin-bottom:5px;}
-.asset-found {color:#7dd3c0; border-color:#28584f; background:#132e2b;}
-.asset-note {color:#93a4b8; font-size:12px; margin:2px 0 7px;}
-.readable-line {display:grid; grid-template-columns:66px minmax(0,1fr); gap:10px; margin:3px 0;}
-.readable-line>span {color:#92a4b9; font-weight:400;}
-.readable-line>strong {font-weight:500; overflow-wrap:anywhere; color:#e2eaf4;}
-.readable-details {margin-top:8px; color:#91a5bf; font-weight:400;}
-.readable-details>summary {cursor:pointer; font-size:12px; padding:3px 0; width:fit-content;}
-.readable-details>summary:focus-visible {outline:2px solid #38bdf8; outline-offset:3px;}
-.readable-details pre {white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; background:#0b1320; padding:12px; border:1px solid #2b394e; border-radius:5px; color:#b9c9da; font:11px/1.7 ui-monospace,monospace;}
-.adapter-row {align-items:flex-start; padding-top:7px; padding-bottom:7px;}
-.adapter-val {min-width:0;}
-@media(max-width:600px){.adapter-row{flex-direction:column;gap:6px}.adapter-label{width:auto;flex-basis:auto}.adapter-val{width:100%}}
+def _native_trust_view():
+    """Cached native trust report; the probe itself runs in a background thread."""
+    from runtime import native_trust
+    try:
+        native_trust.ensure_async()
+        return native_trust.current()
+    except Exception as exc:  # a probe failure must not break the dashboard
+        return {'status': 'unavailable', 'reason': type(exc).__name__}
 
-  .overview-card { background:var(--card-bg);border:1px solid var(--card-border);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0; }
-  .overview-head { display:flex;justify-content:space-between;gap:16px;align-items:flex-start; }
-  .overview-head h3 { font-size:20px;margin:4px 0 8px;letter-spacing:-.3px;overflow-wrap:anywhere; }
-  .eyebrow { font-size:10px;font-weight:700;letter-spacing:1.4px;color:var(--text-muted);text-transform:uppercase; }
-  .overview-meta { color:var(--text-muted);font-size:12px; }
-  .role-pill { border:1px solid #304456;color:#b8cbd8;border-radius:6px;padding:5px 9px;font-size:11px;white-space:nowrap; }
-  .status-tiles { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px; }
-  .status-tile { text-align:left;cursor:pointer;background:#101a27;border:1px solid #283546;border-radius:9px;padding:13px 12px;color:var(--text-primary);min-width:0; }
-  .status-tile span { display:block;font-size:11px;color:var(--text-muted);margin-bottom:9px; }
-  .status-tile strong { display:block;font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere; }
-  .status-tile small { display:block;font-size:10px;color:#6f849a;margin-top:8px; }
-  .status-tile.good { border-top:2px solid #5bba9a; }
-  .status-tile.wait { border-top:2px solid #c3a66b; }
-  .status-tile:hover,.asset-tile:hover { border-color:#7b93aa;background:#142233; }
-  button:focus-visible { outline:2px solid #9ed8e8;outline-offset:3px; }
-  .asset-tiles { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
-  .asset-tile { border:1px solid var(--card-border);background:transparent;border-radius:8px;padding:11px 12px;text-align:left;color:var(--text-secondary);cursor:pointer;min-width:0; }
-  .asset-tile span { display:block;font-size:11px;color:var(--text-muted);margin-bottom:7px; }
-  .asset-tile strong { font-size:12px;font-weight:500; }
-  .card-caption { font-size:11px;color:var(--text-muted);margin-bottom:9px; }
-  .card-footer { display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;border-top:1px solid var(--card-border);flex-wrap:wrap; }
-  .card-actions { display:flex;gap:8px;flex-wrap:wrap; }
-  .latest-activity { text-align:left;background:transparent;border:0;padding:0;color:#9fbcbd;cursor:pointer;font-size:12px; }
-  .detail-link { border:1px solid var(--card-border);background:transparent;border-radius:6px;padding:7px 11px;color:#a6c6d4;cursor:pointer;font-size:12px; }
-  .hook-data-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .hook-data-summary { color:var(--text-secondary); line-height:1.6; }
-  .hook-data-summary b { color:#fff; }
-  .hook-data-record { background:#090e18; border:1px solid #1c273c; border-radius:8px; padding:12px; }
-  .hook-data-record summary { cursor:pointer; color:#b8d8e2; font-size:12px; }
-  .hook-data-record pre { margin-top:9px; max-height:340px; overflow:auto; background:#05080f; border:1px solid #131c2d; border-radius:6px; padding:10px; color:#cbd5e1; font:11px/1.55 ui-monospace,monospace; white-space:pre-wrap; word-break:break-word; }
-  .coverage-missing { color:#fbbf24; }
-  .coverage-good { color:#34d399; }
-  .control-rule-row { display:grid; grid-template-columns:minmax(0,1fr) 90px; gap:8px; margin:5px 0; }
-  .control-rule-row input,.control-rule-row select { width:100%; background:#090e18; color:var(--text-primary); border:1px solid var(--card-border); border-radius:5px; padding:6px; font-size:12px; }
-  .control-pending { border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.08); border-radius:7px; padding:9px; margin:7px 0; }
-  .other-card { border-left:3px solid #a39579;background:#131922; }
-  .other-card .status-tiles { grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .other-summary { color:var(--text-secondary);font-size:13px;line-height:1.7;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
-  .drawer-body { font-family:system-ui,sans-serif;font-size:14px;line-height:1.7;overflow-wrap:anywhere; }
-  .drawer-body .detail-section { background:#101925;border:1px solid var(--card-border);padding:16px;border-radius:10px;margin-bottom:12px; }
-  .drawer-body .detail-section h4 { margin:0 0 10px;font-size:12px;color:var(--text-muted); }
-  .drawer-body pre { white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px; }
-  @media(max-width:650px) { .overview-card{padding:16px}.status-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.asset-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-head h3{font-size:18px}.role-pill{white-space:normal} }
-  @media(prefers-reduced-motion:reduce) { .drawer,.drawer-overlay {transition:none} }
 
-.asset-detail-card { margin:12px 0; padding:16px; border:1px solid var(--card-border); border-radius:10px; background:var(--card-bg); overflow-wrap:anywhere; }
-.asset-detail-card h4 { margin:0 0 10px; font-size:15px; }
-.asset-detail-card p { margin:0 0 12px; color:var(--text-muted); line-height:1.65; white-space:pre-wrap; }
-.asset-detail-card .readable-line { display:grid; grid-template-columns:100px minmax(0,1fr); gap:12px; padding:7px 0; align-items:start; }
-.asset-detail-card .readable-line strong { font-weight:400; white-space:pre-wrap; overflow-wrap:anywhere; }
-.detail-limitations { margin-top:18px; color:var(--text-muted); line-height:1.6; }
-</style>
-</head>
-<body>
+def _serving_view():
+    from runtime import hook_service
+    try:
+        return hook_service.servings()
+    except Exception as exc:
+        return {'status': 'not_running', 'reason': type(exc).__name__}
 
-<div class="header">
-  <div class="title">
-    <div class="pulse"></div>
-    ASG · 进程发现、自主调查与接入验证
-  </div>
-  <div class="meta-bar">
-    <form class="meta-item" onsubmit="saveScanInterval(event)">
-      <label for="scan-interval-input">扫描周期:</label>
-      <input id="scan-interval-input" type="number" min="1" max="86400" step="1" required
-        style="width:82px;background:var(--bg);color:var(--text-primary);border:1px solid var(--card-border);border-radius:6px;padding:6px" aria-label="扫描周期（秒）">
-      <span>秒</span><button class="refresh-btn" type="submit">保存</button>
-      <span id="scan-interval" role="status" aria-live="polite"></span>
-    </form>
-    <div class="meta-item">已存指纹: <b id="fp-count" style="cursor: pointer; text-decoration: underline;" onclick="openFpDrawer()">-</b></div>
-    <div class="meta-item">已扫轮次: <b id="scan-count">-</b></div>
-    <div class="meta-item">上次更新: <b id="last-time">-</b></div>
-    <div class="meta-item">观测适配: <b id="observe-status">-</b></div>
-    <button id="scan-button" class="refresh-btn" onclick="triggerScan()">扫描分析</button>
-    <span id="scan-progress" role="status" aria-live="polite">发现后自动调查，接入后显示真实活动</span>
-  </div>
-</div>
 
-<details style="margin:16px 0;padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px" ontoggle="if(this.open) loadModelSettings()">
-  <summary style="cursor:pointer">Goose 模型配置</summary>
-  <form onsubmit="testModelSettings(event)" style="display:grid;gap:12px;max-width:720px;margin-top:16px">
-    <p style="color:var(--text-muted)">OpenAI 兼容接口。验证会启动 Goose 获取真实回复，成功后保存；正在执行的调查继续使用原配置。</p>
-    <label>API 地址 <input id="model-base" type="url" required style="width:100%;padding:8px" placeholder="https://example.com/v1"></label>
-    <label>模型名称 <input id="model-name" required style="width:100%;padding:8px" placeholder="模型 ID"></label>
-    <label>API Key <input id="model-key" type="password" autocomplete="new-password" style="width:100%;padding:8px" placeholder="同一地址留空保留现有密钥；更换地址请填写新密钥"></label>
-    <span id="model-key-state" class="asset-note"></span>
-    <button id="model-test-button" class="refresh-btn" type="submit">验证并保存</button>
-    <div id="model-test-status" role="status" aria-live="polite"></div>
-  </form>
-</details>
-<details id="hook-control-panel" style="margin:16px 0;padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px" ontoggle="if(this.open) loadHookControl()">
-  <summary style="cursor:pointer">Hook 控制策略（仅对已实现控制回调的实例生效）</summary>
-  <form onsubmit="saveHookPolicy(event)" style="display:grid;gap:10px;max-width:720px;margin-top:16px">
-    <label>默认决策
-      <select id="hook-control-default" style="margin-left:8px;background:var(--bg);color:var(--text-primary);border:1px solid var(--card-border);border-radius:6px;padding:6px">
-        <option value="allow">允许</option><option value="deny">拒绝</option><option value="ask">需确认</option>
-      </select>
-    </label>
-    <div style="color:var(--text-muted);font-size:12px">精确工具规则</div>
-    <div id="hook-control-rules"></div>
-    <button type="button" class="refresh-btn" style="width:max-content" onclick="addHookRule()">添加工具规则</button>
-    <button type="submit" class="refresh-btn" style="width:max-content">保存控制策略</button>
-    <div id="hook-control-status" role="status" aria-live="polite"></div>
-    <div><div class="section-label">待审批请求</div><div id="hook-control-pending"><span class="asset-note">打开后读取控制面状态</span></div></div>
-    <div><div class="section-label">控制事件（返回决策与实际执行分开显示）</div><div id="hook-control-events"><span class="asset-note">尚未读取</span></div></div>
-  </form>
-</details>
-<!-- 全局治理指标 KPI 栏 -->
-<div class="kpi-row">
-  <div class="kpi-card">
-    <div class="kpi-label">确认 Agent（角色证据）</div>
-    <div class="kpi-val"><span id="kpi-agent-count">0</span><span class="kpi-sub" id="kpi-instance-count">0 实例活跃</span></div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">指纹匹配比例</div>
-    <div class="kpi-val"><span id="kpi-hook-rate" style="color: var(--green);">100%</span><span class="kpi-sub" id="kpi-hook-detail">指纹匹配</span></div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">活跃外联与通信暴露面</div>
-    <div class="kpi-val"><span id="kpi-net-count" style="color: var(--accent);">0</span><span class="kpi-sub" id="kpi-net-detail">监听/外联端点</span></div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">零先验指纹资产库</div>
-    <div class="kpi-val"><span id="kpi-fp-total" style="color: var(--indigo); cursor: pointer;" onclick="openFpDrawer()">3</span><span class="kpi-sub" style="cursor: pointer;" onclick="openFpDrawer()">条可演进指纹 ↗</span></div>
-  </div>
-</div>
-
-<div class="grid" id="agents-grid">
-  <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 60px;">正在进行初次扫描...</div>
-</div>
-
-<!-- 指纹库滑出抽屉 -->
-<div class="drawer-overlay" id="drawer-overlay" onclick="closeAllDrawers()"></div>
-<div class="drawer" id="fp-drawer">
-  <div class="drawer-header">
-    <div class="drawer-title">📁 零先验 Agent 指纹与候选配方库（未安装／未验证） (fingerprints.json)</div>
-    <button class="drawer-close" onclick="closeAllDrawers()">✕</button>
-  </div>
-  <div class="drawer-body" id="fp-drawer-body">
-    <div style="text-align: center; color: var(--text-muted); padding: 40px;">正在加载指纹库...</div>
-  </div>
-</div>
-
-<!-- 深度透视抽屉 (Deep Inspector) -->
-<div class="drawer" id="inspect-drawer" role="dialog" aria-modal="true" aria-labelledby="inspect-title">
-  <div class="drawer-header">
-    <div class="drawer-title" id="inspect-title">资料详情</div>
-    <button id="detail-close" aria-label="关闭详情" class="drawer-close" onclick="closeAllDrawers()">✕</button>
-  </div>
-  <div class="drawer-body" id="inspect-drawer-body">
-    <div style="text-align: center; color: var(--text-muted); padding: 40px;">正在读取深度全景信息...</div>
-  </div>
-</div>
-
-<!-- 原始 Hook 输入/输出抽屉 -->
-<div class="drawer" id="hook-data-drawer" role="dialog" aria-modal="true" aria-labelledby="hook-data-title">
-  <div class="drawer-header">
-    <div class="drawer-title" id="hook-data-title">Hook 实时数据</div>
-    <div class="hook-data-toolbar"><button id="hook-data-download" class="detail-link" type="button" onclick="downloadHookData()">下载 JSON</button><button id="hook-data-close" aria-label="关闭 Hook 实时数据" class="drawer-close" onclick="closeAllDrawers()">✕</button></div>
-  </div>
-  <div class="drawer-body" id="hook-data-drawer-body">
-    <div style="text-align:center;color:var(--text-muted);padding:40px">选择 Agent 后读取已登记的 Hook 绑定…</div>
-  </div>
-</div>
-
-<details style="margin-top:24px"><summary>历史接入实例与事件</summary><div id="observation-history" style="padding:12px"></div></details>
-<div class="footer">
-  <div>OS-Level Zero-Prior Agent Governance</div>
-  <div>·</div>
-  <div>Agent 发现、资产与 Hook 状态</div>
-  <div>·</div>
-  <div>每 5 秒刷新</div>
-</div>
-
-<script>
-const readableOpen = new Set();
-function rememberReadable(el) {
-  if (!el.isConnected) return;
-  if (el.open) readableOpen.add(el.dataset.readable);
-  else readableOpen.delete(el.dataset.readable);
-}
-const fieldLabels = {kind:'资料类型',status:'状态',value:'内容',name:'名称',version:'版本',runtime:'运行环境',entry:'入口',roles:'角色',role_reasoning:'判断依据',evidence_refs:'证据编号',uncertainty:'范围与限制',open_questions:'待确认事项',source:'来源',submitted_at:'记录时间',configuration_status:'信息来源',items:'条目',summary:'结论',facts:'已确认信息',scope:'调查范围',label:'项目',display:'标准资料',model:'模型',base_url:'接口地址',provider:'提供方'};
-function formattedValue(value, depth=0) {
-  if (value === null || value === undefined || value === '') return '<span class="asset-note">未提供</span>';
-  if (typeof value !== 'object') return `<span style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(String(value))}</span>`;
-  if (depth > 8) return '<span class="asset-note">详细内容见原始记录</span>';
-  if (Array.isArray(value)) return value.length ? '<ul>' + value.map(x=>'<li>'+formattedValue(x,depth+1)+'</li>').join('') + '</ul>' : '<span class="asset-note">无</span>';
-  return '<dl>' + Object.entries(value).map(([key,v])=>`<div style="margin:8px 0"><dt style="color:var(--text-muted)">${escapeHtml(fieldLabels[key] || key)}</dt><dd style="margin:3px 0 0 12px">${formattedValue(v,depth+1)}</dd></div>`).join('') + '</dl>';
-}
-function standardDisplay(display) {
-  if (!display || display.version !== 1) return '';
-  return `<p>${escapeHtml(display.summary || '')}</p>` + (display.facts || []).map(f=>readableLine(f.label,f.value)).join('') + readableLine('调查范围',display.scope);
-}
-const detailRecords = new Map();
-let drawerReturnFocus = null;
-function detailButton(id, title, data, body, className='detail-link', view='') {
-  detailRecords.set(id,{title,data,view});
-  return `<button type="button" class="${className}" data-detail-key="${escapeHtml(id)}" onclick="openDetail(this.dataset.detailKey)">${body || escapeHtml(title)}</button>`;
-}
-function toolNamesData(adapter,item) {
-  const execution=(adapter.assets || {}).child_executions || {};
-  const calls=(execution.value || {}).paired_calls || [];
-  return {...item, observed_tool_names:[...new Set(calls.map(call=>call.tool_name || call.tool).filter(name=>typeof name==='string' && name))]};
-}
-// Shared presentation for discovered assets; no product-specific names or paths.
-const detailFieldLabels = {description:'介绍',purpose:'用途',note:'说明',path:'路径',file:'文件',file_path:'文件路径',config_path:'配置路径',entry:'入口',cwd:'工作目录',url:'地址',base_url:'接口地址',baseURL:'接口地址',endpoint:'端点',transport:'连接方式',transport_guess:'连接方式（推测）',plugin:'所属插件',plugin_version:'插件版本',version:'版本',type:'类型',model:'模型',model_name:'模型',provider:'提供方',local_address:'本地地址',local_port:'本地端口',remote_address:'远端地址',remote_port:'远端端口',status:'状态',timestamp:'时间',tool_name:'工具',call_id:'调用编号',runtime:'运行环境',policy:'权限规则',content:'内容',field:'配置项'};
-function basicAssetCards(value, title='基本信息', depth=0) {
-  if (value == null || value === '' || depth > 5) return '';
-  if (Array.isArray(value)) return value.map((item,i)=>basicAssetCards(item, title+' '+(i+1),depth+1)).join('');
-  if (typeof value !== 'object') return `<article class="asset-detail-card"><h4>${escapeHtml(title)}</h4><p>${escapeHtml(String(value))}</p></article>`;
-  const name=value.name || value.tool_name || value.server_name || value.id || value.label || title;
-  const intro=value.description || value.summary || value.purpose || value.note;
-  const hidden=new Set(['name','tool_name','server_name','id','label','description','summary','purpose','note','display','evidence_refs','sources','uncertainty','open_questions','configuration_status','message','source','submitted_at','args','argv','command','auth','env','env_keys']);
-  let rows='', children='';
-  for (const [key,v] of Object.entries(value)) {
-    if (hidden.has(key) || /secret|token|password|api.?key/i.test(key) || v == null || v === '') continue;
-    const label=detailFieldLabels[key] || fieldLabels[key] || key;
-    if (typeof v === 'object') {
-      if (['mcpServers','servers','tools'].includes(key) && !Array.isArray(v)) {
-        children+=Object.entries(v).map(([n,item])=>basicAssetCards(typeof item==='object' && item ? {name:n,...item} : {name:n,description:item},n,depth+1)).join('');
-      } else children+=basicAssetCards(v,label,depth+1);
-    } else rows+=readableLine(label,v);
-  }
-  const argv=Array.isArray(value.args) ? [value.command,...value.args].filter(Boolean) : Array.isArray(value.argv) ? value.argv : value.command ? [value.command] : [];
-  if (argv.length) rows+=readableLine('启动命令',argv.join(' '));
-  const own=rows || intro || value.name || value.tool_name || value.server_name;
-  return (own ? `<article class="asset-detail-card"><h4>${escapeHtml(String(name))}</h4>${intro ? '<p>'+escapeHtml(typeof intro==='string' ? intro : JSON.stringify(intro))+'</p>' : ''}${rows}</article>` : '') + children;
-}
-function assetDetailContent(data, isMcp=false) {
-  const value=data.value === undefined ? data.数据 : data.value;
-  const statuses={unknown:isMcp?'尚未确认 MCP 名称':'待进一步确认',empty:'检查范围内未发现',failed:'本项调查未成功',not_collected:'尚未调查',unsupported:'当前不支持'};
-  const heading=data.display ? standardDisplay(data.display) : '';
-  const cards=basicAssetCards(value);
-  const empty=!cards ? '<p class="asset-note">'+escapeHtml(statuses[data.status] || '尚未提取到基本信息')+'</p>' : '';
-  const observed=[...new Set(data.observed_tool_names || [])];
-  const tools=observed.length ? '<h4>已观察到的工具</h4>'+observed.map(name=>basicAssetCards({name,description:'已在执行事件中观察到此工具调用'},'工具')).join('') : '';
-  const limitations=data.uncertainty || data.范围与限制 || [];
-  return heading+empty+cards+tools+(limitations.length ? '<details class="detail-limitations"><summary>调查范围与待确认事项</summary>'+formattedValue(limitations)+'</details>' : '');
-}
-function toolNamesContent(data) { return assetDetailContent(data,true); }
-function openDetail(id) {
-  const record=detailRecords.get(id); if(!record) return;
-  drawerReturnFocus=document.activeElement;
-  const data=record.data || {}, display=data.display;
-  const content=record.view === 'tool_names' ? toolNamesContent(data) : record.view === 'asset_details' ? assetDetailContent(data) : display ? standardDisplay(display) + basicAssetCards(data.value) : basicAssetCards(data);
-  document.getElementById('fp-drawer').classList.remove('active');
-  document.getElementById('inspect-title').innerText=record.title;
-  document.getElementById('inspect-drawer-body').innerHTML=`<div class="detail-section">${content}</div><details><summary>原始记录（JSON）</summary><pre>${escapeHtml(JSON.stringify(data,null,2))}</pre></details>`;
-  document.getElementById('drawer-overlay').classList.add('active');
-  const drawer=document.getElementById('inspect-drawer');drawer.classList.add('active');
-  document.getElementById('detail-close').focus();
-}
-function readableDetails(id,title,data) { return detailButton(id,title,data); }
-function statusTile(a,key,label,value,data,tone='') {
-  data = {...(data || {})};
-  if (!data.display) {
-    const identity = data.value || {};
-    const facts = [{label:'当前状态',value:String(value || '待确认')}];
-    if (identity.name) facts.push({label:'名称',value:String(identity.name)});
-    if (identity.version) facts.push({label:'版本',value:String(identity.version)});
-    if (data.安装 && data.安装.workspace) facts.push({label:'安装目录',value:data.安装.workspace});
-    if (data.详情) facts.push({label:'有效事件',value:String(data.详情.recent_events || 0)}, {label:'阻断能力',value:'未支持'});
-    data.display={version:1,summary:String(data.结论 || data.说明 || identity.role_reasoning || data.范围 || label+'：'+(value || '待确认')),
-      facts,scope:'当前实例 · PID '+a.pid};
-  }
-  return detailButton('tile:'+a.instance_id+':'+key, a.name+' · '+label,data,
-    `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '待确认')}</strong><small>查看详情 ↗</small>`,'status-tile '+tone);
-}
-function assetTiles(a) {
-  const labels={model_routing:'模型与网关',registered_tools_and_mcp:'工具 / MCP',system_prompt_rules:'规则',skills:'技能',network_surface:'网络端点',child_executions:'执行事件'};
-  const statuses={collected:'已查到',empty:'检查范围内未发现',unknown:'待确认',not_collected:'尚未调查',failed:'采集失败',unsupported:'当前不支持'};
-  // Keep the full child-execution projection available to the card/detail
-  // renderer; the tile below remains the compact summary.
-  const childExecutionDetails = assetText(a.adapter, 'child_executions');
-  return Object.entries(labels).map(([key,label])=>{
-    const item=(a.adapter.assets || {})[key] || {status:'not_collected'};
-    return detailButton('asset:'+a.instance_id+':'+key,a.name+' · '+label,key === 'registered_tools_and_mcp' ? toolNamesData(a.adapter,item) : item,
-      `<span>${label}</span><strong>${escapeHtml(statuses[item.status] || item.label || '待确认')} ↗</strong>`,'asset-tile',key === 'registered_tools_and_mcp' ? 'tool_names' : 'asset_details');
-  }).join('');
-}
-function readableLine(label, value) {
-  if (value === undefined || value === null || value === '') return '';
-  return `<div class="readable-line"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`;
-}
-function assetText(adapter, key) {
-  const item = (adapter.assets || {})[key] || {status:'not_collected', label:'尚未采集'};
-  const status = item.status || 'not_collected';
-  const v = item.value;
-  const rows = v && typeof v === 'object' && Array.isArray(v.items) ? v.items : Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : [];
-  const labels = {collected:'已查到', empty:'检查范围内未发现', not_collected:'尚未调查', unknown:'待进一步确认', failed:'本项采集失败', unsupported:'当前不支持'};
-  let brief = '';
-  if (status === 'collected') {
-    if (key === 'model_routing') {
-      const fields = rows.filter(x => x && x.value !== undefined && /model|base.?url|endpoint|provider/i.test(x.field || x.name || '') && !/key|token|secret/i.test(x.field || x.name || ''));
-      brief = fields.slice(0,6).map(x => readableLine(x.field || x.name, typeof x.value === 'object' ? JSON.stringify(x.value) : x.value)).join('');
-      if (!brief) brief = rows.slice(0,3).map(x => readableLine('模型',x.model || x.model_name) + readableLine('网关',x.base_url || x.baseURL || x.endpoint) + readableLine('提供方',x.name || x.provider)).join('');
-    } else if (key === 'system_prompt_rules') {
-      brief = rows.slice(0,3).map(x => {
-        if (typeof x === 'string') return readableLine('规则', x);
-        if (x.type === 'runtime_permission_policy') {
-          let permissions = [];
-          for (const m of String(x.policy || '').matchAll(/permission\\s*:\\s*"([^"]+)"[^}]*?action\\s*:\\s*"([^"]+)"/g)) {
-            permissions.push((m[1] === '*' ? '其他操作' : m[1]) + '：' + ({allow:'允许',deny:'拒绝',ask:'需确认'}[m[2]] || m[2]));
-          }
-          return readableLine('会话权限', permissions.length ? permissions.join('；') : '已记录权限策略') + readableLine('依据','运行日志中的会话记录');
-        }
-        return readableLine('规则',x.name || x.file || x.summary || x.type);
-      }).join('');
-    } else if (key === 'child_executions') {
-      const events = v && v.events || [];
-      const calls = v && v.paired_calls || [];
-      brief = readableLine('工具调用',calls.length ? calls.map(x=>x.tool_name || '未命名工具').join('、') + ' · ' + calls.length + ' 次前后配对' : '已记录执行事件') + readableLine('时效',v && v.live_file_source ? '自动读取新事件 · 目标进程存活' : '历史事件快照') + (v && v.live_file_source && v.last_event_time ? readableLine('末次事件',new Date(v.last_event_time*1000).toLocaleString()) : '');
-    } else if (key === 'network_surface') {
-      const ports = rows.filter(x=>x.status === 'LISTEN').map(x=>x.local_port).filter(Boolean);
-      brief = readableLine('监听端口',ports.length ? ports.join('、') : '见端点详情') + readableLine('范围','目标进程的瞬时快照');
-    } else if (key === 'parsed_config') {
-      brief = rows.slice(0,3).map(x => readableLine('配置文件',x.file || x.name)).join('');
-    } else {
-      brief = rows.slice(0,3).map(x => readableLine('名称',typeof x === 'string' ? x : x.name || x.id || x.summary)).join('');
+def _io_hint(observation):
+    """Project cheap partial IO evidence from the already-read live window."""
+    from runtime import event_vocabulary
+    from runtime.io_acceptance import KINDS
+    observed = {
+        event_vocabulary.canonical(item.get('event_type')) or item.get('event_type')
+        for item in (observation or {}).get('recent_events', []) if isinstance(item, dict)
     }
-    if (!brief) brief = readableLine('结果',typeof v === 'string' ? v : '已保存结构化信息，请展开查看');
-  }
-  if (item.display) brief = standardDisplay(item.display);
-  const provenance = v && v.configuration_status;
-  const note = provenance === 'configured' ? '来源：配置' : provenance === 'observed' ? '来源：运行记录' : status === 'empty' ? '' : '';
-  const refs = item.evidence_refs || item.sources || [];
-  const id = key + ':' + (refs.join(',') || item.source || status);
-  const details = status === 'not_collected' ? '' : detailButton(id,'查看依据与详情', {display:item.display,说明:item.message || '',数据:v,证据:refs,来源:item.source || null,范围与限制:item.uncertainty || [],status:item.status,observed_tool_names:key === 'registered_tools_and_mcp' ? toolNamesData(adapter,item).observed_tool_names : []},null,'detail-link',key === 'registered_tools_and_mcp' ? 'tool_names' : 'asset_details');
-  return `<div class="asset-view"><span class="asset-badge ${status === 'collected' ? 'asset-found' : ''}">${escapeHtml(labels[status] || item.label || '未知')}</span>${note ? `<div class="asset-note">${escapeHtml(note)}</div>` : ''}${brief}${details}</div>`;
-}
-function findingText(finding) {
-  if (!finding) return '<span class="asset-note">尚未确认身份</span>';
-  const v = finding.value || {};
-  const refs = finding.evidence_refs || [];
-  const name = typeof v === 'object' ? v.name || '未识别' : v;
-  return `<div class="asset-view">${readableLine('名称',name)}${readableLine('版本',v.version)}${readableDetails('identity:'+refs.join(','),'查看身份判断依据',finding)}</div>`;
-}
-function classificationText(cls) {
-  if (!cls) return '候选/待确认';
-  const roles = Array.isArray(cls.roles) && cls.roles.length ? ' · ' + cls.roles.join('/') : '';
-  return escapeHtml((cls.label || '候选/待确认') + roles);
-}
-const activityCache = {};
-const activityOpenPids = new Set();
-const activitySelectedRuns = {};
-const activityRequests = {};
-function escapeActivityText(v) { return escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v == null ? '' : v)); }
-function renderActivity(pid, data) {
-  const box = document.getElementById('activity-body-' + pid);
-  if (!box) return;
-  if (!data || data.error) {
-    box.innerHTML = '<div style="color:#ef4444;padding:8px;">活动读取失败: ' + escapeActivityText(data && (data.reason || data.message || data.error) || '未知原因') + '</div>';
-    return;
-  }
-  let html = '';
-  const runs = data.runs || [];
-  if (runs.length > 1) {
-    html += '<div style="margin-bottom:6px;">历史 run: <select onchange="loadActivity(' + pid + ', this.value)" style="background:#111827;color:#cbd5e1;border:1px solid #1f293d;border-radius:4px;font-size:11px;">' +
-      runs.map(r => '<option value="' + escapeActivityText(r.run_id) + '"' + (r.run_id === data.run_id ? ' selected' : '') + '>' + escapeActivityText(r.run_id) + ' (' + escapeActivityText(r.status) + ')</option>').join('') + '</select></div>';
-  }
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">run: ' + escapeActivityText(data.run_id || '无') +
-    ' · 状态: ' + escapeActivityText(data.status) +
-    (data.started_at ? ' · 开始: ' + escapeActivityText(data.started_at) : '') +
-    (data.ended_at ? ' · 结束: ' + escapeActivityText(data.ended_at) : '') +
-    (data.last_activity_at ? ' · 最近活动: ' + escapeActivityText(data.last_activity_at) : '') + '</div>';
-  const events = data.events || [];
-  if (!events.length) {
-    html += '<div style="font-size:11px;color:var(--text-muted);">该 run 暂无已记录事件（等待模型响应或尚未开始）</div>';
-  } else {
-    html += '<div style="font-size:11px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;">' +
-      events.map(ev => {
-        if (ev.type === 'finding_saved') {
-          return '<div style="margin-bottom:3px;"><span style="color:#34d399;">✓ finding</span> ' + escapeActivityText(ev.kind) + (ev.asset ? '/' + escapeActivityText(ev.asset) : '') + ' · ' + escapeActivityText(ev.status) + ' · ' + escapeActivityText(ev.ts) + '</div>';
-        }
-        return '<div style="margin-bottom:3px;"><span style="color:#38bdf8;">🔧</span> ' + escapeActivityText(ev.tool) +
-          ' · <span style="color:' + (ev.status === 'succeeded' ? '#34d399' : '#ef4444') + ';">' + escapeActivityText(ev.status) + '</span>' +
-          (ev.evidence_id ? ' · <span style="color:var(--text-muted);">' + escapeActivityText(ev.evidence_id) + '</span>' : '') +
-          ' · ' + escapeActivityText(ev.ts) + '</div>';
-      }).join('') + '</div>';
-  }
-  if (data.truncated) html += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">仅显示最近事件（有界）</div>';
-  if (Array.isArray(data.limitations) && data.limitations.length) {
-    html += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">' + data.limitations.map(l => escapeActivityText(l)).join('；') + '</div>';
-  }
-  box.innerHTML = html;
-}
-async function loadActivity(pid, runId) {
-  const box = document.getElementById('activity-body-' + pid);
-  if (!box) return;
-  if (runId !== undefined) activitySelectedRuns[pid] = runId;
-  const selectedRun = activitySelectedRuns[pid];
-  const requestId = (activityRequests[pid] || 0) + 1;
-  activityRequests[pid] = requestId;
-  try {
-    const url = '/api/investigation/activity?pid=' + pid + (selectedRun ? '&run_id=' + encodeURIComponent(selectedRun) : '');
-    const res = await fetch(url);
-    const data = await res.json();
-    if (activityRequests[pid] !== requestId) return;
-    if (!res.ok) { renderActivity(pid, data); return; }
-    activityCache[pid] = {data, at: Date.now()};
-    renderActivity(pid, data);
-  } catch(e) {
-    if (activityRequests[pid] === requestId) renderActivity(pid, {error: true, reason: String(e)});
-  }
-}
-function onActivityToggle(pid, el) {
-  if (el.open) { activityOpenPids.add(pid); loadActivity(pid); }
-  else activityOpenPids.delete(pid);
-}
-function renderTools(tools) {
-  if (!Array.isArray(tools) || tools.length === 0) {
-    return '<span style="color: #64748b;">尚未采集</span>';
-  }
-  return '<div class="tool-list">' + tools.map(t => {
-    if (typeof t !== 'string') t = JSON.stringify(t);
-    // 识别 MCP 服务特征
-    if (t.toLowerCase().includes('mcp')) {
-      return `
-        <div class="tool-item">
-          <div><span class="tool-badge">MCP 服务</span><b style="color: #38bdf8;">${escapeHtml(t.split(':')[0])}</b></div>
-          ${t.includes(':') ? `<div class="tool-detail">${escapeHtml(t.substring(t.indexOf(':') + 1).trim())}</div>` : ''}
-        </div>
-      `;
+    if not observed.intersection(KINDS):
+        return None
+    return {
+        'status': 'gaps',
+        'capabilities': [
+            {'event': kind, 'observed': kind in observed, 'count': None}
+            for kind in KINDS
+        ],
+        'end_to_end_verified': False,
+        'source': 'current_observation_window',
     }
-    // 识别子进程或命令行特征
-    if (t.toLowerCase().includes('subprocess') || t.toLowerCase().includes('worker') || t.toLowerCase().includes('child')) {
-      return `
-        <div class="tool-item">
-          <div><span class="tool-badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-color: rgba(251, 191, 36, 0.35);">衍生执行</span><span style="color: #f1f5f9;">${escapeHtml(t)}</span></div>
-        </div>
-      `;
-    }
-    return `
-      <div class="tool-item">
-        <span style="color: #cbd5e1;">${escapeHtml(t)}</span>
-      </div>
-    `;
-  }).join('') + '</div>';
-}
 
-function escapeHtml(str) {
-  if (str === undefined || str === null) return '';
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
-function formatUptime(sec) {
-  if (sec < 60) return sec + '秒';
-  if (sec < 3600) return Math.floor(sec / 60) + '分 ' + (sec % 60) + '秒';
-  if (sec < 86400) {
-    const h = (sec / 3600).toFixed(1);
-    return h + '小时';
-  }
-  const d = (sec / 86400).toFixed(1);
-  return d + '天';
-}
+def attach_capability(snapshot, *, io_by_instance=None, trust=None, serving=None):
+    """Attach the per-instance capability ladder.
 
-const reinvestigatingPids = new Set();
+    ``io_by_instance`` lets a single-instance call add input/output coverage that
+    would be too expensive to read for every agent on each five-second refresh.
+    """
+    from runtime import capability, hook_service
+    trust = trust if trust is not None else _native_trust_view()
+    serving = serving if serving is not None else _serving_view()
+    registry = snapshot.get('observation_instances') or {}
+    # refresh_hook_observations already read these bindings. Re-reading every
+    # historical log here doubles I/O for each browser poll during recovery.
+    covered = set(registry) if serving.get('status') == 'running' else set()
+    for agent in snapshot.get('agents', []):
+        adapter = agent.get('adapter') or {}
+        agent['adapter'] = adapter
+        instance_id = agent.get('instance_id')
+        observation = registry.get(instance_id) if instance_id else None
+        observation = observation if isinstance(observation, dict) else {}
+        onboarding = adapter.get('onboarding') if isinstance(adapter.get('onboarding'), dict) else {}
+        hook_state = adapter.get('hook_state') if isinstance(adapter.get('hook_state'), dict) else {}
+        plan = onboarding.get('plan') if isinstance(onboarding.get('plan'), dict) else {}
+        installed = (onboarding.get('installed') is True
+                     or onboarding.get('status') in _INSTALLED_ONBOARDING
+                     or hook_state.get('status') in _ACTIVE_HOOK_STATE)
+        recipe = adapter.get('historical_recipe')
+        fingerprint = ({'id': adapter.get('harness_id'), 'revision': adapter.get('fingerprint_revision'),
+                        'hook_recipe': recipe} if isinstance(recipe, dict) and recipe else None)
+        acceptance = adapter.get('control_acceptance')
+        create_time = adapter.get('create_time')
+        if create_time is None and isinstance(instance_id, str) and ':' in instance_id:
+            try:
+                create_time = float(instance_id.split(':', 1)[1])
+            except ValueError:
+                create_time = None
+        serving_view = dict(serving)
+        if instance_id and serving_view.get('status') == 'running':
+            serving_view['covers_instance'] = instance_id in covered
+        # 每个通过状态附带其证据被记录的时间，页面据此显示“验证时间”。
+        evidence_times = {}
+        investigation_view = adapter.get('investigation')
+        if isinstance(investigation_view, dict) and investigation_view.get('updated_at'):
+            evidence_times['investigated'] = investigation_view.get('updated_at')
+        if observation.get('last_event_time'):
+            evidence_times['loaded'] = observation.get('last_event_time')
+            evidence_times['observing'] = observation.get('last_event_time')
+        if isinstance(trust, dict) and trust.get('probed_at'):
+            evidence_times['trusted'] = trust.get('probed_at')
+        if isinstance(acceptance, dict):
+            ctl_at = acceptance.get('verified_at') or acceptance.get('updated_at')
+            if ctl_at:
+                evidence_times['controlling'] = ctl_at
+        if isinstance(serving_view, dict) and serving_view.get('started_at'):
+            evidence_times['serving'] = serving_view.get('started_at')
+        for _key, _value in list(evidence_times.items()):
+            if isinstance(_value, (int, float)):
+                evidence_times[_key] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(_value))
+        try:
+            proc = psutil.Process(agent.get('pid'))
+            process_scope = {'exe': proc.exe(), 'cwd': proc.cwd()}
+        except (psutil.Error, OSError):
+            process_scope = {}
+        instance_trust = capability.scoped_trust(trust, process_scope)
+        explicit_io = (io_by_instance or {}).get(instance_id)
+        adapter['capability'] = capability.build(
+            {'pid': agent.get('pid'), 'create_time': create_time},
+            investigation=adapter.get('investigation'),
+            fingerprint=fingerprint,
+            install={'status': onboarding.get('status'), 'installed': installed,
+                     'plan': plan or None,
+                     'files': plan.get('files') if isinstance(plan.get('files'), list) else None},
+            verify={'hook_loaded': hook_state.get('status') in ('loaded', 'observing'),
+                    'target_alive': observation.get('target_alive')},
+            observation=observation,
+            io=explicit_io if isinstance(explicit_io, dict) else _io_hint(observation),
+            control={'verifications': [acceptance]} if isinstance(acceptance, dict) else None,
+            native_trust=instance_trust,
+            serving=serving_view, times=evidence_times)
 
-let currentAgentsData = [];
 
-let hookDataTarget = null;
-let hookDataTimer = null;
-let hookDataRequest = 0;
-
-function hookDataInstanceTarget(agent) {
-  let createTime = agent && (agent.create_time || agent.instance_create_time);
-  if (createTime === undefined && agent && typeof agent.instance_id === 'string') {
-    const parts = agent.instance_id.split(':');
-    if (parts.length > 1) createTime = Number(parts.slice(1).join(':'));
-  }
-  return {pid: Number(agent && agent.pid), create_time: Number.isFinite(Number(createTime)) ? Number(createTime) : null};
-}
-
-async function openHookData(pid) {
-  if (!currentAgentsData || !currentAgentsData.length) {
-    try { const response = await fetch('/api/state'); currentAgentsData = (await response.json()).agents || []; } catch (e) {}
-  }
-  const agent = currentAgentsData.find(item => Number(item.pid) === Number(pid));
-  if (!agent) return;
-  hookDataTarget = hookDataInstanceTarget(agent);
-  document.getElementById('hook-data-title').innerText = `Hook 实时数据 · ${agent.name || 'Agent'} · PID ${agent.pid}`;
-  document.getElementById('drawer-overlay').classList.add('active');
-  document.getElementById('hook-data-drawer').classList.add('active');
-  if (hookDataTimer) clearInterval(hookDataTimer);
-  await loadHookData();
-  hookDataTimer = setInterval(loadHookData, 2000);
-}
-
-function renderHookData(data) {
-  const container = document.getElementById('hook-data-drawer-body');
-  if (!container) return;
-  if (!data || data.error) {
-    container.innerHTML = `<div class="detail-section" style="color:#ef4444">读取 Hook 数据失败：${escapeHtml(data && (data.error || data.message) || '未知错误')}</div>`;
-    return;
-  }
-  const coverage = data.coverage || {};
-  const source = coverage.source || {};
-  const missingTypes = Array.isArray(coverage.missing_event_types) ? coverage.missing_event_types : [];
-  const undeclaredTypes = Array.isArray(coverage.supported_not_declared_event_types) ? coverage.supported_not_declared_event_types : [];
-  const missingInputs = Array.isArray(coverage.missing_inputs) ? coverage.missing_inputs : [];
-  const limitations = Array.isArray(coverage.limitations) ? coverage.limitations : [];
-  const statusText = data.status === 'not_configured' ? '未登记 observation-binding'
-    : data.status === 'empty' ? '没有匹配请求目标的 binding'
-    : data.status === 'missing_source' ? 'binding 已登记，但日志文件不存在'
-    : data.status === 'partial' ? '部分读取成功，存在不可用或不完整来源'
-    : data.status === 'ok' ? '已读取登记来源' : (data.status || '未知状态');
-  let html = `<div class="detail-section"><h4>覆盖与来源</h4><div class="hook-data-summary">状态：<b>${escapeHtml(statusText)}</b> · 绑定 ${escapeHtml(coverage.binding_count || 0)} · 通过过滤 ${escapeHtml(coverage.accepted_records || 0)} 条 · 过滤/丢弃 ${escapeHtml(coverage.filtered_records || 0)} 条 · 无法解析 ${escapeHtml(coverage.malformed_records || 0)} 条</div>`;
-  html += `<div class="hook-data-summary">已观察事件：<b>${escapeHtml((coverage.observed_event_types || []).join('、') || '未观察到')}</b></div>`;
-  html += `<div class="hook-data-summary ${missingTypes.length ? 'coverage-missing' : 'coverage-good'}">未观察到的已声明事件：<b>${escapeHtml(missingTypes.join('、') || '无')}</b></div>`;
-  html += `<div class="hook-data-summary">支持但未由 binding 声明：<b>${escapeHtml(undeclaredTypes.join('、') || '无')}</b></div>`;
-  html += `<div class="hook-data-summary">日志窗口：${source.truncated ? '已截取尾部' : '未截取'} · 未完成行 ${escapeHtml(source.partial_lines || 0)} · 文件 ${source.exists ? '存在' : '不存在'}</div>`;
-  if (missingInputs.length) html += `<div class="hook-data-summary coverage-missing">缺少输入：${escapeHtml(missingInputs.join('、'))}</div>`;
-  if (limitations.length) html += `<details style="margin-top:8px"><summary>覆盖边界</summary><ul>${limitations.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></details>`;
-  html += '</div>';
-  const records = Array.isArray(data.records) ? data.records : [];
-  if (!records.length) {
-    html += '<div class="detail-section" style="color:var(--text-muted)">当前有界日志窗口内没有通过 pid、create_time、时间戳过滤的原始记录。接口没有补造缺失事件。</div>';
-  } else {
-    html += `<div class="detail-section"><h4>原始 Hook 记录 · ${records.length} 条</h4>` + records.map((record, index) => {
-      const payload = record && record.payload !== undefined ? record.payload : record;
-      const title = (record && (record.event_type || record.timestamp_iso)) || '原始记录';
-      const meta = [record && record.timestamp_iso, record && record.instance_id, record && record.line ? '行 ' + record.line : ''].filter(Boolean).join(' · ');
-      return `<details class="hook-data-record" ${index === records.length - 1 ? 'open' : ''}><summary>${escapeHtml(title)}${meta ? ' · ' + escapeHtml(meta) : ''}</summary><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre></details>`;
-    }).join('') + '</div>';
-  }
-  container.innerHTML = html;
-}
-
-async function loadHookData() {
-  if (!hookDataTarget || !hookDataTarget.pid) return;
-  const request = ++hookDataRequest;
-  const params = new URLSearchParams({pid: String(hookDataTarget.pid), limit: '500'});
-  if (hookDataTarget.create_time !== null) params.set('create_time', String(hookDataTarget.create_time));
-  try {
-    const response = await fetch('/api/hook-data?' + params.toString());
-    const data = await response.json();
-    if (request === hookDataRequest) renderHookData(data);
-  } catch (error) {
-    if (request === hookDataRequest) renderHookData({error: String(error)});
-  }
-}
-
-function downloadHookData() {
-  if (!hookDataTarget || !hookDataTarget.pid) return;
-  const params = new URLSearchParams({pid: String(hookDataTarget.pid), limit: '2000'});
-  if (hookDataTarget.create_time !== null) params.set('create_time', String(hookDataTarget.create_time));
-  window.location.href = '/api/hook-data/download?' + params.toString();
-}
-
-function openFpDrawer() {
-  document.getElementById('drawer-overlay').classList.add('active');
-  document.getElementById('fp-drawer').classList.add('active');
-  loadFingerprints();
-}
-
-function closeAllDrawers() {
-  if (hookDataTimer) { clearInterval(hookDataTimer); hookDataTimer = null; }
-  hookDataTarget = null;
-  document.getElementById('drawer-overlay').classList.remove('active');
-  document.getElementById('fp-drawer').classList.remove('active');
-  document.getElementById('inspect-drawer').classList.remove('active');
-  document.getElementById('hook-data-drawer').classList.remove('active');
-  if (drawerReturnFocus && drawerReturnFocus.isConnected) drawerReturnFocus.focus();
-}
-
-async function loadFingerprints() {
-  const container = document.getElementById('fp-drawer-body');
-  container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">正在加载指纹库...</div>';
-  try {
-    const res = await fetch('/api/fingerprints');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || '指纹库读取失败');
-    const fps = data.fingerprints || [];
-    if (fps.length === 0) {
-      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">指纹库暂无条目</div>';
-      return;
-    }
-    container.innerHTML = fps.map(fp => {
-      const recipe = fp.hook_recipe || {};
-      const matchFeat = recipe.match_features || {};
-      return `
-        <div class="fp-item">
-          <div class="fp-header">
-            <div>
-              <span class="fp-badge">${fp.id}</span>
-              <b style="color: #fff; margin-left: 6px;">${fp.name}</b>
-            </div>
-            <span style="color: var(--text-muted); font-size: 11px;">命中: ${fp.match_count || 1} 次 · ${fp.first_seen || ''}</span>
-          </div>
-          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
-            <div><b>原生宿主:</b> <span style="color: #38bdf8; font-family: monospace;">${fp.features ? fp.features.exe : ''} (${recipe.host_platform || '未知'})</span></div>
-            <div><b>演进来源:</b> <span style="color: #fbbf24; font-family: monospace;">${matchFeat.evolves_prior_harness || '零先验初次推导'}</span></div>
-            <div><b>模型判定:</b> <span style="color: #34d399; font-family: monospace;">${recipe.model_routing ? (recipe.model_routing.model || '未暴露') : '未暴露'}</span></div>
-          </div>
-          <div class="section-label" style="margin-top: 4px; margin-bottom: 2px;">推导配方结构 (Hook Recipe)</div>
-          <div class="fp-code">${escapeHtml(JSON.stringify(recipe, null, 2))}</div>
-        </div>
-      `;
-    }).join('');
-  } catch(e) {
-    container.innerHTML = `<div style="color: #ef4444; padding: 20px;">加载失败: ${e.message}</div>`;
-  }
-}
-
-async function openInspector(pid) {
-  if (!currentAgentsData || currentAgentsData.length === 0) {
-    try {
-      const res = await fetch('/api/state');
-      const data = await res.json();
-      currentAgentsData = data.agents || [];
-    } catch(e) {}
-  }
-  const agent = currentAgentsData.find(a => a.pid === pid) || currentAgentsData[0];
-  if (!agent) return;
-  document.getElementById('inspect-title').innerText = `🔍 ${agent.name} (PID: ${agent.pid}) 全景透视`;
-  const container = document.getElementById('inspect-drawer-body');
-  
-  const adapter = agent.adapter || {};
-  const parsedCfg = adapter.parsed_config || {};
-  const net = adapter.network_surface || {};
-  const memoryCtx = adapter.memory_context || {};
-  
-  container.innerHTML = `
-    <div class="fp-item">
-      <div class="fp-header">
-        <b style="color: #38bdf8;">🏢 完整运行与宿主上下文</b>
-        <span class="pid-tag">PID: ${agent.pid}</span>
-      </div>
-      <div style="font-size: 11px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px;">
-        <div><b>原生可执行文件:</b> <span style="color: #fff; font-family: monospace;">${agent.raw_exe}</span></div>
-        <div><b>进程存活时长:</b> <span style="color: #fff;">${formatUptime(agent.uptime_sec)}</span></div>
-        <div><b>工作区路径 (CWD):</b> <span style="color: #38bdf8; font-family: monospace;">${adapter.workspace_cwd || '未知'}</span></div>
-        <div><b>宿主治理层级:</b> <span style="color: #cbd5e1;">${adapter.host_platform || '未知'}</span></div>
-        <div><b>Goose 调查身份:</b> <span style="color: #38bdf8;">${findingText(adapter.investigated_identity)}</span></div>
-      </div>
-    </div>
-
-    <div class="fp-item">
-      <div class="fp-header">
-        <b style="color: #34d399;">🧠 模型调用与通信路由</b>
-        <span class="fp-badge">${adapter.harness_id || 'unregistered'}</span>
-      </div>
-      <div class="fp-code">${assetText(adapter, 'model_routing')}</div>
-    </div>
-
-    <div class="fp-item">
-      <div class="fp-header">
-        <b style="color: #818cf8;">⚙️ 提取与脱敏配置文件 (Parsed Config)</b>
-        <span style="font-size: 10px; color: var(--green);">采集状态见下方</span>
-      </div>
-      <div class="fp-code">${assetText(adapter, 'parsed_config')}</div>
-    </div>
-
-    <div class="fp-item">
-      <div class="fp-header">
-        <b style="color: #f59e0b;">🌐 网络与通信表面 (Network Surface)</b>
-      </div>
-      <div class="fp-code">${assetText(adapter, 'network_surface')}</div>
-    </div>
-
-    <div class="fp-item">
-      <div class="fp-header">
-        <b style="color: #cbd5e1;">📋 挂载规则与提示词 (System Prompt Rules)</b>
-      </div>
-      <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
-        ${assetText(adapter, 'system_prompt_rules')}
-      </div>
-    </div>
-  `;
-  
-  document.getElementById('drawer-overlay').classList.add('active');
-  document.getElementById('inspect-drawer').classList.add('active');
-}
-
-async function updateUI() {
-  try {
-    const res = await fetch('/api/state');
-    const data = await res.json();
-    document.getElementById('last-time').innerText = data.last_scan_time || '初始化中';
-    document.getElementById('scan-count').innerText = data.scan_count;
-    const scanButton = document.getElementById('scan-button');
-    scanButton.disabled = !!data.scanning;
-    scanButton.innerText = data.scanning ? '正在扫描…' : '扫描分析';
-    const running = Object.keys(data.active_investigations || {}).length;
-    document.getElementById('scan-progress').innerText = data.scan_error ? '扫描失败：' + data.scan_error
-      : data.scanning ? '正在发现 Agent，已有结果会继续显示'
-      : running ? `正在分析 ${running} 个实例，资产和接入结果会自动更新`
-      : '扫描结果已更新；是否接入成功以各卡片的真实事件为准';
-    const intervalInput = document.getElementById('scan-interval-input');
-    if (!intervalInput.dataset.initialized) {
-      intervalInput.value = data.scan_interval || 30;
-      intervalInput.dataset.initialized = 'true';
-    }
-    document.getElementById('fp-count').innerText = data.fingerprints_count;
-    document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
-    const bindings = Object.values(data.observation_instances || {});
-    const aliveBindings = bindings.filter(x => x.target_alive === true);
-    const activeBindings = aliveBindings.filter(x => (x.health || {}).loaded_observed);
-    const observe = data.observation_adapter || {};
-    const observeHealth = observe.health ? ` · ${observe.health.status}` : '';
-    const observePid = observe.instance_pid ? ` · 绑定 PID ${observe.instance_pid}` : '';
-    document.getElementById('observe-status').innerText = bindings.length ? `已加载 ${activeBindings.length} · 待加载 ${aliveBindings.length - activeBindings.length} · 历史 ${bindings.length - aliveBindings.length}` : '尚无实例接入';
-    
-    const historyPanel = document.getElementById('observation-history');
-    if (historyPanel) historyPanel.innerHTML = bindings.filter(x => x.target_alive === false).map(x =>
-      `<div style="margin-bottom:8px">PID ${escapeHtml(x.instance_pid)} · 已退出 · 有效事件 ${escapeHtml((x.events || {}).valid || 0)} · 配对工具调用 ${(x.paired_calls || []).length}</div>`
-    ).join('') || '暂无已退出的接入实例';
-
-    currentAgentsData = data.agents || [];
-    
-    // 更新全局 KPI 指标
-    const totalAgents = currentAgentsData.length;
-    let totalInstances = 0;
-    let matchedCount = 0;
-    let totalPorts = 0;
-    let confirmedCount = 0, infraCount = 0, pendingCount = 0;
-    currentAgentsData.forEach(a => {
-      totalInstances += ((a.process_pids || a.all_pids || [a.pid]).length);
-      if (a.adapter && a.adapter.matched) matchedCount++;
-      const cls = (a.adapter && a.adapter.agent_classification) || {};
-      if (cls.status === 'confirmed_agent') confirmedCount++;
-      else if (cls.status === 'infrastructure') infraCount++;
-      else pendingCount++;
-      if (a.adapter && a.adapter.network_surface) {
-        const lp = a.adapter.network_surface.listening_ports || [];
-        const rp = a.adapter.network_surface.remote_peers || [];
-        totalPorts += (lp.length + rp.length);
-      }
-    });
-    
-    document.getElementById('kpi-agent-count').innerText = confirmedCount;
-    document.getElementById('kpi-instance-count').innerText = `${totalInstances} 关联进程`;
-    document.getElementById('kpi-instance-count').title = `确认 Agent ${confirmedCount} · 基础设施 ${infraCount} · 待确认 ${pendingCount}`;
-    const rate = totalAgents > 0 ? Math.round((matchedCount / totalAgents) * 100) : 0;
-    document.getElementById('kpi-hook-rate').innerText = `${rate}%`;
-    document.getElementById('kpi-hook-detail').innerText = `${matchedCount}/${totalAgents} 指纹匹配`;
-    const netColor = totalPorts > 0 ? 'var(--amber)' : 'var(--green)';
-    document.getElementById('kpi-net-count').style.color = netColor;
-    document.getElementById('kpi-net-count').innerText = '未知';
-    document.getElementById('kpi-net-detail').innerText = totalPorts > 0 ? `${totalPorts} 历史端点（未验证）` : '尚未采集';
-    
-    const grid = document.getElementById('agents-grid');
-    if (!data.agents || data.agents.length === 0) {
-      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 80px; background: var(--card-bg); border-radius: 12px; border: 1px dashed var(--border);">未发现存活的 Agent 进程 (阈值 >= 50)</div>';
-      return;
-    }
-    
-    const otherItems = data.agents.filter(a => (a.adapter.agent_classification || {}).status === 'infrastructure');
-    const agentItems = data.agents.filter(a => (a.adapter.agent_classification || {}).status !== 'infrastructure');
-    let html = '<div style="grid-column:1/-1;font-size:18px">Agent 与待确认候选 · ' + agentItems.length + '</div>';
-    agentItems.forEach(a => {
-      const isMatched = a.adapter && a.adapter.matched;
-      const backendInvestigating = !!(a.adapter && a.adapter.investigating);
-      const investigation = (a.adapter && a.adapter.investigation) || {};
-      if (!backendInvestigating && investigation.status && reinvestigatingPids.has(a.pid)) {
-        reinvestigatingPids.delete(a.pid);
-      }
-      const isInvestigating = backendInvestigating;
-      const observationEvidence = (a.adapter && a.adapter.observation_evidence) || {};
-      const observationText = a.adapter.learned_observation && a.adapter.learned_observation.status === 'observing'
-        ? '工具事件：前后配对已验证'
-        : observationEvidence.status === 'observed'
-        ? `观测证据: ${observationEvidence.label} · 当前=${observationEvidence.health_status || 'unknown'} · 有效事件=${observationEvidence.recent_events || 0} · 阻断=${(observationEvidence.blocking || {}).label || '未支持'}`
-        : `观测证据: ${observationEvidence.label || '未绑定观测证据'}${observationEvidence.reason ? ' · ' + observationEvidence.reason : ''}`;
-      const onboarding = (a.adapter && a.adapter.onboarding) || {};
-      const plan = onboarding.plan || {};
-      const install = onboarding.install || {};
-      const verification = onboarding.verification || {};
-      const learnedHook = (a.adapter && a.adapter.hook_state) || {};
-      const onboardingText = learnedHook.status === 'observing'
-        ? 'Hook：已安装，工具事件已验证'
-        : learnedHook.status === 'loaded'
-          ? '接入链: 生成Hook已加载，等待工具事件'
-        : learnedHook.status === 'installed_pending_activation'
-          ? '接入链: 生成方案已安装，待目标加载'
-        : verification.status === 'events_verified'
-        ? 'Hook：已加载，工具事件已验证'
-        : verification.status === 'loaded_verified'
-          ? '接入链: 插件已加载，尚无工具事件（未完成观测验证）'
-        : install.status === 'installed_pending_activation'
-          ? '接入链: 已安装，待引擎启动/重载'
-          : install.status === 'pending_authorization'
-            ? '接入链: 计划待授权'
-            : plan.status === 'investigation_required'
-              ? '接入链: 等待 Goose 调查'
-              : plan.status === 'unsupported'
-                ? '接入链: 不支持 · ' + (plan.reason || '')
-                : plan.status === 'plan_pending_authorization'
-                  ? '接入链: 计划待授权'
-                  : '接入链: ' + (plan.status || '尚未生成计划');
-      
-      const classification = (a.adapter && a.adapter.agent_classification) || {};
-      const statusHtml = '<div class="asset-view status-overview">' +
-        readableLine('调查', investigation.label || '未调度') +
-        readableLine('指纹', ({exact:'兼容命中',similar:'相似，待调查',miss:'未命中'}[a.adapter.match_status] || '未判断') + (a.adapter.fingerprint_revision ? ' · 版本 ' + a.adapter.fingerprint_revision : '')) +
-        readableLine('Hook', observationEvidence.loaded_observed && observationEvidence.target_alive === true ? (observationEvidence.health_status === 'observing' ? '已加载 · 工具事件已接通' : '已加载，等待工具活动') : a.adapter.hook_state.status === 'observing' ? '已有事件验收记录（非实时健康）' : a.adapter.hook_state.label || '未安装') +
-        (a.adapter.pipeline ? readableLine('自动流程', a.adapter.pipeline.next_phase === 'assets' ? '等待资产调查' : a.adapter.pipeline.next_phase === 'hook' ? '等待接入学习' : '接入执行结果见 Hook；候选方案不代表已接通') : '') +
-        readableDetails('status:'+a.pid,'查看状态说明',{调查:investigation.message || '',分类:classification.label,观测:observationText,接入:onboardingText}) + '</div>';
-      const partialIdentityHtml = findingText(a.adapter.investigated_identity);
-      const instanceCount = (a.instances && a.instances.length > 1) ? ` <span class="pid-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">${a.instances.length} 实例聚合</span>` : '';
-      const pidsList = `主 PID: ${a.pid} · ${(a.process_pids || a.all_pids || [a.pid]).length} 进程`;
-
-      const reasonTags = (a.reasons && a.reasons.length) 
-        ? `<div class="score-tags">${a.reasons.map(r => `<span class="score-tag">${r}</span>`).join('')}</div>`
-        : '';
-
-      const hasSemanticMsg = a.last_message && a.last_message.event_type && a.last_message.event_type !== '未监听';
-      let semanticHtml = '';
-      if (hasSemanticMsg) {
-        let msgDetail = a.last_message.detail || '暂无内容';
-        if (typeof msgDetail === 'object') msgDetail = JSON.stringify(msgDetail, null, 2);
-        semanticHtml = `
-          <div>
-            <div class="section-label">${a.last_message.source === 'live_hook' ? '本实例最新 Hook 活动' : '导入事件（不证明当前 Hook 生效）'}</div>
-            <div class="msg-box">
-              <div class="msg-header">
-                <span>事件: ${a.last_message.event_type}</span>
-                <span style="font-size: 10px; color: var(--text-muted);">${a.last_message.ts || ''}</span>
-              </div>
-              <div class="msg-content">${msgDetail}</div>
-            </div>
-          </div>
-        `;
-      } else {
-        semanticHtml = `
-          <div>
-            <div class="stream-badge">
-              <span>🛡️ 语义拦截 Sink:</span>
-              <span style="color: #64748b;">未接入／未验证</span>
-            </div>
-          </div>
-        `;
-      }
-
-      const btnText = investigation.status === 'disabled' ? investigation.message : (isInvestigating ? '调查执行中' : 'Goose 深度重测');
-      const btnDisabled = investigation.can_request ? '' : 'disabled';
-      const continuation = investigation.can_continue
-        ? `<button onclick="triggerContinue(${a.pid})" class="btn-reinvestigate" style="color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);">基于已保留证据续查</button>`
-        : '';
-      const cancelButton = isInvestigating
-        ? `<button onclick="triggerCancel(${a.pid})" class="btn-reinvestigate" style="color: #f87171; border-color: rgba(248, 113, 113, 0.4);">取消调查</button>`
-        : '';
-
-      const scoreClass = a.score >= 80 ? 'score-high' : (a.score >= 50 ? 'score-mid' : 'score-low');
-
-      const hookLabel = learnedHook.status === 'observing' ? '工具事件已接通' : learnedHook.status === 'loaded' ? '已加载，等待活动' : learnedHook.status === 'installed_pending_activation' ? '已安装，等待加载' : '尚未接通';
-      html += `<article class="overview-card">
-        <header class="overview-head"><div><div class="eyebrow">Agent / Runtime</div><h3>${escapeHtml(a.name)}</h3><div class="overview-meta">PID ${a.pid} · ${escapeHtml(formatUptime(a.uptime_sec))} · ${(a.process_pids || a.all_pids || [a.pid]).length} 个进程</div></div><span class="role-pill">${escapeHtml(classification.label || '待确认')}</span></header>
-        <div class="status-tiles">
-          ${statusTile(a,'investigation','调查',investigation.label || '待调查',{结论:investigation.message,状态:investigation.label,自动流程:a.adapter.pipeline},isInvestigating?'wait':'')}
-          ${statusTile(a,'classification','分类',classification.label || '待确认',a.adapter.investigated_identity || classification)}
-          ${statusTile(a,'observation','观测',observationEvidence.recent_events ? observationEvidence.recent_events+' 条有效事件' : '等待事件',{说明:observationText,详情:observationEvidence},observationEvidence.recent_events?'good':'')}
-          ${statusTile(a,'onboarding','接入',hookLabel,{结论:onboardingText,状态:learnedHook,安装:install,验证:verification},learnedHook.status==='observing'?'good':'wait')}
-        </div>
-        <section><div class="card-caption">资产概况 · 点击查看信息与依据</div><div class="asset-tiles">${assetTiles(a)}</div></section>
-        <footer class="card-footer"><div>${a.last_message && a.last_message.source==='live_hook' ? detailButton('latest:'+a.instance_id,'最近活动',a.last_message,escapeHtml('最近活动 · '+a.last_message.event_type+' · '+(a.last_message.ts || '')),'latest-activity') : '<span class="overview-meta">尚无当前实例的 Hook 活动</span>'}</div><div class="card-actions"><button class="detail-link" onclick="openHookData(${a.pid})">Hook实时数据 ↗</button><button class="detail-link" onclick="openInspector(${a.pid})">完整资料 ↗</button><button id="btn-reinv-${a.pid}" onclick="triggerReinvestigate(${a.pid})" class="detail-link" ${btnDisabled}>${btnText}</button>${continuation}${cancelButton}</div></footer>
-        <details id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid)?'open':''} onToggle="onActivityToggle(${a.pid},this)"><summary class="overview-meta">调查活动</summary><div id="activity-body-${a.pid}"></div></details>
-      </article>`;
-    });
-    if (otherItems.length) html += '<div style="grid-column:1/-1;font-size:18px;margin-top:18px">其他类别（非 Agent） · ' + otherItems.length + '</div>' + otherItems.map(a=>{
-      const f=a.adapter.investigated_identity || {}, v=f.value || {};
-      const roles=(v.roles || []).map(r=>({model_gateway:'模型网关',tool_service:'工具服务',host:'宿主程序',other:'其他'}[r] || r)).join('、');
-      const summary=f.display && f.display.summary || '已识别为'+(roles || '非 Agent 组件')+'，用途与判断依据见详情。';
-      return `<article class="overview-card other-card"><header class="overview-head"><div><div class="eyebrow">Other / Infrastructure</div><h3>${escapeHtml(v.name || a.name)}</h3><div class="overview-meta">PID ${a.pid} · ${escapeHtml(v.version || '版本待确认')}</div></div><span class="role-pill">${escapeHtml(roles || '非 Agent')}</span></header><p class="other-summary">${escapeHtml(summary)}</p><div class="status-tiles">${statusTile(a,'role','类别',roles || '非 Agent',f)}${statusTile(a,'profile','用途与信息','查看调查资料',f)}${statusTile(a,'scope','调查范围','查看依据',{范围:f.display && f.display.scope,证据:f.evidence_refs,未知项:f.uncertainty})}</div><footer class="card-footer"><span class="overview-meta">独立组件 · 不展示 Agent 接入字段</span>${detailButton('other:'+a.instance_id,'组件资料',f,'查看详情 ↗')}</footer><details id="activity-details-${a.pid}" ${activityOpenPids.has(a.pid)?'open':''} onToggle="onActivityToggle(${a.pid},this)"><summary class="overview-meta">调查活动</summary><div id="activity-body-${a.pid}"></div></details></article>`;
-    }).join('');
-    grid.innerHTML = html;
-    activityOpenPids.forEach(pid => {
-      const panel = document.getElementById('activity-details-' + pid);
-      if (!panel) { activityOpenPids.delete(pid); return; }
-      if (activityCache[pid]) renderActivity(pid, activityCache[pid].data);
-    });
-  } catch (err) {
-    console.error("更新失败:", err);
-  }
-}
-
-function controlDecisionLabel(value) {
-  return ({allow:'允许',deny:'拒绝',ask:'需确认'}[value] || (value === undefined || value === null || value === '' ? '接口未提供' : String(value)));
-}
-
-function renderHookRules(rules) {
-  const container = document.getElementById('hook-control-rules');
-  if (!container) return;
-  const items = Array.isArray(rules) ? rules : [];
-  container.innerHTML = items.map((rule, index) => `<div class="control-rule-row" data-rule-index="${index}" data-rule-pid="${rule && rule.pid || ''}"><input class="hook-rule-tool" value="${escapeHtml(rule && rule.tool || '')}" placeholder="精确工具名" aria-label="精确工具名"><select class="hook-rule-decision" aria-label="工具决策"><option value="allow" ${rule && rule.decision === 'allow' ? 'selected' : ''}>允许</option><option value="deny" ${rule && rule.decision === 'deny' ? 'selected' : ''}>拒绝</option><option value="ask" ${rule && rule.decision === 'ask' ? 'selected' : ''}>需确认</option></select></div>`).join('') || '<span class="asset-note">尚未添加精确规则</span>';
-}
-
-function addHookRule(tool='', decision='allow') {
-  const container = document.getElementById('hook-control-rules');
-  if (!container) return;
-  const rows = [...container.querySelectorAll('.control-rule-row')].map(row => ({tool: row.querySelector('.hook-rule-tool').value, decision: row.querySelector('.hook-rule-decision').value, ...(row.dataset.rulePid ? {pid:Number(row.dataset.rulePid)} : {})}));
-  rows.push({tool, decision});
-  renderHookRules(rows);
-  const last = container.querySelector('.control-rule-row:last-child .hook-rule-tool');
-  if (last) last.focus();
-}
-
-function renderHookControl(data) {
-  const policy = data && data.policy || {};
-  const defaultSelect = document.getElementById('hook-control-default');
-  if (defaultSelect && ['allow','deny','ask'].includes(policy.default)) defaultSelect.value = policy.default;
-  renderHookRules(policy.rules || []);
-  const pending = document.getElementById('hook-control-pending');
-  const requests = Array.isArray(data && data.pending) ? data.pending : [];
-  if (pending) pending.innerHTML = requests.length ? requests.map(item => {
-    const id = encodeURIComponent(String(item.request_id || ''));
-    return `<div class="control-pending"><div>工具：<b>${escapeHtml(item.tool || '未提供')}</b> · PID ${escapeHtml(item.pid || '未提供')} · 请求 ${escapeHtml(item.request_id || '未提供')}</div><details><summary>操作参数</summary><pre>${escapeHtml(JSON.stringify(item.input,null,2))}</pre></details><div style="margin-top:6px"><button type="button" class="detail-link" onclick="resolveHookRequest('${id}','allow')">允许</button> <button type="button" class="detail-link" onclick="resolveHookRequest('${id}','deny')">拒绝</button></div></div>`;
-  }).join('') : '<span class="asset-note">接口当前没有待审批请求</span>';
-  const events = Array.isArray(data && data.events) ? data.events.slice(-20).reverse() : [];
-  const eventBox = document.getElementById('hook-control-events');
-  if (eventBox) eventBox.innerHTML = events.length ? events.map(event => {
-    const returned = event.returned_decision || event.decision || '接口未提供';
-    const actual = event.enforced_decision || event.actual_decision || event.outcome || (event.enforcement_verified === true ? '接口标记已验证' : '未提供（不能推断）');
-    return `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--card-border)">${escapeHtml(event.event || 'control event')} · 工具 ${escapeHtml(event.tool || '未提供')} · 返回决策 ${escapeHtml(controlDecisionLabel(returned))} · Hook 回执 ${escapeHtml(controlDecisionLabel(actual))}</div>`;
-  }).join('') : '<span class="asset-note">接口当前没有控制事件</span>';
-}
-
-async function loadHookControl() {
-  const status = document.getElementById('hook-control-status');
-  try {
-    const response = await fetch('/api/hook-control/status');
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || '控制面读取失败');
-    renderHookControl(data);
-    if (status) status.innerText = (data.verifications || []).filter(x=>x.current).map(x=>'PID '+x.target.pid+' 实测通过：'+x.checks.map(k=>({allow_effect:'放行生效',deny_effect:'拒绝无副作用',confirmation_reject:'确认后拒绝',timeout_deny:'确认超时拒绝',restart_reuse:'重启复用'}[k] || k)).join('、')).join('；') || '已读取控制面状态；返回决策不等于实际执行已验证';
-  } catch (error) {
-    if (status) status.innerText = '控制面不可用：' + error.message;
-  }
-}
-
-async function saveHookPolicy(event) {
-  event.preventDefault();
-  const status = document.getElementById('hook-control-status');
-  const rules = [...document.querySelectorAll('#hook-control-rules .control-rule-row')].map(row => ({tool: row.querySelector('.hook-rule-tool').value.trim(), decision: row.querySelector('.hook-rule-decision').value, ...(row.dataset.rulePid ? {pid:Number(row.dataset.rulePid)} : {})})).filter(item => item.tool);
-  try {
-    const response = await fetch('/api/hook-control/policy', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({default:document.getElementById('hook-control-default').value, rules})});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || '控制策略保存失败');
-    renderHookControl({policy:data});
-    if (status) status.innerText = '控制策略已保存；实际 Hook 是否执行仍需事件验证';
-  } catch (error) { if (status) status.innerText = error.message; }
-}
-
-async function resolveHookRequest(encodedRequestId, decision) {
-  const status = document.getElementById('hook-control-status');
-  try {
-    const response = await fetch('/api/hook-control/resolve', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({request_id:decodeURIComponent(encodedRequestId), decision})});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || '审批处理失败');
-    if (status) status.innerText = '审批决定已返回，实际执行仍需 Hook 回执与事件证据';
-    await loadHookControl();
-  } catch (error) { if (status) status.innerText = error.message; }
-}
-
-let modelTestTimer = null;
-async function loadModelSettings(poll=false) {
-  const status = document.getElementById('model-test-status');
-  try {
-    const response = await fetch('/api/model-settings');
-    if (!response.ok) throw new Error('无法读取模型配置');
-    const data = await response.json();
-    if (!poll) {
-      document.getElementById('model-base').value = data.config.base_url || '';
-      document.getElementById('model-name').value = data.config.model || '';
-      document.getElementById('model-key-state').innerText = data.config.has_key ? '已配置密钥（不回显）' : '尚未配置密钥';
-    }
-    const testing = data.test.status === 'testing';
-    document.getElementById('model-test-button').disabled = testing;
-    status.innerText = (data.test.message || '修改后点击“验证并保存”') + (data.test.reply ? ' · Goose 实际回复：' + data.test.reply : '');
-    if (modelTestTimer) clearTimeout(modelTestTimer);
-    if (testing) modelTestTimer = setTimeout(()=>loadModelSettings(true),2000);
-  } catch (error) { status.innerText = error.message; }
-}
-async function testModelSettings(event) {
-  event.preventDefault();
-  const button = document.getElementById('model-test-button');
-  button.disabled = true;
-  const status = document.getElementById('model-test-status');
-  status.innerText = '正在提交验证…';
-  try {
-    const response = await fetch('/api/model-settings', {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({base_url:document.getElementById('model-base').value,
-        model:document.getElementById('model-name').value,api_key:document.getElementById('model-key').value})});
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || '验证启动失败');
-    document.getElementById('model-key').value = '';
-    await loadModelSettings(true);
-  } catch(error) { status.innerText = error.message; button.disabled = false; }
-}
-
-async function saveScanInterval(event) {
-  event.preventDefault();
-  const input = document.getElementById('scan-interval-input');
-  const status = document.getElementById('scan-interval');
-  const value = Number(input.value);
-  if (!Number.isInteger(value) || value < 1 || value > 86400) {
-    status.innerText = '请输入 1～86400 的整数';
-    return;
-  }
-  status.innerText = '正在保存…';
-  try {
-    const response = await fetch('/api/scan-interval', {method:'POST',
-      headers:{'Content-Type':'application/json'}, body:JSON.stringify({scan_interval:value})});
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || '保存失败');
-    status.innerText = `已保存：${result.scan_interval} 秒`;
-  } catch (error) { status.innerText = error.message; }
-}
-
-async function triggerScan() {
-  const btn = document.getElementById('scan-button');
-  btn.disabled = true;
-  btn.innerText = '正在扫描…';
-  try {
-    const response = await fetch('/api/scan', { method: 'POST' });
-    if (!response.ok) throw new Error('服务未接受扫描请求');
-    document.getElementById('scan-progress').innerText = '已开始扫描分析，结果会自动出现';
-  } catch (err) {
-    document.getElementById('scan-progress').innerText = '扫描未启动：' + err.message;
-    btn.disabled = false;
-    btn.innerText = '扫描分析';
-  }
-}
-
-async function triggerReinvestigate(pid) {
-  const btn = document.getElementById('btn-reinv-' + pid);
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = '⚡ 正在重推导...';
-  }
-  reinvestigatingPids.add(pid);
-  try {
-    const response = await fetch('/api/reinvestigate?pid=' + pid, { method: 'POST' });
-    if (!response.ok) reinvestigatingPids.delete(pid);
-  } catch(e) {}
-  await updateUI();
-}
-
-async function triggerContinue(pid) {
-  reinvestigatingPids.add(pid);
-  try {
-    await fetch('/api/reinvestigate/continue?pid=' + pid, { method: 'POST' });
-  } catch(e) {}
-  await updateUI();
-}
-
-async function triggerCancel(pid) {
-  try {
-    await fetch('/api/reinvestigate/cancel?pid=' + pid, { method: 'POST' });
-  } catch(e) {}
-  await updateUI();
-}
-
-function handleHashRouting() {
-  const hash = window.location.hash;
-  if (hash === '#fp') {
-    openFpDrawer();
-  } else if (hash.startsWith('#inspect:')) {
-    const targetPid = parseInt(hash.split(':')[1]);
-    if (targetPid) openInspector(targetPid);
-  }
-}
-
-window.addEventListener('keydown', e=>{if(e.key==='Escape') closeAllDrawers();});
-window.addEventListener('hashchange', handleHashRouting);
-setInterval(updateUI, 5000);
-updateUI().then(handleHashRouting);
-setInterval(() => { activityOpenPids.forEach(pid => loadActivity(pid)); }, 5000);
-</script>
-</body>
-</html>
-"""
+def _enriched_snapshot():
+    """The same view /api/state serves, reused by the single-instance endpoints."""
+    with STATE_LOCK:
+        snapshot = deepcopy(SCAN_STATE)
+    with INVESTIGATION_LOCK:
+        for agent in snapshot['agents']:
+            adapter = agent['adapter']
+            inst = agent.get('instance_id') or f"{agent['pid']}:{adapter.get('create_time')}"
+            adapter['investigation'] = presentation(AUTONOMOUS_ANALYSIS_ENABLED,
+                inst in INVESTIGATING_INSTANCES, INVESTIGATION_RESULTS.get(inst))['investigation']
+            adapter['investigating'] = adapter['investigation']['status'] == 'running'
+            queued = INVESTIGATION_QUEUED.get(inst)
+            if queued is not None and adapter['investigation'].get('status') not in ('running',):
+                position = None
+                for index, task in enumerate(INVESTIGATION_QUEUE):
+                    if task.get("instance_id") == inst:
+                        position = index + 1
+                        break
+                adapter['investigation'] = {
+                    'status': 'queued', 'label': '排队中',
+                    'message': '已加入调查队列' + (f'，第 {position} 位' if position else ''),
+                    'source': 'investigation_scheduler', 'can_request': False,
+                    'enqueued_at': queued.get('enqueued_at'), 'queue_position': position,
+                }
+                adapter['investigating'] = False
+    # Investigation completion and asset refresh must not wait for process scans.
+    from runtime import local_assets
+    for agent in snapshot['agents']:
+        adapter = agent['adapter']
+        iid = agent.get('instance_id', '')
+        try:
+            created = float(iid.split(':', 1)[1])
+        except (ValueError, IndexError):
+            continue
+        result = adapter.get('investigation') or {}
+        directory = result.get('log_dir')
+        partial = _load_partial_findings(Path(directory), {'pid': agent['pid'], 'create_time': created}) if directory else None
+        if partial and partial.get('findings'):
+            identity = partial['findings'].get('identity')
+            adapter.update(partial_findings=partial, investigated_identity=identity,
+                           agent_classification=_agent_classification(identity))
+            adapter.setdefault('assets', {}).update(_partial_asset_collections(partial))
+        local = local_assets.current(agent['pid'], created, ((adapter.get('onboarding') or {}).get('plan') or {}).get('workspace'))
+        adapter['asset_refresh'] = {k: v for k, v in local.items() if k != 'assets'}
+        for field, value in local.get('assets', {}).items():
+            if value.get('status') == 'collected':
+                adapter.setdefault('assets', {})[field] = value
+    refresh_hook_observations(snapshot)
+    trust, serving = _native_trust_view(), _serving_view()
+    attach_capability(snapshot, trust=trust, serving=serving)
+    from runtime import hook_approval
+    hook_approval.attach(snapshot)
+    snapshot['native_trust'] = trust
+    snapshot['hook_runtime'] = serving
+    return snapshot
 
 
 def refresh_hook_observations(snapshot):
     """Refresh events independently of the user's process discovery interval."""
-    observations = _observation_registry().snapshots()
+    current_instance_ids = {
+        agent.get('instance_id') for agent in snapshot.get('agents', [])
+        if agent.get('instance_id')
+    }
+    observations = _observation_registry().snapshots(current_instance_ids)
     snapshot['observation_instances'] = observations
     for agent in snapshot.get('agents', []):
         iid=agent.get('instance_id'); obs=observations.get(iid)
@@ -3313,6 +2275,13 @@ def refresh_hook_observations(snapshot):
 
 
 class MonitorHandler(BaseHTTPRequestHandler):
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            # Browsers cancel stale polling requests during reload/navigation.
+            # That is normal client behaviour and must not flood service logs.
+            return
     def _serve_hook_data(self, parsed: urllib.parse.SplitResult, *, download: bool = False) -> None:
         """Serve the bounded raw Hook view or its JSON download."""
         query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
@@ -3387,35 +2356,68 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(HTML_PAGE.encode("utf-8"))
         elif self.path == "/api/state":
-            with STATE_LOCK:
-                snapshot = deepcopy(SCAN_STATE)
-            with INVESTIGATION_LOCK:
-                for agent in snapshot['agents']:
-                    adapter = agent['adapter']
-                    inst = agent.get('instance_id') or f"{agent['pid']}:{adapter.get('create_time')}"
-                    adapter['investigation'] = presentation(AUTONOMOUS_ANALYSIS_ENABLED,
-                        inst in INVESTIGATING_INSTANCES, INVESTIGATION_RESULTS.get(inst))['investigation']
-                    adapter['investigating'] = adapter['investigation']['status'] == 'running'
-                    queued = INVESTIGATION_QUEUED.get(inst)
-                    if queued is not None and adapter['investigation'].get('status') not in ('running',):
-                        position = None
-                        for index, task in enumerate(INVESTIGATION_QUEUE):
-                            if task.get("instance_id") == inst:
-                                position = index + 1
-                                break
-                        adapter['investigation'] = {
-                            'status': 'queued', 'label': '排队中',
-                            'message': '已加入调查队列' + (f'，第 {position} 位' if position else ''),
-                            'source': 'investigation_scheduler', 'can_request': False,
-                            'enqueued_at': queued.get('enqueued_at'), 'queue_position': position,
-                        }
-                        adapter['investigating'] = False
-            refresh_hook_observations(snapshot)
-            data = json.dumps(snapshot, ensure_ascii=False)
+            data = json.dumps(_enriched_snapshot(), ensure_ascii=False)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(data.encode("utf-8"))
+        elif self.path == "/api/native-trust":
+            payload = _native_trust_view()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif urllib.parse.urlparse(self.path).path == "/api/capability":
+            from runtime import hook_data as _hook_data
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                pid = int(query.get("pid", [""])[0])
+            except ValueError:
+                pid = None
+            snapshot = _enriched_snapshot()
+            agent = next((a for a in snapshot.get('agents', []) if a.get('pid') == pid), None)
+            io_map = {}
+            if agent is not None:
+                instance_id = agent.get('instance_id')
+                target = (agent.get('adapter') or {}).get('capability', {}).get('target') or {}
+                raw = _hook_data.snapshot(run_dir=os.environ.get('ASG_RUN_DIR'),
+                                          pid=pid, create_time=target.get('create_time'),
+                                          limit=200, max_bytes=2 * 1024 * 1024)
+                io_map[instance_id] = (raw.get('coverage') or {}).get('io_acceptance')
+                attach_capability(snapshot, io_by_instance=io_map)
+                agent = next((a for a in snapshot.get('agents', []) if a.get('pid') == pid), None)
+            if agent is None:
+                code, payload = 404, {"error": "target_not_in_scan"}
+            else:
+                code = 200
+                payload = {"pid": pid, "instance_id": agent.get('instance_id'),
+                           "capability": (agent.get('adapter') or {}).get('capability'),
+                           "native_trust": snapshot.get('native_trust'),
+                           "hook_runtime": snapshot.get('hook_runtime')}
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif urllib.parse.urlparse(self.path).path == "/api/recipe-bundle/export":
+            from runtime import recipe_bundle as _bundles
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            fingerprint_id = (query.get("fingerprint_id", [""])[0] or "").strip()
+            try:
+                bundle = _bundles.export_bundle(fingerprint_id, note=query.get("note", [None])[0])
+                code = 200
+            except LookupError as exc:
+                code, bundle = 404, {"error": str(exc)}
+            except (ValueError, OSError) as exc:
+                code, bundle = 400, {"error": str(exc)}
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Disposition",
+                             "attachment; filename=recipe-bundle-%s.json" % (fingerprint_id or "bundle"))
+            self.end_headers()
+            self.wfile.write(json.dumps(bundle, ensure_ascii=False, indent=2).encode("utf-8"))
         elif self.path == "/api/fingerprints":
             try:
                 payload = {"fingerprints": matcher.load().get("fingerprints", [])}
@@ -3450,7 +2452,44 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        from runtime.otlp_ingest import handle as handle_otlp
+        if handle_otlp(self): return
         if _handle_hook_control_request(self):
+            return
+        if self.path == '/api/native-trust/refresh':
+            from runtime import native_trust
+            started = native_trust.refresh_async()
+            payload = {'started': started, 'report': native_trust.current()}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+            return
+        if self.path == '/api/recipe-bundle/import':
+            from runtime import recipe_bundle as _bundles
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                body = json.loads(self.rfile.read(length) or b'{}')
+                if not isinstance(body, dict):
+                    raise ValueError('object required')
+                bundle = body.get('bundle')
+                observed = body.get('observed_build')
+                if observed is None and body.get('exe'):
+                    from runtime import compatibility as _build
+                    observed = _build.observe(str(body['exe']),
+                                              [str(body['exe'])] + [str(a) for a in (body.get('argv') or [])],
+                                              str(body.get('cwd') or os.getcwd()))
+                payload = _bundles.import_bundle(bundle, observed_build=observed,
+                                                 workspace=body.get('workspace'))
+                code = 200
+            except (ValueError, TypeError, OSError) as exc:
+                code, payload = 400, {'error': str(exc)}
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
             return
         if self.path == '/api/model-settings':
             from runtime.model_settings import start

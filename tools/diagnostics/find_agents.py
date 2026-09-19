@@ -1,13 +1,13 @@
 """现场盘点: 用 sensor 同款画像规则给本机当前全量进程打分, 只读不写.
 
-用法: python find_agents.py
+用法: python tools/diagnostics/find_agents.py
 输出: 按分数排序的疑似 agent 清单 (pid/进程名/分数/命中原因/命令行摘要).
 不写 events.jsonl, 不做任何处置, 纯只读盘点.
 """
 import sys
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))
 
 import psutil

@@ -3,10 +3,13 @@ import json
 import os
 import tempfile
 import uuid
+import plistlib
+import psutil
+from unittest.mock import Mock
 from pathlib import Path
 
 from asg_os_sensor import Sensor, load_policies
-from runtime.identity import identify, load_catalog, ownership, metadata_identity, structural_score
+from runtime.identity import identify, load_catalog, ownership, metadata_identity, structural_score, desktop_discovery_candidate, runtime_discovery_candidate
 
 
 class Process:
@@ -21,6 +24,75 @@ class Process:
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_profile_combines_independent_signals_and_excludes_argument_values(self):
+        p = Mock()
+        p.open_files.return_value = [Mock(path='/workspace/AGENTS.md'), Mock(path='/workspace/mcp.json')]
+        p.children.return_value = []
+        result = runtime_discovery_candidate({'cmdline': ['unknown', '--model', 'private-model', '--approval-mode', 'ask']}, p)
+        sources = {s['source'] for s in result['signals']}
+        self.assertEqual(sources, {'model-options', 'tool-control-options', 'opened-agent-instructions', 'opened-mcp-configuration'})
+        self.assertNotIn('private-model', json.dumps(result))
+        self.assertEqual(result['collection']['open_files']['status'], 'collected')
+        p.open_files.side_effect = psutil.AccessDenied(1)
+        result = runtime_discovery_candidate({'cmdline': ['unknown', '--task', 'private task']}, p)
+        self.assertEqual(result['collection']['open_files']['status'], 'unavailable')
+        self.assertEqual(result['signals'][0]['source'], 'task-options')
+
+    def test_mcp_child_is_investigation_lead_but_browser_worker_is_not(self):
+        p, child = Mock(), Mock()
+        p.open_files.return_value = []
+        p.children.return_value = [child]
+        child.pid = 12
+        child.name.return_value = 'node'
+        child.cmdline.return_value = ['node', '/packages/@modelcontextprotocol/server-filesystem/index.js']
+        self.assertEqual(runtime_discovery_candidate({}, p)['source'], 'mcp-child')
+        child.cmdline.return_value = ['browser', '--type=renderer']
+        self.assertEqual(runtime_discovery_candidate({}, p), {})
+        # Mentioning an agent in a task body never creates a signal.
+        self.assertEqual(runtime_discovery_candidate({'cmdline': ['echo', 'agent --model x']}, p), {})
+
+    def test_unknown_package_web_entry_enters_discovery_without_model_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entry = root / 'launch.js'
+            entry.touch()
+            (root / 'package.json').write_text(json.dumps({'name': uuid.uuid4().hex,
+                'bin': {'arbitrary': 'launch.js'}}))
+            p = Process('node', ['node', str(entry), 'web'])
+            self.assertEqual(Sensor(load_policies()).agent_score(p)[0], 0)
+            self.assertEqual(runtime_discovery_candidate(p.info, p), {})
+            observed = Mock()
+            observed.open_files.return_value = [Mock(path=str(root / 'SKILL.md'))]
+            observed.children.return_value = []
+            self.assertEqual(runtime_discovery_candidate(p.info, observed)['source'], 'package-bin-mapping')
+
+    def test_standard_asset_is_candidate_evidence_without_brand_or_package(self):
+        process = Mock()
+        process.open_files.return_value = [Mock(path='/example/arbitrary/SKILL.md')]
+        self.assertEqual(runtime_discovery_candidate({}, process)['source'], 'opened-standard-asset')
+        process.open_files.return_value = [Mock(path='/example/readme.md')]
+        self.assertEqual(runtime_discovery_candidate({}, process), {})
+
+    def test_opaque_desktop_main_is_discoverable_without_agent_score(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / (uuid.uuid4().hex + '.app')
+            exe = bundle / 'Contents' / 'MacOS' / 'opaque'
+            exe.parent.mkdir(parents=True)
+            exe.touch()
+            manifest = bundle / 'Contents' / 'Info.plist'
+            manifest.write_bytes(plistlib.dumps({'CFBundleExecutable': 'opaque', 'CFBundleName': 'Arbitrary'}))
+            p = Process('opaque', [str(exe)])
+            p.info['exe'] = str(exe)
+            self.assertEqual(Sensor(load_policies()).agent_score(p)[0], 0)
+            self.assertTrue(desktop_discovery_candidate(p.info))
+            self.assertEqual(runtime_discovery_candidate(p.info, p), {})
+            helper = bundle / 'Contents' / 'Frameworks' / 'worker'
+            helper.parent.mkdir()
+            helper.touch()
+            self.assertFalse(desktop_discovery_candidate({'exe': str(helper)}))
+            manifest.write_bytes(plistlib.dumps({'CFBundleExecutable': 'opaque', 'LSBackgroundOnly': True}))
+            self.assertFalse(desktop_discovery_candidate(p.info))
+
     def test_unseen_package_without_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
             name = 'runtime-' + uuid.uuid4().hex

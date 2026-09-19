@@ -24,62 +24,16 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
-try:  # POSIX
-    import fcntl  # type: ignore
-
-    _POSIX = True
-except ImportError:  # pragma: no cover
-    _POSIX = False
-
-try:  # Windows
-    import msvcrt  # type: ignore
-
-    _WINDOWS = not _POSIX
-except ImportError:  # pragma: no cover
-    _WINDOWS = False
+from runtime.file_lock import _FileLock, _THREAD_LOCK  # 单写者锁独立于匹配器
 
 _DEFAULT_DB = Path(__file__).resolve().parent / "fingerprints.json"
 _NOCHANGE = object()  # mutator 未修改库的哨兵: 命中时不落盘
-_THREAD_LOCK = threading.Lock()
-
-
 def db_path() -> Path:
     """指纹库路径; ASG_FINGERPRINT_DB 非空时用于隔离(测试/并存观察)。"""
     override = os.environ.get("ASG_FINGERPRINT_DB", "").strip()
     if override:
         return Path(override)
     return _DEFAULT_DB
-
-
-class _FileLock:
-    """跨进程单写者锁: 锁文件 + fcntl/msvcrt 排他锁。
-
-    与进程内 _THREAD_LOCK 叠加: 线程锁防同进程竞争, 文件锁防跨进程竞争。
-    锁文件残留无害(下次进入正常加锁), 不做删除避免解锁竞态。
-    """
-
-    def __init__(self, path: Path) -> None:
-        self._lock_path = Path(str(path) + ".lock")
-
-    def __enter__(self) -> "_FileLock":
-        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = open(self._lock_path, "a+b")
-        if _POSIX:
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
-        elif _WINDOWS:
-            self._fh.seek(0)
-            msvcrt.locking(self._fh.fileno(), msvcrt.LK_LOCK, 1)
-        return self
-
-    def __exit__(self, *exc) -> None:
-        try:
-            if _POSIX:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
-            elif _WINDOWS:
-                self._fh.seek(0)
-                msvcrt.locking(self._fh.fileno(), msvcrt.LK_UNLCK, 1)
-        finally:
-            self._fh.close()
 
 
 def load() -> dict:
@@ -262,16 +216,45 @@ def classify(struct: dict) -> dict:
         'not covered: config file contents, dependency versions, MCP/plugin/marketplace sets, model routing, network behavior',
         'exact reuse only provides a recipe for investigation; hook install and effectiveness remain unverified',
     ]
+
+    def packaged_native_launch_equivalent(prior: dict | None) -> bool:
+        """Ignore only inherited cwd drift for an unchanged packaged desktop app.
+
+        ``compatibility.launch`` intentionally includes cwd.  Electron app-server
+        children inherit the launcher's cwd even though their executable, app
+        bundle, entry and argv shape are unchanged.  Requiring that incidental
+        cwd to match prevented a normal desktop restart from reusing its already
+        verified recipe.  This narrow fallback requires both bundle digests and
+        every other compatibility field to be identical; unbundled native tools
+        and interpreter runtimes remain fail-closed.
+        """
+        if not isinstance(compatible, dict) or not isinstance(prior, dict):
+            return False
+        if compatible.get('runtime') != 'native' or compatible.get('entry') != 'native':
+            return False
+        entry_path = str(compatible.get('entry_path') or '')
+        if '.app/' not in entry_path:
+            return False
+        required = ('Contents/Info.plist', 'Contents/Resources/app.asar')
+        if not all(compatible.get(key) and compatible.get(key) == prior.get(key) for key in required):
+            return False
+        left = {key: value for key, value in compatible.items() if key != 'launch'}
+        right = {key: value for key, value in prior.items() if key != 'launch'}
+        return left == right and ef == f
     for position, entry in enumerate(load().get('fingerprints', [])):
         ef = entry.get('features', {})
         same_runtime = f['exe'] and ef.get('exe') == f['exe'] and ef.get('runtime') == f['runtime']
         if same_runtime and compatible and entry.get('investigation_verified') is True:
             for revision in reversed(entry.get('revisions', [])):
-                if revision.get('compatibility') == compatible:
+                same_compatibility = revision.get('compatibility') == compatible
+                cwd_only_drift = packaged_native_launch_equivalent(revision.get('compatibility'))
+                if same_compatibility or cwd_only_drift:
                     rank = (revision.get('validated_at_ns', 0), position, revision.get('revision', 0))
                     candidate = {'status': 'exact', 'entry': deepcopy(dict(entry, hook_recipe=revision['recipe'], revision=revision['revision'])),
                             'bounds': EXACT_BOUNDS,
-                            'reason': 'Observed build and launch constraints unchanged; Hook still unverified',
+                            'reason': ('Packaged app build and argv structure unchanged; inherited cwd drift ignored; Hook still unverified'
+                                       if cwd_only_drift and not same_compatibility else
+                                       'Observed build and launch constraints unchanged; Hook still unverified'),
                             'match_ms': int((time.monotonic()-start)*1000)}
                     if exact_rank is None or rank > exact_rank:
                         exact, exact_rank = candidate, rank

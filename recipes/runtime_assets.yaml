@@ -28,6 +28,10 @@ prompt: |
   PHASE 1 — establish the evidence map.
   First call get_target_context and inspect_entry_surface. Read their returned fields and follow
   the actual original/resolved entry, process-derived config roots, open-file and package metadata.
+  Begin directory searches with priority_roots (Top 5 evidence-ranked leads). These are not access
+  frequency rankings. If assets remain missing, continue through related_roots; Top 5 is not a
+  completeness limit. Use read_evidence /related_roots with pagination when the response is truncated.
+  Check open_file_collection: unavailable or truncated collection cannot prove absence of assets.
   These are facts/possible leads, not program-selected answers. Do not infer an Agent from its
   name or a model SDK. Distinguish task/tool orchestration from forwarding requests. If available
   evidence cannot determine the functional role, report roles=["unknown"] with the missing proof.

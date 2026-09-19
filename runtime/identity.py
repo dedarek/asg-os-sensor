@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import yaml
+import psutil
 
 
 def load_catalog():
@@ -114,6 +115,105 @@ def metadata_identity(info):
             except (OSError, ValueError, plistlib.InvalidFileException):
                 pass
     return {}
+
+
+def runtime_discovery_candidate(info, process):
+    """Independent evidence families admit investigation, never assert a role."""
+    signals = []
+    collection = {}
+
+    def add(kind, evidence, reason):
+        if not any(s['source'] == kind for s in signals):
+            signals.append({'source': kind, 'evidence': evidence, 'reason': reason})
+
+    metadata = metadata_identity(info)
+    if metadata.get('ownership') == 'bin-mapping':
+        add('package-bin-mapping', metadata['evidence'], '入口与安装包 bin 声明一致')
+    if metadata.get('model_sdk'):
+        add('declared-model-sdk', metadata['evidence'], '入口包声明模型 SDK')
+    argv = info.get('cmdline') or []
+    flags = {arg.split('=', 1)[0] for arg in argv[1:] if isinstance(arg, str) and arg.startswith('--')}
+    families = {
+        'model-options': ({'--model', '--model-provider', '--provider', '--api-base', '--base-url'}, '模型或服务配置参数'),
+        'task-options': ({'--prompt', '--system-prompt', '--task', '--instructions'}, '任务或指令参数'),
+        'tool-control-options': ({'--allowed-tools', '--disallowed-tools', '--permission-mode', '--approval-mode', '--max-turns', '--mcp-config'}, '工具、MCP 或执行治理参数'),
+    }
+    for kind, (names, label) in families.items():
+        matched = sorted(flags & names)
+        if matched:
+            add(kind, matched, label)
+    try:
+        opened_files = process.open_files()
+        collection['open_files'] = {'status': 'collected', 'truncated': len(opened_files) > 80}
+        for opened in opened_files[:80]:
+            path = Path(opened.path)
+            if path.name == 'SKILL.md':
+                add('opened-standard-asset', str(path), '实际打开标准 Skill 文档')
+            elif path.name in {'AGENTS.md', 'AGENTS.override.md'}:
+                add('opened-agent-instructions', str(path), '实际打开 Agent 指令文档')
+            elif path.name in {'.mcp.json', 'mcp.json', 'mcp_config.json'}:
+                add('opened-mcp-configuration', str(path), '实际打开 MCP 配置候选文件')
+    except (OSError, AttributeError, TypeError, psutil.Error) as exc:
+        collection['open_files'] = {'status': 'unavailable', 'reason': type(exc).__name__}
+    try:
+        children = process.children(recursive=False)
+        collection['children'] = {'status': 'collected', 'truncated': len(children) > 40}
+        for child in children[:40]:
+            try:
+                args = child.cmdline()
+                # Protocol/launcher structure only; never inspect prompt values.
+                entries = entrypoints({'cmdline': args, 'name': child.name()})
+                if any('mcp-server' in Path(e).name or '@modelcontextprotocol/' in e for e in entries):
+                    add('mcp-child', {'pid': child.pid}, '派生 MCP 工具服务进程')
+            except (OSError, psutil.Error):
+                continue
+    except (OSError, AttributeError, TypeError, psutil.Error) as exc:
+        collection['children'] = {'status': 'unavailable', 'reason': type(exc).__name__}
+    desktop = desktop_discovery_candidate(info)
+    if desktop:
+        add(desktop['source'], desktop['evidence'], '桌面主程序归属已核实')
+    # Ownership is locating evidence, never Agent capability evidence. A plain
+    # desktop app or any npm CLI must not enter automatic investigation alone.
+    capability_signals = [s for s in signals if s['source'] not in
+                          {'package-bin-mapping', 'desktop-main-executable'}]
+    if not capability_signals:
+        return {}
+    return {**signals[0], 'signals': signals, 'collection': collection,
+            'reason': '；'.join(s['reason'] for s in signals) + '；待调查角色（非 Agent 确认）'}
+
+
+def desktop_discovery_candidate(info):
+    """Admit a verified non-system desktop main executable for role investigation.
+
+    No AI identity or behavioral score is inferred from bundle ownership.
+    Helpers and background services are not independent desktop candidates.
+    """
+    try:
+        executable = Path(info.get('exe') or '').resolve()
+        if not executable.is_absolute() or str(executable).startswith('/System/'):
+            return {}
+        # Framework-hosted interpreter executables are runtime containers, not
+        # independently launched desktop applications (e.g. Python.framework).
+        if any(parent.suffix == '.framework' for parent in executable.parents):
+            return {}
+        bundle = next((p for p in reversed(executable.parents) if p.suffix == '.app'), None)
+        if bundle is None:
+            return {}
+        manifest = bundle / 'Contents' / 'Info.plist'
+        if manifest.stat().st_size > 262144:
+            return {}
+        data = plistlib.loads(manifest.read_bytes())
+        entry = data.get('CFBundleExecutable')
+        if not isinstance(entry, str) or Path(entry).name != entry:
+            return {}
+        if data.get('LSBackgroundOnly') or data.get('LSUIElement'):
+            return {}
+        if executable != (bundle / 'Contents' / 'MacOS' / entry).resolve():
+            return {}
+        return {'source': 'desktop-main-executable', 'evidence': str(manifest),
+                'reason': '桌面主程序归属已核实；行为证据不足，待调查角色（非 Agent 确认）'}
+    except (OSError, ValueError, TypeError, plistlib.InvalidFileException):
+        return {}
 
 
 def structural_score(info, children, metadata):

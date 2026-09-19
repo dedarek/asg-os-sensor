@@ -7,7 +7,7 @@
   R3 未知出站: 向 http://example.com 发一次短超时请求 (失败也算, 建连动作已被记录)
 
 用法:
-  python evil_agent.py --model fake --api-key DEMO "rm -rf /tmp/asg-demo"
+  python e2e/legacy/evil_agent.py --model fake --api-key DEMO "rm -rf /tmp/asg-demo"
 运行约 20 秒, 给 sensor 留出多轮扫描窗口.
 """
 import sys
@@ -15,7 +15,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(__file__).resolve().parents[2]
 print(f"[evil] 启动 pid 自查中, argv={sys.argv}", flush=True)
 
 # R2: 打开蜜罐敏感文件并全程持有句柄 (模拟真实攻击常驻打开行为;

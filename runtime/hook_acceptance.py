@@ -8,6 +8,9 @@ import psutil
 from runtime.learned_install import _atomic
 
 def digest(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def verified_checks(value):
+    if isinstance(value, dict): return {k for k, v in value.items() if v is True}
+    return {v for v in (value or []) if isinstance(v, str)}
 def root():return Path(os.environ.get('ASG_RUN_DIR','artifacts/stage1/dashboard')).resolve()
 def record(target, report_path, hook_files, checks):
     if abs(psutil.Process(target['pid']).create_time()-target['create_time'])>=.001:raise ValueError('target changed')
@@ -15,7 +18,7 @@ def record(target, report_path, hook_files, checks):
            'files':[{'path':str(Path(p).resolve()),'sha256':digest(p)} for p in hook_files],
            'checks':checks,'recorded_at':time.time(),'scope':'独立验收脚本的实际操作测试，仅限该实例与该 Hook 版本'}
     if not value['files']:raise ValueError('installed Hook files required')
-    if not {'allow_effect','deny_effect'}.issubset(set(checks)):raise ValueError('independent allow and deny effect checks required')
+    if not {'allow_effect','deny_effect'}.issubset(verified_checks(checks)):raise ValueError('independent allow and deny effect checks required')
     (root()/'hook-acceptance').mkdir(parents=True,exist_ok=True)
     _atomic(root()/'hook-acceptance'/f"{target['pid']}:{target['create_time']}.json",json.dumps(value,ensure_ascii=False).encode())
     return value

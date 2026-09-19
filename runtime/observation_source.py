@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from runtime import event_vocabulary
+
 try:
     import psutil
 except ImportError:  # pragma: no cover - psutil is a runtime dependency
@@ -326,7 +328,8 @@ def _apply_line(line: str, state: dict[str, Any], config: dict[str, Any]) -> Non
     if event.get(fields["pid"]) != config["target"]["pid"]:
         state["invalid"] += 1
         return
-    canonical = canonical_for.get(event.get(fields["event"]))
+    raw_event = event.get(fields["event"])
+    canonical = canonical_for.get(raw_event) or event_vocabulary.canonical(raw_event)
     if canonical is None:
         # Unrelated hook output for the same instance: not an observation event.
         state["ignored"] += 1

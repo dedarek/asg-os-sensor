@@ -6,15 +6,91 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import psutil
 
-from runtime.analyst_evidence import entry_surface, find_related_files, metadata_candidates, read_related_file
+from runtime.analyst_evidence import entry_surface, find_related_files, metadata_candidates, read_related_file, rank_related_roots
 from runtime.analyst_tools import _validate_investigation_summary
 
 
 class AnalystEvidenceTests(unittest.TestCase):
+    def test_open_file_lead_survives_more_than_twelve_config_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            env = {}
+            for i in range(16):
+                directory = base / str(i)
+                directory.mkdir()
+                env[f'R{i}_CONFIG_DIR'] = str(directory)
+            observed = base / 'node_modules' / 'arbitrary-extension'
+            observed.mkdir(parents=True)
+            skill = observed / 'SKILL.md'
+            skill.write_text('---\nname: arbitrary-skill\ndescription: example\n---\nBody')
+            process = Mock(pid=123)
+            process.exe.return_value = ''
+            process.cmdline.return_value = []
+            process.cwd.return_value = '/'
+            process.environ.return_value = env
+            process.parent.return_value = None
+            process.children.return_value = []
+            process.open_files.return_value = [Mock(path=str(skill))]
+            process.create_time.return_value = 1.0
+            surface = entry_surface(process)
+            self.assertEqual(len(surface['related_roots']), 17)
+            self.assertEqual(surface['priority_roots'][0]['path'], str(observed))
+            self.assertEqual(surface['remaining_root_count'], 12)
+            found = find_related_files(surface, 'SKILL.md')
+            self.assertEqual(found['files'][0]['document_metadata']['name'], 'arbitrary-skill')
+            process.open_files.side_effect = psutil.AccessDenied(123)
+            failed = entry_surface(process)
+            self.assertEqual(failed['open_file_collection']['status'], 'unavailable')
+            self.assertEqual(failed['open_file_collection']['reason'], 'AccessDenied')
+
+    def test_root_ranking_is_deterministic_and_retains_low_priority_paths(self):
+        roots = [{'id': str(i), 'path': '/example/' + name, 'source': source}
+                 for i, (name, source) in enumerate([
+                     ('logs', 'process.open_files directory'),
+                     ('workspace', 'process.cwd'), ('ancestor', 'argv ancestor[3]')])]
+        ranked = rank_related_roots(roots)
+        self.assertEqual(ranked, rank_related_roots(list(reversed(roots))))
+        self.assertEqual(len(ranked), 3)
+        self.assertEqual(ranked[0]['id'], '0')
+
+    def test_large_related_source_can_be_searched_without_unbounded_read(self):
+        from runtime import analyst_tools as at
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'arbitrary-runtime.cjs'
+            source.write_text('x' * (1024 * 1024) + 'require_workspace_trust' + 'y' * 10000)
+            surface = {'related_roots': [{'id': 'root-0', 'path': str(root)}]}
+            with patch.object(at, 'target_process', return_value=psutil.Process()), \
+                 patch.object(at, '_investigation_surface', return_value=surface):
+                result = at.call_tool('search_related_file', {
+                    'path': str(source), 'query': 'require_workspace_trust', 'context_bytes': 80})
+                self.assertEqual(result['hits'][0]['offset'], 1024 * 1024)
+                self.assertLess(len(json.dumps(result)), 2000)
+                with self.assertRaises(ValueError):
+                    at.call_tool('search_related_file', {'path': str(root.parent / 'outside.cjs'), 'query': 'x'})
+                with self.assertRaises(ValueError):
+                    at.call_tool('search_related_file', {'path': str(root / 'auth.json'), 'query': 'x'})
+
+    def test_control_contract_is_independent_of_large_dossier(self):
+        from runtime import analyst_tools as at
+        from runtime import autonomous_pipeline
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}), \
+             patch.object(at, 'target_process', return_value=psutil.Process()), \
+             patch('runtime.collection.collect', side_effect=AssertionError('must not collect dossier')):
+            iid = str(os.getpid()) + ':' + str(psutil.Process().create_time())
+            autonomous_pipeline.save(iid, 'upgrade', '', requested=True, reason='capture raw IO')
+            result = at.call_tool('get_control_contract', {})
+            self.assertEqual(result['target']['pid'], os.getpid())
+            self.assertEqual(result['upgrade_request']['reason'], 'capture raw IO')
+            self.assertEqual(result['control_contract']['client_command'][-1], 'decision')
+            self.assertLess(len(json.dumps(result)), 6000)
+            token = (Path(tmp) / 'hook-control.token').read_text()
+            self.assertNotIn(token, json.dumps(result))
+
     def test_paged_file_search_retains_access_without_bulk_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

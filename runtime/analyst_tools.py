@@ -32,6 +32,7 @@ from runtime.analyst_evidence import (  # noqa: E402
     find_related_files,
     metadata_candidates,
     read_related_file,
+    rank_related_roots,
 )
 from runtime import investigation_findings
 from runtime.recipe_schema import RECIPE_SCHEMA
@@ -461,6 +462,8 @@ def _validate_investigation_summary(recipe: dict[str, Any]) -> None:
 
 
 _FINDING_EVIDENCE_TOOLS = {
+    "inspect_integration_protocols",
+    "get_control_contract", "search_related_file", "follow_related_directory",
     "get_target_context", "inspect_entry_surface", "find_related_files", "read_related_file",
     "inspect_config_surface", "inspect_loader_surface", "inspect_network_peers",
     "inspect_execution_trace", "inspect_stream", "inspect_observation", "observe_tree",
@@ -623,7 +626,7 @@ def _printable_context(data: bytes) -> str:
     return "".join(chr(b) if 32 <= b < 127 else "\\x%02x" % b for b in data)
 
 
-def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
+def search_target_image(args: dict[str, Any], *, related=False) -> dict[str, Any]:
     """Literal, bounded search inside the bound process's actual executable image.
 
     Evidence for embedded loader/plugin strings; no process memory, no execution,
@@ -644,8 +647,19 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
     max_hits = min(SEARCH_IMAGE_MAX_HITS, max(1, 8192 // (2 * context_bytes + len(query.encode('utf-8')))))
 
     p = target_process()
+    path_class = 'related-file' if related else 'target-exe'
+    if related:
+        from runtime.analyst_evidence import _under_roots, _skip_file
+        value = args.get('path')
+        if not isinstance(value, str) or not value:
+            raise ValueError('path is required')
+        exe = Path(value).expanduser().resolve()
+        allowed, _ = _under_roots(exe, _investigation_surface(p))
+        if not allowed or _skip_file(exe):
+            raise ValueError('related file is outside allowed process-derived roots or sensitive')
     try:
-        exe = Path(p.exe())
+        if not related:
+            exe = Path(p.exe())
         stat_result = exe.stat()
     except (psutil.Error, OSError) as exc:
         raise ValueError("target executable is unavailable: " + type(exc).__name__) from exc
@@ -654,7 +668,7 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
     size = stat_result.st_size
     if size > SEARCH_IMAGE_MAX_MIRROR_BYTES:
         return {"status": "refused", "reason": "image exceeds the bounded search limit",
-                "size": size, "path_class": "target-exe"}
+                "size": size, "path_class": path_class}
 
     needle = query.encode("utf-8")
     hits = []
@@ -695,7 +709,8 @@ def search_target_image(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "collected",
         "target": {"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
-        "path_class": "target-exe",
+        "path_class": path_class,
+        "path": str(exe),
         "size": size,
         "mtime": stat_result.st_mtime,
         "query_bytes": len(needle),
@@ -729,6 +744,9 @@ def _investigation_surface(process):
     for path, ref in _RELATED_EVIDENCE_ROOTS.items():
         surface['related_roots'].append({'id': 'evidence-root-' + str(len(surface['related_roots'])),
                                          'path': path, 'source': ref})
+    surface['related_roots'] = rank_related_roots(surface['related_roots'])
+    surface['priority_roots'] = surface['related_roots'][:5]
+    surface['remaining_root_count'] = max(0, len(surface['related_roots']) - 5)
     return surface
 
 
@@ -737,14 +755,27 @@ def _follow_related_directory(args):
     ref = args.get('evidence_id', '')
     _validate_finding_evidence([ref])
     evidence = json.loads((EVIDENCE_DIR / (ref + '.json')).read_text())
-    if evidence.get('tool') not in {'read_related_file', 'inspect_entry_surface', 'inspect_loader_surface'}:
+    if evidence.get('tool') not in {'read_related_file', 'search_related_file', 'inspect_entry_surface', 'inspect_loader_surface'}:
         raise ValueError('directory must come from a file or process observation, not a submitted finding')
     raw = args.get('path', '')
     if not isinstance(raw, str) or not raw or not raw.startswith(('/', '~/')):
         raise ValueError('use an exact absolute or ~/ path from the cited observation')
+    # A concrete observed file may authorize its immediate containing directory,
+    # never an arbitrary ancestor. This exposes config locations learned from docs.
+    source_file = args.get('source_file')
+    literal = source_file if source_file is not None else raw
+    if source_file is not None:
+        if not isinstance(source_file, str) or not source_file.startswith(('/', '~/')):
+            raise ValueError('source_file must be an exact observed absolute or ~/ path')
+        observed_file = Path(source_file).expanduser().resolve()
+        if observed_file.parent != Path(raw).expanduser().resolve() or not observed_file.is_file():
+            raise ValueError('path must be the immediate parent of the observed existing source_file')
+        from runtime.analyst_evidence import _skip_file
+        if _skip_file(observed_file):
+            raise ValueError('sensitive source file is excluded')
     # Match the literal path as a whole token, not an arbitrary substring or ancestor.
     text = json.dumps(evidence.get('result'), ensure_ascii=False)
-    if not re.search(re.escape(raw) + r'(?=$|[\s\\"\'`),;:])', text):
+    if not re.search(re.escape(literal) + r'(?=$|[\s\\"\'`),;:])', text):
         raise ValueError('exact directory path was not found in the cited observation')
     path = Path(raw).expanduser().resolve()
     home = Path.home().resolve()
@@ -761,6 +792,23 @@ def _follow_related_directory(args):
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name == 'inspect_integration_protocols':
+        p = target_process()
+        from runtime.integration_protocol import inspect
+        return inspect(EVIDENCE_DIR, {'pid': p.pid, 'create_time': p.create_time()}, args.get('evidence_ids'))
+    if name == 'search_related_file':
+        return search_target_image(args, related=True)
+    if name == 'get_control_contract':
+        p = target_process()
+        from runtime.hook_control import contract
+        from runtime.io_acceptance import contract as io_contract
+        from runtime.autonomous_pipeline import read as pipeline_read
+        state = pipeline_read(str(p.pid)+':'+str(p.create_time()))
+        return {'target': {'pid': p.pid, 'create_time': p.create_time()},
+                'control_contract': contract(),
+                'io_capture_contract': io_contract(),
+                'upgrade_request': state.get('upgrade', {}),
+                'installation_verification': state.get('verification', {})}
     if name == 'follow_related_directory':
         return _follow_related_directory(args)
     if name == 'read_evidence':
@@ -869,7 +917,7 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         from runtime.recipe_validation import validate
         validate(recipe, EVIDENCE_DIR,
                  target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
-                 known_harness_ids=_known_harness_ids(recipe))
+                 known_harness_ids=_known_harness_ids(recipe), require_protocol=True)
         RECIPE_DIR.mkdir(parents=True, exist_ok=True)
         path = RECIPE_DIR / "candidate.json"
         payload = {"status": "candidate", "created_at": now(), "recipe": recipe,
@@ -901,8 +949,15 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                    "loader_surface": call_tool("inspect_loader_surface", {})}
         from runtime.hook_control import contract
         context['control_contract'] = contract()
+        from runtime.integration_protocol import contract as protocol_contract
+        context['integration_protocol'] = protocol_contract()
+        from runtime.protocol_discovery import discover as discover_protocols
+        context['protocol_discovery'] = discover_protocols(p)
         from runtime.autonomous_pipeline import read as pipeline_read
-        context['installation_verification'] = pipeline_read(str(p.pid)+':'+str(p.create_time())).get('verification', {})
+        pipeline_state = pipeline_read(str(p.pid)+':'+str(p.create_time()))
+        context['installation_verification'] = pipeline_state.get('verification', {})
+        context['protocol_fastpath'] = pipeline_state.get('protocol_fastpath', {})
+        context['upgrade_request'] = pipeline_state.get('upgrade', {})
         if OBSERVE_URL:
             context["observation"] = call_tool("inspect_observation", {})
         return context
@@ -970,10 +1025,13 @@ def _known_harness_ids(recipe: dict[str, Any]) -> set[str] | None:
 
 
 TOOLS = [
+    {"name": "inspect_integration_protocols", "description": "Call with {} after get_target_context: automatically selects eligible evidence from this investigation. Optional evidence_ids restrict selection; unsupported evidence types are reported and skipped, other-instance evidence is rejected. Checks Hook/ACP structures, not loading. Cite the returned evidence_id in recipe.integration.", "inputSchema": {"type": "object", "properties": {"evidence_ids": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "string"}}}}},
+    {"name": "search_related_file", "description": "Literal bounded search in a concrete file inside process-derived/evidence-followed roots, including large bundled JS or archives that cannot be read wholesale. Does not execute code. Returns offsets, small redacted excerpts and next_offset. Use actual loader source to verify documentation claims.", "inputSchema": {"type": "object", "required": ["path", "query"], "properties": {"path": {"type": "string"}, "query": {"type": "string", "maxLength": 256}, "offset": {"type": "integer", "minimum": 0}, "context_bytes": {"type": "integer", "minimum": 0, "maximum": 2048}}}},
+    {"name": "get_control_contract", "description": "Read the small supervisor control protocol, exact target identity and requested Hook upgrade. Independent of the potentially large target dossier. Use this before generating execution control; never guess endpoints or protocol fields.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "read_evidence", "description": "Retrieve preserved successful observation evidence by id, especially after compaction/continuation. Use select JSON pointer (e.g. /metadata or /content), and next_offset for text/list pages. Cite the original source_evidence_id. Do not repeat expensive observations just to recover their existing results.", "inputSchema": {"type": "object", "required": ["evidence_id"], "properties": {"evidence_id": {"type": "string"}, "select": {"type": "string"}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "get_target_context", "description": "Read the supervisor-bound target dossier, process tree, stream shape, and prior memory.", "inputSchema": {"type": "object", "properties": {}}},
     {"name": "inspect_entry_surface", "description": "Read raw and resolved executable/entry paths, parent/child identities, package metadata candidates, sources, and conflicts. This is evidence only; it never chooses an Agent identity.", "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "follow_related_directory", "description": "Follow an exact absolute or ~/ directory path found in a successful read_related_file, inspect_entry_surface or inspect_loader_surface observation. Pass that observation evidence_id. Registers a concrete current-user subdirectory for subsequent find_related_files/read_related_file calls. Use for newly learned user/workspace/plugin roots; no product paths are predefined. Broad home and sensitive directories are excluded.", "inputSchema": {"type": "object", "required": ["path", "evidence_id"], "properties": {"path": {"type": "string"}, "evidence_id": {"type": "string"}}}},
+    {"name": "follow_related_directory", "description": "Follow an exact absolute or ~/ directory path found in a successful read_related_file, inspect_entry_surface or inspect_loader_surface observation. Pass that observation evidence_id. If evidence gives only a file path, supply source_file with that exact existing file and path with its immediate parent; arbitrary ancestors remain forbidden. Registers a concrete current-user subdirectory for subsequent find_related_files/read_related_file calls. Use for newly learned user/workspace/plugin roots; no product paths are predefined. Broad home and sensitive directories are excluded.", "inputSchema": {"type": "object", "required": ["path", "evidence_id"], "properties": {"path": {"type": "string"}, "evidence_id": {"type": "string"}, "source_file": {"type": "string"}}}},
     {"name": "find_related_files", "description": "Enumerate process-related files, at most 20 per page. Scope may be a returned root token or an evidence-derived absolute subdirectory inside a returned root (e.g. a package directory named in a manifest). Follow specific package/import leads rather than enumerating unrelated dependencies. Pass next_offset as offset for further pages. Secret-like files are excluded.", "inputSchema": {"type": "object", "properties": {"name_pattern": {"type": "string"}, "scope": {"type": "string"}, "limit": {"type": "integer"}, "offset": {"type": "integer", "minimum": 0}}}},
     {"name": "read_related_file", "description": "Read one file previously found below a process-derived root. Content is bounded, parsed when possible, and redacted; arbitrary paths and credentials are rejected.", "inputSchema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "submit_investigation_finding", "description": "Persist one evidence-backed identity or asset finding without proposing or installing a Hook. Findings are partial, versioned and bounded.", "inputSchema": {"type": "object", "required": ["kind", "status", "evidence_refs"], "properties": {"display": {"type": "object", "description": "Standard Chinese display: {version:1, summary:string, facts:[{label:string,value:string}], scope:string}"}, "kind": {"type": "string", "enum": ["identity", "asset"]}, "asset": {"type": "string", "enum": ["model_gateway", "mcp", "skills", "rules"]}, "status": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}, "role_reasoning": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "entry": {"type": "string"}, "version": {"type": "string"}, "value": {}, "summary": {}, "details": {}, "uncertainty": {"type": "array", "items": {"type": "string"}}, "open_questions": {"type": "array", "items": {"type": "string"}}, "evidence_refs": {"type": "array", "items": {"type": "string"}}}}},

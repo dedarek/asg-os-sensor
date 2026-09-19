@@ -8,7 +8,7 @@
   C4 服务形态: 持有 LISTEN 端口 -> +10
   C5 常驻且对外: 存活>2h 且有公网连接 -> +10
   C6 进程树深度: 有孙进程(>=2层) -> +10
-阈值 50. 用法: python find_agents_behavior.py [轮数] [间隔秒]
+阈值 50. 用法: python tools/diagnostics/find_agents_behavior.py [轮数] [间隔秒]
 """
 import sys
 import time

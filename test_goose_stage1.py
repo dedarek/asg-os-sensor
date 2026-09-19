@@ -56,6 +56,32 @@ class GooseStageTests(unittest.TestCase):
         self.assertEqual(matcher.classify(changed)['status'], 'similar')
         self.assertFalse(entry['hook_verified'])
 
+    def test_packaged_native_app_restart_ignores_only_inherited_cwd_drift(self):
+        app_path = '/Applications/Fixture Agent.app/Contents/MacOS/Electron'
+        base = {
+            'executable': 'electron-sha', 'entry': 'native', 'platform': 'Darwin',
+            'architecture': 'arm64', 'runtime': 'native', 'entry_path': app_path,
+            'Contents/Info.plist': 'plist-sha',
+            'Contents/Resources/app.asar': 'asar-sha', 'launch': 'cwd-a',
+        }
+        struct = dict(self.struct, exe='electron', runtime='native',
+                      argv_shape=['daemon-app-server-entry.js', '--stdio'],
+                      config_dirs=['..'], exe_full=app_path, compatibility=base)
+        matcher.remember_verified(struct, self.recipe, self.evidence)
+
+        restarted = dict(struct, compatibility=dict(base, launch='cwd-b'))
+        result = matcher.classify(restarted)
+        self.assertEqual(result['status'], 'exact')
+        self.assertIn('cwd drift ignored', result['reason'])
+
+        changed_bundle = dict(restarted, compatibility=dict(restarted['compatibility'],
+                                                             **{'Contents/Resources/app.asar': 'changed'}))
+        self.assertEqual(matcher.classify(changed_bundle)['status'], 'similar')
+
+        unbundled = dict(struct, compatibility=dict(base,
+                           entry_path='/usr/local/bin/electron', launch='cwd-c'))
+        self.assertEqual(matcher.classify(unbundled)['status'], 'similar')
+
     def test_entry_change_and_unknown_are_not_exact(self):
         node = self.root / 'node'; node.write_bytes(b'node binary')
         first = self.root / 'one.js'; first.write_text('first')

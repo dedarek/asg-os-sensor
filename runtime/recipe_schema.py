@@ -15,9 +15,19 @@ RECIPE_SCHEMA = {
         "observation",
         "fallback",
         "evidence_refs",
+        "integration",
     ],
     "properties": {
         "agent_identity_name": {"type": "string", "minLength": 1},
+        "integration": {
+            "type": "object", "required": ["family", "evidence_refs", "missing_capabilities"],
+            "properties": {
+                "family": {"enum": ["command_hooks", "acp", "plugin", "unsupported"]},
+                "evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "missing_capabilities": {"type": "array", "items": {"type": "string"}},
+                "fallback_reason": {"type": "string"}
+            }
+        },
         "match_features": {
             "type": "object",
             "description": "Runtime/behavioural features used for fingerprint matching; currently uses runtime and optional evolves_prior_harness.",
