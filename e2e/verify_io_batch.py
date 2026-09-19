@@ -328,11 +328,7 @@ def main():
     instance_id = args.instance or ('%s:%s' % (meta['pid'], meta['create_time']))
     # A stale target pid silently yields an empty reconciliation, because the
     # reader keeps only records that match a bound, live instance. Fail loudly.
-    try:
-        bound = instance_id in json.loads(
-            (ROOT / 'artifacts/autonomous-service/observations.json').read_text())
-    except (OSError, ValueError):
-        bound = False
+    bound = binding_for(instance_id)[0] is not None
     if not bound:
         print(json.dumps({'error': 'instance_not_bound', 'instance_id': instance_id,
                           'hint': 'demo target pid in target.json is stale'}, ensure_ascii=False))
