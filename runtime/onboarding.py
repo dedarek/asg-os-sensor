@@ -694,6 +694,27 @@ def _reuse_run_root() -> Path:
     return Path(override) if override else ROOT / "artifacts" / "stage1" / "dashboard"
 
 
+def _reuse_run_roots() -> "list[Path]":
+    """All known state roots where investigation runs may have been persisted.
+
+    Investigations have been written under the ASG_RUN_DIR override, the
+    dashboard default root, and the autonomous-service directory. Exact reuse
+    must locate the ORIGINAL record wherever it was written; each root is
+    searched in order and nothing is synthesised when none matches.
+    """
+    roots = []
+    override = os.environ.get("ASG_RUN_DIR", "").strip()
+    if override:
+        roots.append(Path(override))
+    roots.append(ROOT / "artifacts" / "stage1" / "dashboard")
+    roots.append(ROOT / "artifacts" / "autonomous-service")
+    unique = []
+    for root in roots:
+        if root not in unique:
+            unique.append(root)
+    return unique
+
+
 def _locate_reuse_material(plan_digest: str, workspace: str, refs: list[str]) -> dict[str, str] | None:
     """Find the original install record and the original evidence files.
 
@@ -702,14 +723,14 @@ def _locate_reuse_material(plan_digest: str, workspace: str, refs: list[str]) ->
     original evidence files have to still exist. Nothing is synthesised when
     either is absent: the caller reports the gap instead of guessing.
     """
-    root = _reuse_run_root()
-    if not root.is_dir():
-        return None
-    try:
+    for root in _reuse_run_roots():
+      if not root.is_dir():
+        continue
+      try:
         runs = sorted(item for item in root.iterdir() if item.is_dir())
-    except OSError:
-        return None
-    for run in runs:
+      except OSError:
+        continue
+      for run in runs:
         state = run / "coordinator-state"
         if not (state / "prepared_install.json").is_file():
             state = run / "installer-state"  # Earlier generic installer state layout.

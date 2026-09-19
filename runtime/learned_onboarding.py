@@ -36,8 +36,9 @@ def _prepare_observation(recipe: dict, root: Path, target: dict) -> dict:
 
 
 def prepare(recipe: dict, evidence_dir: Path, target: dict, workspace: Path,
-            compatibility: dict | None = None) -> dict:
-    checked = validate(recipe, evidence_dir, target=target)
+            compatibility: dict | None = None,
+            evidence_target: dict | None = None) -> dict:
+    checked = validate(recipe, evidence_dir, target=evidence_target or target)
     hook = recipe['hook']
     if hook.get('method') != 'file_plan':
         raise ValueError('candidate does not declare an executable file plan')
@@ -262,7 +263,7 @@ def _check_authorization(authorization, workspace: Path, candidate_digest: str) 
 
 def coordinate(recipe: dict, evidence_dir: Path, target: dict, *, workspace: Path, state_dir: Path,
                authorization: dict, observed_compatibility=None, evidence=None,
-               reason=None) -> dict:
+               reason=None, evidence_target: "dict | None" = None) -> dict:
     """Single entry point: candidate -> prepare/execute -> activation binding.
 
     Returns a service-consumable result. It is idempotent when the plan is already
@@ -280,22 +281,40 @@ def coordinate(recipe: dict, evidence_dir: Path, target: dict, *, workspace: Pat
     installed = False
     if manifest.exists():
         tx = json.loads(manifest.read_text())
-        if tx.get('status') != 'installed' or tx.get('workspace') != str(workspace_root):
+        if tx.get('status') == 'rolled_back' and tx.get('workspace') == str(workspace_root):
+            # A cleanly rolled-back transaction removed its files and rewrote
+            # prior contents, so an authorized retry may install again;
+            # learned_install re-verifies every file precondition from scratch.
+            pass
+        elif tx.get('status') != 'installed' or tx.get('workspace') != str(workspace_root):
             raise ValueError('installation manifest is not an installed transaction for this workspace')
-        for change in tx.get('changes', []):
-            path = learned_install._file(workspace_root, change['path'])
-            if not path.is_file() or learned_install.digest(path.read_bytes()) != change['after_sha256']:
-                raise ValueError('installed hook files changed; refusing bound status')
-        if not tx.get('changes') or not record_path.is_file():
-            raise ValueError('missing original installation record; explicit migration required')
-        prepared = json.loads(record_path.read_text())
-        if prepared.get('candidate_digest') != candidate_digest or prepared.get('plan_digest') != expected_plan or prepared.get('workspace') != str(workspace_root):
-            raise ValueError('original installation record does not match candidate/workspace')
-        validate(recipe, evidence_dir, target=prepared['target'])
-        installed = True
-    else:
+        else:
+            for change in tx.get('changes', []):
+                path = learned_install._file(workspace_root, change['path'])
+                if not path.is_file() or learned_install.digest(path.read_bytes()) != change['after_sha256']:
+                    raise ValueError('installed hook files changed; refusing bound status')
+            if not tx.get('changes') or not record_path.is_file():
+                raise ValueError('missing original installation record; explicit migration required')
+            prepared = json.loads(record_path.read_text())
+            if prepared.get('candidate_digest') != candidate_digest or prepared.get('plan_digest') != expected_plan or prepared.get('workspace') != str(workspace_root):
+                raise ValueError('original installation record does not match candidate/workspace')
+            validate(recipe, evidence_dir,
+                     target=prepared.get('evidence_target') or prepared['target'])
+            installed = True
+    rolled_back_evidence_target = evidence_target
+    if not installed:
+        if manifest.exists():
+            # Retrying a cleanly rolled-back transaction: the evidence
+            # belongs to the instance captured in the original record.
+            try:
+                original = json.loads(record_path.read_text())
+                if isinstance(original, dict) and isinstance(original.get("target"), dict):
+                    evidence_target = dict(original["target"])
+            except (OSError, ValueError):
+                evidence_target = None
         prepared = prepare(recipe, evidence_dir, target, workspace_root,
-                           compatibility=observed_compatibility)
+                           compatibility=observed_compatibility,
+                           evidence_target=evidence_target or rolled_back_evidence_target)
     config_path = state / OBSERVATION_FILE
     declared = prepared['observation']['status'] == 'configured'
 
@@ -317,7 +336,18 @@ def coordinate(recipe: dict, evidence_dir: Path, target: dict, *, workspace: Pat
         executed = execute(prepared, state_dir, approved_workspace=workspace_root,
                            approved_candidate_digest=scope['approved_candidate_digest']
                            or prepared['candidate_digest'])
-        learned_install._atomic(record_path, json.dumps(prepared, ensure_ascii=False, indent=2).encode('utf-8'))
+        record = dict(prepared)
+        first = {}
+        try:
+            files = sorted(item.name for item in evidence_dir.glob('ev-*.json'))
+            if files:
+                first = json.loads((evidence_dir / files[0]).read_text()).get('target') or {}
+        except (OSError, ValueError):
+            first = {}
+        if first.get('pid') and first.get('create_time') is not None:
+            record['evidence_target'] = {'pid': int(first['pid']),
+                                         'create_time': float(first['create_time'])}
+        learned_install._atomic(record_path, json.dumps(record, ensure_ascii=False, indent=2).encode('utf-8'))
         observation = executed.get('observation') or {}
         base.update(installed=True, install_status=executed.get('status'),
                     config_path=observation.get('config_path'), observation=observation,

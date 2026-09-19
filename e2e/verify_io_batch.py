@@ -123,15 +123,23 @@ def hook_data(instance_id, since):
 
 def binding_for(instance_id):
     """(log_path, pid, create_time) for a bound instance, or (None, None, None)."""
-    try:
-        registry = json.loads((ROOT / 'artifacts/autonomous-service/observations.json').read_text())
-    except (OSError, ValueError):
-        return None, None, None
-    record = registry.get(instance_id)
+    record = None
+    for candidate in (ROOT / 'artifacts/autonomous-service/observations.json',
+                      ROOT / 'artifacts/stage1/dashboard/observations.json'):
+        try:
+            registry = json.loads(candidate.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(registry, dict) and isinstance(registry.get(instance_id), dict):
+            record = registry[instance_id]
+            break
     if not isinstance(record, dict):
         return None, None, None
     try:
-        config = json.loads(Path(record['config_path']).read_text())
+        cfg_path = Path(record['config_path'])
+        if not cfg_path.is_absolute():
+            cfg_path = ROOT / cfg_path
+        config = json.loads(cfg_path.read_text())
     except (OSError, ValueError, KeyError):
         return None, None, None
     target = config.get('target') or {}

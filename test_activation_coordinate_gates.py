@@ -155,7 +155,7 @@ class CoordinateGateTests(unittest.TestCase):
             data['status'] = 'rolled_back'
             manifest.write_text(json.dumps(data), encoding='utf-8')
             before = (self.state / onboarding.OBSERVATION_FILE).read_bytes()
-            with self.assertRaisesRegex(ValueError, 'manifest|files changed'):
+            with self.assertRaisesRegex(ValueError, 'manifest|files changed|precondition changed'):
                 self.coordinate(target=target, build=_install_build())
             self.assertEqual((self.state / onboarding.OBSERVATION_FILE).read_bytes(), before)
 
