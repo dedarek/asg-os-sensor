@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-20T01:31:01+0800",
+  "generated_at": "2026-09-20T02:10:53+0800",
   "regression": {
     "modules": 66,
     "ran": 438,
@@ -10,7 +10,7 @@
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-19T17:29:58.329576+00:00",
+      "probed_at": "2026-09-19T18:10:45.236936+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,9 +371,9 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 224,
-      "age_seconds": 62.978954,
-      "stale": true
+      "duration_ms": 241,
+      "age_seconds": 7.757677,
+      "stale": false
     },
     "hook_runtime": {
       "status": "not_running",
@@ -602,7 +602,7 @@
     {
       "task": 2,
       "name": "完整采集真实输入输出和工作流",
-      "status": "失败",
+      "status": "通过",
       "evidence": [
         "io-batch.json",
         "hook-full-acceptance.json"
@@ -623,26 +623,26 @@
         {
           "item": "用户输入完整率 100%",
           "meaning": "",
-          "status": "失败",
-          "evidence": "io-batch.json（独立发起端对账，88/88 轮）；完整 0，已声明截断 0，未记录缺失 88"
+          "status": "通过",
+          "evidence": "io-batch.json（独立发起端对账，88/88 轮）；完整 88，已声明截断 0，未记录缺失 0"
         },
         {
           "item": "最终输出完整率 100%",
           "meaning": "",
-          "status": "失败",
-          "evidence": "io-batch.json（独立发起端对账，88/88 轮）；完整 0，截断（已标记）0"
+          "status": "通过",
+          "evidence": "io-batch.json（独立发起端对账，88/88 轮）；完整 88，截断（已标记）0"
         },
         {
           "item": "工具名称/参数/结果覆盖率 100%",
           "meaning": "",
           "status": "通过",
-          "evidence": "19 对，带参数/结果 19 对"
+          "evidence": "43 对，带参数/结果 43 对"
         },
         {
           "item": "流式汇总与最终输出一致 100%",
           "meaning": "",
-          "status": "失败",
-          "evidence": "完全一致 0/88"
+          "status": "通过",
+          "evidence": "完全一致 88/88"
         },
         {
           "item": "截断未标记 0",
@@ -683,7 +683,7 @@
         {
           "item": "子 Agent 5 次",
           "meaning": "",
-          "status": "失败",
+          "status": "通过",
           "evidence": "io-extra.json：子会话建立且父子均已采集"
         },
         {
