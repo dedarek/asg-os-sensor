@@ -1,0 +1,25 @@
+artifacts/acceptance/io-batch.json
+  s_7a5b8096b41d01::t_11da80e948e825 1-857
+artifacts/acceptance/io-extra.json
+  s_7a5b8096b41d01::t_d907bf15c65e89 1-142
+e2e/verify_io_batch.py
+  s_7a5b8096b41d01::t_6fab3564c791f9 95-96
+e2e/verify_io_extra.py
+  s_7a5b8096b41d01::t_5dfb5d6b0a7584 139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "596fdfd1a32862952854fe2c080380576a6132d3",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
