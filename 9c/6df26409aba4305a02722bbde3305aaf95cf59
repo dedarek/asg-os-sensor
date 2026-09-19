@@ -1,0 +1,14 @@
+runtime/fingerprints.json
+  h_fb70d633629572 491,608,657,684-685,817,848,875-876,963,2570,2739
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9c6df26409aba4305a02722bbde3305aaf95cf59",
+  "prompts": {},
+  "humans": {
+    "h_fb70d633629572": {
+      "author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
