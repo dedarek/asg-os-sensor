@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "completed_turns_exact": 10,
+  "compared_messages": 20,
+  "mismatches": 0,
+  "source": "normal-conversation-summary.json (10 normal-path turns via shared desktop engine, 2026-09-20)"
+}
