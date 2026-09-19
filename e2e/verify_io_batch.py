@@ -92,7 +92,8 @@ def scenario_stream(target, gateway, n):
         session = new_session(target, 'io-stream')
         rounds.append(round_trip(target, gateway, session['id'],
                                  '请用中文写一段不少于 8000 字符的详细技术说明，主题是进程级 Hook 的加载与信任，'
-                                 '分多个小节展开，务必保证正文长度超过 8000 字符后再给出验收编号。'))
+                                 '分多个小节展开，务必保证正文长度超过 8000 字符。'
+ + '注意：先把验收编号写在回复最前面单独一行，再开始正文，防止长文输出截断导致编号缺失。'))
     return rounds
 
 

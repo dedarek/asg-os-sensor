@@ -136,7 +136,7 @@ def main():
         except ValueError:
             continue
         det = rec.get('detail') if isinstance(rec.get('detail'), dict) else {}
-        sid = det.get('session_id')
+        sid = det.get('session_id') or rec.get('session_id')
         if sid:
             by_session.setdefault(sid, []).append(rec)
 
