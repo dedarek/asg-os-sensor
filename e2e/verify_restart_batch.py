@@ -42,10 +42,15 @@ def iid_of(m):
 
 
 def bound(iid):
-    try:
-        return iid in json.loads((RUN / 'observations.json').read_text())
-    except (OSError, ValueError):
-        return False
+    for candidate in (RUN / 'observations.json',
+                      ROOT / 'artifacts/stage1/dashboard/observations.json'):
+        try:
+            registry = json.loads(candidate.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(registry, dict) and iid in registry:
+            return True
+    return False
 
 
 def restart_target():
