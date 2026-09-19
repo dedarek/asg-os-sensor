@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-09-20T01:17:06+0800",
+  "generated_at": "2026-09-20T01:31:01+0800",
   "regression": {
     "modules": 66,
     "ran": 438,
-    "ok": false,
-    "failed": "FAILED (failures=4)"
+    "ok": true,
+    "failed": null
   },
   "live": {
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-19T17:16:22.754376+00:00",
+      "probed_at": "2026-09-19T17:29:58.329576+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,9 +371,9 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 566,
-      "age_seconds": 43.916186,
-      "stale": false
+      "duration_ms": 224,
+      "age_seconds": 62.978954,
+      "stale": true
     },
     "hook_runtime": {
       "status": "not_running",
@@ -501,7 +501,7 @@
     {
       "task": 1,
       "name": "修正实例归属和验收状态",
-      "status": "失败",
+      "status": "通过",
       "items": [
         {
           "item": "跨运行时隔离",
@@ -591,12 +591,12 @@
         {
           "item": "每个通过状态带证据时间",
           "meaning": "",
-          "status": "失败",
+          "status": "通过",
           "evidence": "runtime/capability.py 为各级附加证据记录时间（trusted/loaded/observing/serving 实测可见；test_capability）"
         }
       ],
       "evidence": [
-        "回归：66 个测试模块，Ran 438，FAILED (failures=4)"
+        "回归：66 个测试模块，Ran 438，OK"
       ]
     },
     {
@@ -617,7 +617,7 @@
         {
           "item": "事件词表/归一化覆盖",
           "meaning": "未翻译不计数",
-          "status": "失败",
+          "status": "通过",
           "evidence": "test_event_vocabulary / test_io_acceptance"
         },
         {
@@ -701,7 +701,7 @@
         {
           "item": "页面按会话查看对话列表、原文可展开",
           "meaning": "",
-          "status": "失败",
+          "status": "通过",
           "evidence": "monitor_dashboard.renderConversation：按 session 归组、details 展开原始内容（test_conversation_view）"
         },
         {

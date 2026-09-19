@@ -2,7 +2,7 @@
 
 本表由 `e2e/acceptance_report.py` 依据当前证据自动生成，状态只会是：通过 / 失败 / 待外部条件 / 目标不支持 / 未执行。
 
-回归：66 个测试模块，Ran 438，FAILED (failures=4)。
+回归：66 个测试模块，Ran 438，OK。
 
 验收批次：**ASG-BATCH-20260919-151740**；机器 01a329ad376e9a7f；Hook sha256:e55d586ecf77e37d8；配方 harness-efac4c5f21c6@rev7；模式 isolated_real_instance；关联会话 104 个（3 个实例）。
 
@@ -23,9 +23,9 @@
 | 1 修正实例归属和验收状态 | 未信任不判通过 |  | **通过** |  |
 | 1 修正实例归属和验收状态 | 未信任阻断加载 |  | **通过** |  |
 | 1 修正实例归属和验收状态 | 跨实例复用不重复调查 |  | **通过** |  |
-| 1 修正实例归属和验收状态 | 每个通过状态带证据时间 |  | **失败** | runtime/capability.py 为各级附加证据记录时间（trusted/loaded/observing/serving 实测可见；test_capability） |
+| 1 修正实例归属和验收状态 | 每个通过状态带证据时间 |  | **通过** | runtime/capability.py 为各级附加证据记录时间（trusted/loaded/observing/serving 实测可见；test_capability） |
 | 2 完整采集真实输入输出和工作流 | 模型请求/响应独立对账 100% |  | **通过** | model-transport-verification.json（显式测试网关，范围：面向网关 HTTP 正文） |
-| 2 完整采集真实输入输出和工作流 | 事件词表/归一化覆盖 | 未翻译不计数 | **失败** | test_event_vocabulary / test_io_acceptance |
+| 2 完整采集真实输入输出和工作流 | 事件词表/归一化覆盖 | 未翻译不计数 | **通过** | test_event_vocabulary / test_io_acceptance |
 | 2 完整采集真实输入输出和工作流 | 用户输入完整率 100% |  | **失败** | io-batch.json（独立发起端对账，88/88 轮）；完整 0，已声明截断 0，未记录缺失 88 |
 | 2 完整采集真实输入输出和工作流 | 最终输出完整率 100% |  | **失败** | io-batch.json（独立发起端对账，88/88 轮）；完整 0，截断（已标记）0 |
 | 2 完整采集真实输入输出和工作流 | 工具名称/参数/结果覆盖率 100% |  | **通过** | 19 对，带参数/结果 19 对 |
@@ -39,7 +39,7 @@
 | 2 完整采集真实输入输出和工作流 | 子 Agent 5 次 |  | **失败** | io-extra.json：子会话建立且父子均已采集 |
 | 2 完整采集真实输入输出和工作流 | 附件输入 3 次 |  | **通过** | io-extra.json：附件送达、回复含标记且附件已采集 |
 | 2 完整采集真实输入输出和工作流 | 抽屉 2 分钟自动回顶 0 |  | **通过** | drawer-autoscroll.json：浏览器实测 2 分钟内回顶 0 次、抽屉保持打开 |
-| 2 完整采集真实输入输出和工作流 | 页面按会话查看对话列表、原文可展开 |  | **失败** | monitor_dashboard.renderConversation：按 session 归组、details 展开原始内容（test_conversation_view） |
+| 2 完整采集真实输入输出和工作流 | 页面按会话查看对话列表、原文可展开 |  | **通过** | monitor_dashboard.renderConversation：按 session 归组、details 展开原始内容（test_conversation_view） |
 | 2 完整采集真实输入输出和工作流 | 缺失事件来源已调查并保存依据 |  | **通过** | missing-events-investigation.json：hook.loaded 已观测；['session.end'] 记为目标不支持（最近似 [["session.idle", "session.compacted", "session.updated"]]） |
 | 2 完整采集真实输入输出和工作流 | 正常用户实例独立验收 |  | **通过** | 当前正常会话独立对账：10 个完整回合、20 条文本、0 条不一致；要求至少 10 回合。隔离实例不能替代。 |
 | 3 真实执行控制 | 隔离目标冒烟放行/拒绝 |  | **通过** | opencode/codex/zcode control-verification.json |
