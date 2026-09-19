@@ -108,3 +108,17 @@ OTLP 导出配置：指向看板或独立 Hook 服务的 `/v1/traces` 和 `/v1/l
 GitLab 提供 Linux 和可选 Windows 测试作业。Windows Runner 必须是 PowerShell shell executor、安装 Python 3.10+，标签与 `ASG_WINDOWS_RUNNER_TAG` 匹配。设置 CI 变量 `ASG_RUN_WINDOWS_TESTS=1` 才启用；没有 Runner 时应记为未验收，不能写 Windows 实测通过。
 
 真实接入仍按实例在「Hook 实时数据」查看八项自检。没有完整模型内容、操作前等待或独立阻断效果时，只报告实际已采集能力。
+
+## SOC 采集服务（向平台汇报的终端服务）
+
+采集器是运行在用户电脑／Agent 服务器上的独立服务，主动发现、清点并周期上报到 SOC Open API 网关；平台不读取终端目录。配置文件为 JSON（macOS 参考路径 `~/Library/Application Support/ASG/SOC/config.json`），必填字段：`backend_url`（网关地址，远端必须 HTTPS）、`state_dir`（本地 SQLite 缓存与密钥目录）、`agents`（已开通的 agent 与 key 文件）；可选 `asg_url`（本机 8081 看板，用于运行时桥接与操作下发）、`discovery`、`soc_installation`（SOC 优先自动接入）、`collection_mode`（`manual` 表示仅按需/命令触发完整清点，心跳仍每 15 秒）。
+
+```bash
+python3 tools/soc_collector_service.py install --config /path/to/config.json   # macOS launchd / Linux user systemd / Windows Task Scheduler
+python3 tools/soc_collector_service.py status                                   # 输出 {service, loaded, pid}
+python3 tools/soc_collector_service.py remove                                   # 卸载服务，保留状态目录与密钥
+```
+
+macOS 与 Linux 用户级安装无需 root。install 幂等：重复执行会先 bootout/disable 再重新注册。密钥与配置权限收紧为 0600/0700。离线时事件与清点进入 `state_dir/outbox.sqlite` 重试队列，恢复后自动补报；重启后按 `pid:create_time` 重新绑定实例。Windows 通道代码就绪（schtasks），实际运行结果仍须 Windows Runner 验收后填写。
+
+采集服务验收：install 后 `status` 返回 `loaded=true` 且 pid 存在；SOC 侧 `asg_runtime_state.received_at` 在 60 秒内滚动；管理端「智能体状态」显示 online；`remove` 后服务消失但状态目录保留。

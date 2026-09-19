@@ -488,7 +488,7 @@
      "source": "goose"
     }
    ],
-   "match_count": 441,
+   "match_count": 444,
    "name": "ZCode",
    "hook_recipe": {
     "agent_identity_name": "ZCode",
@@ -605,7 +605,7 @@
    "hook_verified": false,
    "mount_ms": 120862,
    "recipe_source": "goose",
-   "last_seen": "2026-09-19T22:18:05"
+   "last_seen": "2026-09-19T22:21:15"
   },
   {
    "id": "harness-f4891e902ef6",
@@ -814,7 +814,7 @@
      "source": "goose"
     }
    ],
-   "match_count": 437,
+   "match_count": 440,
    "name": "ChatGPT Codex app-server",
    "hook_recipe": {
     "agent_identity_name": "ChatGPT Codex app-server",
@@ -960,7 +960,7 @@
    "hook_verified": false,
    "mount_ms": 120750,
    "recipe_source": "goose",
-   "last_seen": "2026-09-19T22:18:05"
+   "last_seen": "2026-09-19T22:21:15"
   }
  ],
  "version": 1
