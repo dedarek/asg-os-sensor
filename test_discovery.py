@@ -9,7 +9,9 @@ from unittest.mock import Mock
 from pathlib import Path
 
 from asg_os_sensor import Sensor, load_policies
-from runtime.identity import identify, load_catalog, ownership, metadata_identity, structural_score, desktop_discovery_candidate, runtime_discovery_candidate
+from runtime.identity import (identify, load_catalog, ownership, metadata_identity,
+                              structural_score, desktop_discovery_candidate,
+                              runtime_discovery_candidate, declares_protocol_ecosystem)
 
 
 class Process:
@@ -72,6 +74,42 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(runtime_discovery_candidate({}, process)['source'], 'opened-standard-asset')
         process.open_files.return_value = [Mock(path='/example/readme.md')]
         self.assertEqual(runtime_discovery_candidate({}, process), {})
+
+    def test_protocol_ecosystem_dependency_admits_investigation_generically(self):
+        # A previously unseen harness that embeds an MCP/ACP client stack must
+        # enter role investigation even with no model SDK, no CLI flags, no
+        # children and no open standard assets. The signal names no vendor.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entry = root / 'bin' / 'mystery.js'
+            entry.parent.mkdir()
+            entry.touch()
+            (root / 'package.json').write_text(json.dumps({
+                'name': 'unseen-runtime-' + uuid.uuid4().hex,
+                'bin': {'mystery': 'bin/mystery.js'},
+                'dependencies': {'some-org-mcp-client': '*', 'commander': '*'}}))
+            p = Process('node', ['node', str(entry), 'web'])
+            # Score stays at zero: a declared dependency never asserts Agent.
+            self.assertEqual(Sensor(load_policies()).agent_score(p)[0], 0)
+            result = runtime_discovery_candidate(p.info, p)
+            sources = {s['source'] for s in result['signals']}
+            self.assertIn('protocol-ecosystem-dependency', sources)
+        # Whole-token matching only: lookalike names never match.
+        self.assertEqual(declares_protocol_ecosystem(['mcpkit', 'acpx-tools',
+            'modelkit']), [])
+        self.assertEqual(declares_protocol_ecosystem(['@x/mcp-client']), ['@x/mcp-client'])
+        # A plain package with no protocol stack stays out of investigation.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entry = root / 'bin' / 'plain.js'
+            entry.parent.mkdir()
+            entry.touch()
+            (root / 'package.json').write_text(json.dumps({
+                'name': 'plain-cli-' + uuid.uuid4().hex,
+                'bin': {'plain': 'bin/plain.js'},
+                'dependencies': {'commander': '*'}}))
+            p = Process('node', ['node', str(entry), 'serve'])
+            self.assertEqual(runtime_discovery_candidate(p.info, p), {})
 
     def test_opaque_desktop_main_is_discoverable_without_agent_score(self):
         with tempfile.TemporaryDirectory() as tmp:

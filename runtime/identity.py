@@ -44,6 +44,25 @@ def identify(info, catalog):
     return {}
 
 
+PROTOCOL_DEPENDENCY_TOKENS = {'mcp', 'acp', 'modelcontextprotocol'}
+
+
+def declares_protocol_ecosystem(dependency_names):
+    """Dependency names that carry MCP/ACP as a whole token.
+
+    Membership of the open MCP/ACP protocol ecosystem is capability evidence
+    for any harness that embeds these client stacks, without naming vendors.
+    Names are token-split on separators, so lookalikes like 'mcpkit' never
+    match, and no prompt or config value is ever consulted.
+    """
+    hits = []
+    for name in dependency_names:
+        tokens = set(re.split(r'[-./@_]+', str(name).lower()))
+        if PROTOCOL_DEPENDENCY_TOKENS & tokens:
+            hits.append(str(name))
+    return hits
+
+
 def metadata_identity(info):
     """Read bounded metadata beside the real entry, never prompts or user configs.
 
@@ -90,9 +109,11 @@ def metadata_identity(info):
                             continue
                         deps = data.get('dependencies') or {}
                         sdk = any(k in deps for k in ('openai', '@anthropic-ai/sdk', '@ai-sdk/openai', 'litellm', '@langchain/core'))
+                        protocol_hits = declares_protocol_ecosystem(deps.keys())
                         return {'id': 'package:' + str(parent), 'name': data.get('productName') or data['name'],
                                 'source': 'package-metadata', 'evidence': str(package),
                                 'version': data.get('version', 'unknown'), 'model_sdk': sdk,
+                                'protocol_dependencies': protocol_hits,
                                 'entrypoint': str(path), 'resolved_entrypoint': str(real_path),
                                 'ownership': 'bin-mapping' if mapped else 'script-under-package'}
             except (OSError, ValueError, TypeError):
@@ -131,6 +152,12 @@ def runtime_discovery_candidate(info, process):
         add('package-bin-mapping', metadata['evidence'], '入口与安装包 bin 声明一致')
     if metadata.get('model_sdk'):
         add('declared-model-sdk', metadata['evidence'], '入口包声明模型 SDK')
+    if metadata.get('protocol_dependencies'):
+        # Embedding an MCP/ACP client stack is protocol-ecosystem capability
+        # evidence (open standards, no vendor names): admit for role
+        # investigation only, never assert Agent.
+        add('protocol-ecosystem-dependency', metadata['protocol_dependencies'][:4],
+            '安装包声明 MCP/ACP 协议栈依赖')
     argv = info.get('cmdline') or []
     flags = {arg.split('=', 1)[0] for arg in argv[1:] if isinstance(arg, str) and arg.startswith('--')}
     families = {
