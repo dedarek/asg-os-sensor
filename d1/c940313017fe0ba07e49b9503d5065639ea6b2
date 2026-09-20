@@ -1,0 +1,25 @@
+docs/stage1/TERMINAL_LIFECYCLE_ACCEPTANCE_20260921.md
+  s_7a5b8096b41d01::t_ceb6b6b523c727 5-6,41,44
+e2e/verify_terminal_lifecycle.py
+  s_7a5b8096b41d01::t_deb88c8d1c42f9 552,582-583
+  s_7a5b8096b41d01::t_77fa06f94362d9 416-418,422,425,427,431-441
+  s_7a5b8096b41d01::t_e5f663d8a02a41 17,83,85-86,311-313,322-323,326,419-421,423-424,426,428,430,442-474
+  s_7a5b8096b41d01::t_e17c242cb759bc 550-551,553-579
+  s_7a5b8096b41d01::t_deadf708d144c5 429
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d1c940313017fe0ba07e49b9503d5065639ea6b2",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
