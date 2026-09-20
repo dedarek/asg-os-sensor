@@ -89,11 +89,37 @@ class Endpoint:
         if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='enrolled'").fetchone():
             for row in self.db.execute('SELECT configuration FROM enrolled'):
                 a=json.loads(row[0]);self.agents[a['agent_id']]=a
+        self.health_file=root/'soc-health.json';self.beat_file=root/'loop-beat.json'
+    def note(self,path,value):
+        # Durable single-file snapshot for the supervisor: work-loop beat and the
+        # latest SOC outcome. Reachability and credential rejection stay distinct
+        # states, and credential values are never written to disk here.
+        try:
+            tmp=path.with_name(path.name+'.tmp')
+            tmp.write_text(json.dumps(value))
+            os.replace(tmp,path)
+        except OSError:pass
+    def soc_note(self,state,detail=''):
+        self.note(self.health_file,{'checked_at':time.time(),'pid':os.getpid(),'state':state,'detail':str(detail)[:200]})
+    def beat(self):
+        self.note(self.beat_file,{'pid':os.getpid(),'t':time.time()})
     def request(self,agent,path,data,method='POST'):
         key=os.environ.get(agent.get('key_env','')) or Path(agent['key_file']).expanduser().read_text().strip()
         req=Request(self.url+path,data=data,method=method,headers={'Authorization':'Bearer '+key,'Content-Type':'application/octet-stream' if method=='PUT' else 'application/json'})
         opener=build_opener(ProxyHandler({})) if urlsplit(self.url).hostname in ('127.0.0.1','localhost','::1') else build_opener()
-        with opener.open(req,timeout=30) as response:return json.load(response)
+        try:
+            with opener.open(req,timeout=30) as response:
+                payload=json.load(response)
+                # A completed inventory exchange clears any earlier rejected/
+                # error state. Only the inventory channel marks ok: the runtime
+                # bridge probes commands and must not overwrite SOC health.
+                if path.startswith('/api/inventory') or path=='/api/asg/enroll':
+                    self.soc_note('ok','HTTP %s %s'%(getattr(response,'status',200),path))
+                return payload
+        except HTTPError as exc:
+            self.soc_note('rejected' if exc.code in (401,403) else 'error','HTTP %s %s'%(exc.code,path));raise
+        except OSError as exc:
+            self.soc_note('error',type(exc).__name__+' '+path);raise
     def stream_identity(self,agent):
         workspace=workspace_identity(agent,agent.get('collection_home'),agent.get('collection_environment'))
         return sha(canonical([agent['agent_id'],'soc-inventory-'+agent['platform'],workspace])),workspace
@@ -168,10 +194,12 @@ class Endpoint:
                                 a=json.loads(row[0]);client.agents[a['agent_id']]=a
                         bridge.run_once()
                     except (OSError,ValueError,KeyError) as exc:LOG.warning('Runtime report pending: %s',type(exc).__name__)
+                    self.note(self.health_file.parent/'bridge-beat.json',{'pid':os.getpid(),'t':time.time()})
                     time.sleep(15)
             threading.Thread(target=runtime_loop,daemon=True).start()
         next_collect={}
         while True:
+            self.beat()
             manual=self.config.get('collection_mode')=='manual' and not once
             if manual:
                 pending=self.db.execute('SELECT id FROM collection_requests ORDER BY id LIMIT 1').fetchone()
