@@ -1,9 +1,10 @@
 # 交付项 7「安装、启动、检查、升级、卸载」——草履虫级实现手册 v2（2026-09-21）
 
-结论先行：本项已实现并通过自动验收 17/17，绑定交付包摘要
-317732f5cd8045175e14157135ba809960f8e366474d8a7d0061b76a8e259cc0
-（版本 0.9.2，构建自提交 6274392，报告
-/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-lifecycle-acceptance-8v1ix06j/report.json）。
+结论先行：本项已实现并通过自动验收 17/17，最新绑定交付包摘要
+b479854ac488bc6e1401691f3c4b6b953f210c282714d3a9f485c6dee8563ff7
+（版本 0.9.3，构建自提交 025f3f5——含监督器孤儿进程回收修复，报告
+docs/stage1/evidence/terminal_lifecycle_0_9_3_reap_fix_report.json；
+历史轮次曾绑定 0.9.2/317732f5，见验收文档追加节）。
 本手册的目标是"不看代码也能照着重新实现一遍"：每个支撑函数给出输入、输出、
 判定规则和固定错误文案；每个命令给出步骤顺序、每步失败返回什么、怎么人工验证、
 怎么算通过；验收脚本 17 步逐步骤写明做法和门槛。
@@ -581,8 +582,8 @@ children 两个 alive=true——这就是"服务活着"的唯一证据链起点�
     "交付包内 asgctl 无法运行"；成功打印 {package, version, git_commit, files,
     manifest_sha256, sabotage}——manifest_sha256 就是验收报告绑定的包摘要。
 
-当前交付包事实：0.9.2、2332 个文件、manifest sha256 前缀 317732f5、
-构建自 6274392、位置 /tmp/asg-rel-20260921/asg-terminal。
+当前交付包事实：0.9.3、2332 个文件、manifest sha256 前缀 b479854a、
+构建自 025f3f5、位置 /tmp/asg-rel-e/asg-terminal。
 
 ---
 

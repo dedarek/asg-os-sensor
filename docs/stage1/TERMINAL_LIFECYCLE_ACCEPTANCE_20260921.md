@@ -130,3 +130,19 @@ ProcessLookupError 与 frozen engine never reported。修复：
  allow 回合 5 个文件全部真实创建，deny 回合 5 个文件均不存在且 blocked 记录在案；
  全程 ASG 进程为零，即直报与控制完全不依赖 ASG 运行。
  去重复查：107 条 traces，id 全唯一。验收后 ASG 面板以 ASG_PORT=8081 恢复（HTTP 200）。
+
+
+## 追加：0.9.3 产品级修复后重跑（2026-09-21 06:2x）
+
+发布包 0.9.3（构建自提交 025f3f5，manifest sha256
+b479854ac488bc6e1401691f3c4b6b953f210c282714d3a9f485c6dee8563ff7，2332 个文件）。
+全量 17 步重跑通过，失败 0：
+docs/stage1/evidence/terminal_lifecycle_0_9_3_reap_fix_report.json
+（原始位置 /var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-lifecycle-acceptance-uqs6z58l/report.json）。
+
+本次与上一轮的实质差异是被验产品变了，不是脚本变了：
+025f3f5 在监督器启动时回收上一任被 SIGKILL 的监督器遗留的 engine/endpoint
+孤儿进程（按"命令行包含本安装目录 + engine/endpoint 启动特征"匹配，
+TERM→5 秒→KILL，跳过自身与父进程）。此前两轮 doctor_fault_injection 失败的
+根因正是该孤儿持有引擎端口导致新引擎 EADDRINUSE 崩溃循环。
+本轮 doctor 步骤 23.5 秒一次通过；升级回滚 143.6 秒内旧版本恢复健康。
