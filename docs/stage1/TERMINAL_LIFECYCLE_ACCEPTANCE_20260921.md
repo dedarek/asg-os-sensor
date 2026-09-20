@@ -208,3 +208,15 @@ hermes 功能验收（本机 SOC 网关 8095，agent asg-b76e770be9e2…45ee1）
   语法验证，未做运行时断网/补报实测；不能继承 opencode/hermes 的功能结论。
 - codex 原生包走 ASG EventSpool→/api/asg/events 通道，服务端去重此前已验收；
   该通道的断 SOC 补报结论不迁移到 analyze 直报路径。
+
+## 追加：0.9.4 包全生命周期复验（2026-09-21，提交 9613d5e）
+
+包：/tmp/asg-rel-f/asg-terminal，版本 0.9.4，manifest sha256 前缀 1c8bb273
+（清单含 2332 个文件摘要），随包捆绑独立 Python 运行时。
+17 步全部通过（报告 docs/stage1/evidence/terminal_lifecycle_0_9_4_state_sync_report.json）：
+安装 60 秒健康、删包存活、重复安装幂等、注册测试 Agent、首次清点抵达 SOC、
+断连缓冲+重连补报、快照无重复、start/stop 循环、坏凭据 rc5+修复、负向安装、
+doctor 四种故障区分、升级 A→B、故障升级 90 秒内回滚、卸载保数据保 Hook、
+重装复用、按范围卸载 Hook。
+本轮新增改动（monitor_dashboard 展示一致性）已包含在该包内并通过上述检查；
+0.9.3 结论不继承，本包独立复验。
