@@ -103,6 +103,30 @@ class NativeConstraintTests(unittest.TestCase):
                           'architecture':pf.machine()}
         self.assertTrue(compatible(right_platform, Path('/bin/ls'), 'codex'))
 
+    def test_pinned_build_and_version_must_match(self):
+        import hashlib
+        from pathlib import Path
+        exe = Path('/bin/ls')
+        good = hashlib.sha256(exe.read_bytes()).hexdigest()
+        base = {'adapter':'soc-native-v1','agent_type':'codex'}
+        # An explicit executable pin is honoured: right build passes, wrong
+        # build and unreadable executables are rejected, never a silent match.
+        self.assertTrue(compatible({**base,'executable':good}, exe, 'codex'))
+        self.assertFalse(compatible({**base,'executable':'0'*64}, exe, 'codex'))
+        self.assertFalse(compatible({**base,'executable':good}, Path('/nonexistent/agent-bin'), 'codex'))
+        # Version pins are release scopes; a wrong or missing version fails.
+        self.assertTrue(compatible({**base,'version':'1.2.3'}, exe, 'codex', '1.2.3'))
+        self.assertFalse(compatible({**base,'version':'1.2.3'}, exe, 'codex', '1.2.4'))
+        self.assertFalse(compatible({**base,'version':'1.2.3'}, exe, 'codex', None))
+        self.assertFalse(compatible({**base,'min_version':'2.0'}, exe, 'codex', '1.9.0'))
+        self.assertTrue(compatible({**base,'min_version':'2.0'}, exe, 'codex', '2.0.1'))
+        # Pins nested under compatibility for learned packages honour the
+        # same rule (previously only the executable digest was checked there).
+        learned = {'compatibility':{'platform':__import__('platform').system(),
+                   'architecture':__import__('platform').machine(),'runtime':'native',
+                   'version':'9.9.9'}}
+        self.assertFalse(compatible(learned, exe, 'codex', '1.0.0'))
+
 
 if __name__=='__main__':
     unittest.main()

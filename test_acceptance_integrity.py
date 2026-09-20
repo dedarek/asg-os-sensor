@@ -56,7 +56,7 @@ class AcceptanceIntegrityTests(unittest.TestCase):
     def test_tool_output_echo_is_not_user_input(self):
         import json, tempfile
         from pathlib import Path
-        from e2e.verify_normal_conversation import reconcile
+        from e2e.verify_normal_conversation import reconcile, transcript_baseline
         baseline = [ {'type':'turn_context','payload':{'turn_id':'t'}},
                      {'type':'response_item','payload':{'type':'message','role':'user','content':[{'text':'hello'}]}},
                      {'type':'response_item','payload':{'type':'message','role':'assistant','phase':'final_answer','content':[{'text':'world'}]}} ]
@@ -65,7 +65,7 @@ class AcceptanceIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'session.jsonl'
             path.write_text('\n'.join(json.dumps(r) for r in baseline))
-            result = reconcile(records,path)
+            result = reconcile(records,transcript_baseline([str(path)]))
         self.assertEqual(result['completed_turns_exact'],0)
         self.assertEqual(result['mismatches'],1)
         self.assertFalse(result['passed'])
@@ -89,6 +89,59 @@ class AcceptanceIntegrityTests(unittest.TestCase):
     def test_timeout_cannot_pass_as_clean_approval(self):
         report = {'approve':[{'paused_before_effect':True,'created_once':True,'errors':['timeout']}]*5}
         self.assertFalse(evaluate_results(report)['approve_5_of_5'])
+
+    def _prefix_records(self, truncation):
+        # 10 turns where the hook only captured a prefix of every message.
+        records = []
+        for i in range(10):
+            payload = {'turn_id': 't%d' % i, 'timestamp': 1000 + i,
+                       'redaction': {'credentials_exported': False}}
+            if truncation is not None:
+                payload['truncation'] = truncation
+            records.append(dict(event_type='user.input',
+                                payload={**payload, 'prompt': 'hello'}))
+            records.append(dict(event_type='assistant.output',
+                                payload={**payload, 'assistant_output': 'world'}))
+        return records
+
+    def _prefix_baseline(self, directory):
+        import json
+        from pathlib import Path
+        from e2e.verify_normal_conversation import transcript_baseline
+        rows = []
+        for i in range(10):
+            rows.append({'type': 'turn_context', 'payload': {'turn_id': 't%d' % i}})
+            rows.append({'type': 'response_item', 'timestamp': '2026-01-01T00:00:00+00:00',
+                         'payload': {'type': 'message', 'role': 'user',
+                                     'content': [{'text': 'hello full message'}]}})
+            rows.append({'type': 'response_item', 'timestamp': '2026-01-01T00:00:01+00:00',
+                         'payload': {'type': 'message', 'role': 'assistant', 'phase': 'final_answer',
+                                     'content': [{'text': 'world full answer'}]}})
+        path = Path(directory) / 'session.jsonl'
+        path.write_text('\n'.join(json.dumps(r) for r in rows))
+        return transcript_baseline([str(path)])
+
+    def test_undeclared_prefix_is_never_verbatim(self):
+        # A generic redaction envelope must not launder a truncated capture.
+        import tempfile
+        from e2e.verify_normal_conversation import reconcile
+        with tempfile.TemporaryDirectory() as directory:
+            result = reconcile(self._prefix_records(None), self._prefix_baseline(directory))
+        self.assertEqual(result['completed_turns_exact'], 0)
+        self.assertEqual(result['partial_declared_messages'], 0)
+        self.assertGreater(result['mismatches'], 0)
+        self.assertFalse(result['passed'])
+
+    def test_declared_prefix_is_gap_not_verbatim(self):
+        # Even an honestly declared truncation never counts as a verbatim turn.
+        import tempfile
+        from e2e.verify_normal_conversation import reconcile
+        truncation = {'truncated': True, 'fields': [{'field': 'prompt'}]}
+        with tempfile.TemporaryDirectory() as directory:
+            result = reconcile(self._prefix_records(truncation), self._prefix_baseline(directory))
+        self.assertEqual(result['completed_turns_exact'], 0)
+        self.assertEqual(result['partial_declared_messages'], 20)
+        self.assertFalse(result['passed'])
 
 if __name__ == '__main__':
     unittest.main()

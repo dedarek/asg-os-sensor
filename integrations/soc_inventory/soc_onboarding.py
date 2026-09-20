@@ -12,26 +12,64 @@ from urllib.request import Request, build_opener, ProxyHandler
 from urllib.parse import urlsplit
 
 
-def compatible(constraints, exe, agent_type):
+def _digest(path):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for data in iter(lambda:f.read(1024*1024),b''):h.update(data)
+    return h.hexdigest()
+
+
+def _version_ok(pin, observed):
+    # Pins are explicit release scopes: a wrong or missing version is a
+    # mismatch, never a silent pass. Comparison is numeric on dot segments
+    # with a lexicographic fallback for pre-release suffixes.
+    def key(v):
+        parts=[]
+        for segment in str(v).split('.'):
+            digits=''.join(ch for ch in segment if ch.isdigit())
+            parts.append(int(digits) if digits else -1)
+        return tuple(parts)
+    if pin.get('version') and str(observed or '')!=str(pin['version']):return False
+    if pin.get('min_version') and key(observed or '0')<key(pin['min_version']):return False
+    if pin.get('max_version') and key(observed or '0')>key(pin['max_version']):return False
+    return True
+
+
+def _build_ok(constraints, exe):
+    # Shared build-scope check for native and learned packages. Every pin is
+    # optional, but once present it must match the live target exactly; an
+    # unreadable executable can never satisfy a pinned build.
+    def digest(path):
+        try:return _digest(path)
+        except OSError:return None
+    if constraints.get('executable') is not None:
+        observed=digest(exe)
+        if observed is None or constraints['executable']!=observed:return False
+    for key,value in constraints.items():
+        if key.startswith('Contents/'):
+            root=next((p for p in exe.parents if p.suffix=='.app'),None)
+            if root is None:return False
+            observed=digest(root/key)
+            if observed is None or observed!=value:return False
+    return True
+
+
+def compatible(constraints, exe, agent_type, agent_version=None):
     if constraints.get('adapter')=='soc-native-v1':
         if constraints.get('agent_type')!=agent_type:return False
-        # A native package may pin the host shape; absent keys stay permissive
-        # so existing catalog entries keep working while new ones pin tighter.
+        # A native package may pin the host shape and build; absent keys stay
+        # permissive so centrally built vendor packages keep working, while
+        # any explicit pin (platform, architecture, version, executable or
+        # bundle digest) must match the live target exactly.
         if constraints.get('platform') not in (None,platform.system()):return False
         if constraints.get('architecture') not in (None,platform.machine()):return False
+        if not _version_ok(constraints,agent_version):return False
+        if not _build_ok(constraints,exe):return False
         return True
     c=constraints.get('compatibility') or {}
     if c.get('platform')!=platform.system() or c.get('architecture')!=platform.machine() or c.get('runtime')!='native':return False
-    def digest(p):
-        h=hashlib.sha256()
-        with p.open('rb') as f:
-            for data in iter(lambda:f.read(1024*1024),b''):h.update(data)
-        return h.hexdigest()
-    if c.get('executable')!=digest(exe):return False
-    for key,value in c.items():
-        if key.startswith('Contents/'):
-            root=next((p for p in exe.parents if p.suffix=='.app'),None)
-            if root is None or digest(root/key)!=value:return False
+    if not _build_ok(c,exe):return False
+    if not _version_ok(c,agent_version):return False
     return True
 
 
@@ -43,6 +81,12 @@ def install_target(agent):
         'openclaw':'OPENCLAW_STATE_DIR',
     }.get(agent['platform'])
     value=environment.get(preferred) if preferred else None
+    if preferred and not value:
+        # This platform's hook home is an environment-scoped standard
+        # directory. Falling back to the process workspace would install the
+        # managed hook next to an unrelated cwd; return None so the installer
+        # applies its own documented standard-directory default instead.
+        return None
     workspace=Path(agent['workspace']).expanduser().resolve()
     # A GUI process launched from the filesystem root has no meaningful project
     # workspace; return None so the installer applies its own standard-directory
@@ -54,7 +98,7 @@ def install_target(agent):
 def install(endpoint, agent, exe, execute=False):
     exe=Path(exe).resolve()
     catalog=endpoint.request(agent,'/api/asg/artifact/catalog',None,'GET')
-    selected=next((x for x in catalog['items'] if compatible(x['constraints'],exe,agent['platform'])),None)
+    selected=next((x for x in catalog['items'] if compatible(x['constraints'],exe,agent['platform'],agent.get('agent_version'))),None)
     if selected is None:return {'status':'needs_investigation','route':'protocol_then_goose','reason':'no_compatible_SOC_package','model_calls':0}
     key=Path(agent['key_file']).read_text().strip()
     route=selected['download_path']

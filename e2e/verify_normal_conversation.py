@@ -108,7 +108,7 @@ def reconcile(records, baseline):
                 window_start = stamp
     observed = {}
     pre_activation = 0
-    redacted = set()
+    declared_partial = set()
     for record in records:
         p = record.get('payload', {})
         kind = record.get('event_type')
@@ -125,8 +125,14 @@ def reconcile(records, baseline):
         if role == 'assistant':
             text = visible_assistant_text(text)
         sha = hashlib.sha256(text.encode()).hexdigest()
-        if p.get('redaction'):
-            redacted.add((p.get('turn_id'), role, sha))
+        # A record only earns prefix credit when it explicitly declares that
+        # this very field was truncated or redacted (truncation.truncated set,
+        # or content_complete=false).  The generic redaction envelope that
+        # every hook row carries proves nothing about this field.
+        trunc = p.get('truncation') or {}
+        declared = bool(trunc.get('truncated')) or p.get('content_complete') is False
+        if declared:
+            declared_partial.add((p.get('turn_id'), role, sha))
         observed.setdefault(p.get('turn_id'), {}).setdefault(role, {})[text] = sha
     results = []
     for tid in set(baseline) - set(observed):
@@ -159,26 +165,30 @@ def reconcile(records, baseline):
             for text, sha in texts.items():
                 row = {'turn_id': tid, 'role': role, 'sha256': sha, 'chars': len(text),
                        'exact': text in candidates or text.rstrip() in stripped}
-                if not row['exact'] and (tid, role, sha) in redacted and any(t.startswith(text.rstrip()) for t in stripped):
-                    # Redacted bodies can never be byte-identical by design;
-                    # accept only a verified visible prefix and label it.
-                    row['exact'] = True
-                    row['verification'] = 'redacted_prefix'
+                if not row['exact'] and (tid, role, sha) in declared_partial and any(t.startswith(text.rstrip()) for t in stripped):
+                    # A declared truncation can never be byte-identical by
+                    # design.  The visible prefix is verified but is NOT a
+                    # verbatim match: exact stays False, the turn can never
+                    # count toward completed_turns_exact, and the row is
+                    # reported separately as a capture-completeness gap.
+                    row['exact'] = False
+                    row['reason'] = 'partial_declared'
                 results.append(row)
     verified = [r for r in results if r.get('reason') != 'transcript_turn_absent']
     complete = sum(1 for tid, values in observed.items()
                    if values.get('user') and values.get('assistant')
                    and all(r['exact'] for r in results if r['turn_id'] == tid))
-    redacted_count = sum(1 for r in results if r.get('verification') == 'redacted_prefix')
+    redacted_count = sum(1 for r in results if r.get('reason') == 'partial_declared')
     unverified = sum(1 for r in results if r.get('reason') == 'transcript_turn_absent')
     return {'mode': 'normal_user_instance', 'scope': 'turns_after_first_captured_user_input',
             'window_start_epoch': window_start, 'pre_window_messages': pre_activation,
             'completed_turns_exact': complete, 'compared_messages': len(results),
             'unverified_no_baseline': unverified, 'redacted_messages': redacted_count,
+            'partial_declared_messages': redacted_count,
             'mismatches': sum(not r['exact'] for r in verified), 'rows': results,
             'passed': complete >= 10 and bool(verified) and all(r['exact'] for r in verified),
             'limitations': ['评估窗口从本实例首次采集到用户输入起算；窗口前轮次不计入；本报告不证明模型网络和控制',
-                            '脱敏正文只验证可见前缀，标记为 redacted_prefix 而非逐字一致',
+                            '显式声明截断/脱敏的正文只验证可见前缀，记为 partial_declared：不计入逐字一致回合，也不能通过验收',
                             '目标转录缺失的轮次记为 transcript_turn_absent，不参与精确计数']}
 
 

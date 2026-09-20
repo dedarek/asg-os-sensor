@@ -2237,6 +2237,8 @@ def _enriched_snapshot():
     attach_capability(snapshot, trust=trust, serving=serving)
     from runtime import hook_approval
     hook_approval.attach(snapshot)
+    from integrations.soc_inventory import codex_trust
+    codex_trust.attach(snapshot)
     snapshot['native_trust'] = trust
     snapshot['hook_runtime'] = serving
     return snapshot
