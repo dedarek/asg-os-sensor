@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-09-20T02:10:53+0800",
+  "generated_at": "2026-09-20T11:12:03+0800",
   "regression": {
     "modules": 66,
     "ran": 438,
-    "ok": true,
-    "failed": null
+    "ok": false,
+    "failed": "FAILED (errors=1)"
   },
   "live": {
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-19T18:10:45.236936+00:00",
+      "probed_at": "2026-09-20T03:11:36.077252+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,8 +371,8 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 241,
-      "age_seconds": 7.757677,
+      "duration_ms": 243,
+      "age_seconds": 27.599855,
       "stale": false
     },
     "hook_runtime": {
@@ -501,7 +501,7 @@
     {
       "task": 1,
       "name": "修正实例归属和验收状态",
-      "status": "通过",
+      "status": "失败",
       "items": [
         {
           "item": "跨运行时隔离",
@@ -591,18 +591,18 @@
         {
           "item": "每个通过状态带证据时间",
           "meaning": "",
-          "status": "通过",
+          "status": "失败",
           "evidence": "runtime/capability.py 为各级附加证据记录时间（trusted/loaded/observing/serving 实测可见；test_capability）"
         }
       ],
       "evidence": [
-        "回归：66 个测试模块，Ran 438，OK"
+        "回归：66 个测试模块，Ran 438，FAILED (errors=1)"
       ]
     },
     {
       "task": 2,
       "name": "完整采集真实输入输出和工作流",
-      "status": "通过",
+      "status": "失败",
       "evidence": [
         "io-batch.json",
         "hook-full-acceptance.json"
@@ -617,7 +617,7 @@
         {
           "item": "事件词表/归一化覆盖",
           "meaning": "未翻译不计数",
-          "status": "通过",
+          "status": "失败",
           "evidence": "test_event_vocabulary / test_io_acceptance"
         },
         {
@@ -701,7 +701,7 @@
         {
           "item": "页面按会话查看对话列表、原文可展开",
           "meaning": "",
-          "status": "通过",
+          "status": "失败",
           "evidence": "monitor_dashboard.renderConversation：按 session 归组、details 展开原始内容（test_conversation_view）"
         },
         {
@@ -713,8 +713,8 @@
         {
           "item": "正常用户实例独立验收",
           "meaning": "",
-          "status": "通过",
-          "evidence": "当前正常会话独立对账：10 个完整回合、20 条文本、0 条不一致；要求至少 10 回合。隔离实例不能替代。"
+          "status": "失败",
+          "evidence": "当前正常会话独立对账：pid=9601、通道=api、3 个完整回合、9 条文本、0 条不一致、核查时间=2026-09-20T03:05:40.106617+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。"
         }
       ]
     },

@@ -30,6 +30,19 @@ class RuntimeBridge:
         controls=self.local('/api/hook-control/status')
         model_settings=self.local('/api/model-settings')
         for agent in self.endpoint.agents.values():
+            try:
+                self._runtime_cycle(agent,state,controls,model_settings)
+            except OSError as exc:
+                # One unhealthy agent (e.g. a rejected oversized report) must not
+                # strand the remaining enrolled agents for this cycle.
+                import logging
+                logging.getLogger('asg.soc.bridge').warning('runtime cycle failed for %s: %s',agent.get('agent_id'),type(exc).__name__)
+
+    # The SOC gateway accepts at most 4 MiB per request; keep the whole report
+    # under 3.5 MiB by dropping oldest hook records and label the trimming.
+    REPORT_BUDGET=3*1024*1024+512*1024
+
+    def _runtime_cycle(self,agent,state,controls,model_settings):
             instance=agent.get('asg_instance_id')
             target=next((a for a in state.get('agents',[]) if a.get('instance_id')==instance),None)
             if target is None and agent.get('identity_refreshed'):
@@ -39,9 +52,22 @@ class RuntimeBridge:
             hooks=self.local('/api/hook-data?'+urlencode({'instance_id':instance,'limit':200,'max_bytes':1048576}))
             self.events.collect(agent,hooks)
             self.events.flush(agent)
-            if target is None:continue
+            if target is None:return
             revision=int(time.time_ns())
             payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust')}
+            trimmed=0
+            records=hooks.get('records') or []
+            total_records=len(records)
+            while len(canonical({'instance_id':instance,'revision':revision,'payload':payload}))>self.REPORT_BUDGET and records:
+                drop=max(1,len(records)//4)
+                records=records[drop:]
+                hooks['records']=records
+                hooks['records_trimmed']=total_records-len(records)
+            if trimmed:
+                coverage=hooks.get('coverage') or {}
+                limitations=coverage.get('limitations') or []
+                limitations.append('上报体积超过网关上限：最早 %d 条记录本轮省略（记录本身已入事件流）'%(total_records-len(records)))
+                coverage['limitations']=limitations;hooks['coverage']=coverage
             self.endpoint.request(agent,'/api/asg/runtime',canonical({'instance_id':instance,'revision':revision,'payload':payload}))
             commands=self.endpoint.request(agent,'/api/asg/commands',None,'GET')
             for command in commands.get('commands') or []:

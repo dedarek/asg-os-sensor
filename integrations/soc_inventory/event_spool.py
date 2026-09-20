@@ -47,7 +47,7 @@ class EventSpool:
     def save(self,agent,source,start,record,end):
         with self.endpoint.db:
             if record is not None:
-                event={'event_id':sha(canonical([source,start,record])),'instance_id':agent['asg_instance_id'],**record}
+                event={'event_id':sha(canonical([source,start,record])),'instance_id':agent['asg_instance_id'],'channel':'bridge',**record}
                 self.endpoint.db.execute('INSERT OR IGNORE INTO event_outbox VALUES(?,?,?)',(event['event_id'],agent['agent_id'],canonical(event)))
             self.endpoint.db.execute('INSERT OR REPLACE INTO event_offsets VALUES(?,?)',(source,end))
     def flush(self,agent):

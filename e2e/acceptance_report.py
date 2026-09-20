@@ -251,9 +251,13 @@ def main():
                           % (me.get('missing'), json.dumps([c.get('closest_producer_events') for c in (me.get('classification') or [])], ensure_ascii=False))),
     ]
     normal = read_json(OUT / 'current-normal-conversation.json') or {}
-    io_rows.append(row('正常用户实例独立验收', '通过' if normal.get('passed') is True else '未执行',
-                       '当前正常会话独立对账：%s 个完整回合、%s 条文本、%s 条不一致；要求至少 10 回合。隔离实例不能替代。'
-                       % (normal.get('completed_turns_exact', 0), normal.get('compared_messages', 0), normal.get('mismatches', 0))))
+    normal_ok = (normal.get('passed') is True and normal.get('pid')
+                 and str(normal.get('source', '')).startswith('verify_normal_conversation.py'))
+    io_rows.append(row('正常用户实例独立验收', '通过' if normal_ok else ('失败' if normal.get('pid') else '未执行'),
+                       '当前正常会话独立对账：pid=%s、通道=%s、%s 个完整回合、%s 条文本、%s 条不一致、核查时间=%s；要求至少 10 回合，逐回合明细见 %s。隔离实例或共享引擎驱动均不能替代该实例口径。'
+                       % (normal.get('pid'), normal.get('transport'), normal.get('completed_turns_exact', 0),
+                          normal.get('compared_messages', 0), normal.get('mismatches', 0), normal.get('checked_at'),
+                          normal.get('evidence') or 'current-normal-conversation.json')))
     t2_status = ('通过' if all(x['status'] == '通过' for x in io_rows)
                  else '失败' if any(x['status'] == '失败' for x in io_rows) or not io_ok
                  else '未执行')

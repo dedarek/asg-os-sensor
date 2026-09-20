@@ -15,7 +15,7 @@ def exchange(config, data, action):
         if not event_type or len(event_type)>200:raise ValueError('invalid event type')
         instance=str(config.get('instance_id') or config['agent_id'])
         event_id=hashlib.sha256(json.dumps([instance,data],sort_keys=True,separators=(',',':')).encode()).hexdigest()
-        return request(config,'/api/asg/events',{'instance_id':instance,'events':[{'event_id':event_id,'instance_id':instance,'event_type':event_type,'timestamp':data.get('timestamp'),'payload':data}]})
+        return request(config,'/api/asg/events',{'instance_id':instance,'events':[{'event_id':event_id,'instance_id':instance,'event_type':event_type,'timestamp':data.get('timestamp'),'channel':'direct','payload':data}]})
     if action == 'ack':
         # This is a producer acknowledgement, not independent enforcement proof.
         return {'accepted': True, 'scope': 'local_execution_ack', 'enforcement_verified': False}

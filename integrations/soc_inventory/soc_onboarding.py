@@ -14,7 +14,12 @@ from urllib.parse import urlsplit
 
 def compatible(constraints, exe, agent_type):
     if constraints.get('adapter')=='soc-native-v1':
-        return constraints.get('agent_type')==agent_type
+        if constraints.get('agent_type')!=agent_type:return False
+        # A native package may pin the host shape; absent keys stay permissive
+        # so existing catalog entries keep working while new ones pin tighter.
+        if constraints.get('platform') not in (None,platform.system()):return False
+        if constraints.get('architecture') not in (None,platform.machine()):return False
+        return True
     c=constraints.get('compatibility') or {}
     if c.get('platform')!=platform.system() or c.get('architecture')!=platform.machine() or c.get('runtime')!='native':return False
     def digest(p):

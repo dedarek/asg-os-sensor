@@ -1,7 +1,16 @@
 {
-  "passed": true,
-  "completed_turns_exact": 10,
-  "compared_messages": 20,
+  "pid": 9601,
+  "transport": "api",
+  "completed_turns_exact": 3,
+  "compared_messages": 9,
   "mismatches": 0,
-  "source": "normal-conversation-summary.json (10 normal-path turns via shared desktop engine, 2026-09-20)"
+  "passed": false,
+  "source": "verify_normal_conversation.py --pid 9601 (hook records vs target rollout transcripts)",
+  "checked_at": "2026-09-20T03:05:40.106617+00:00",
+  "evidence": "artifacts/acceptance/normal-conversation-9601.json",
+  "transcripts": [
+    "/Users/mac/.codex/sessions/2026/09/19/rollout-2026-09-19T13-49-45-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0b836-a9cd-7b43-91e0-4f859e1d33bd.jsonl",
+    "/Users/mac/.codex/sessions/2026/09/20/rollout-2026-09-20T09-57-15-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0bc88-2b1b-7553-ab01-1e263f4f7dd5.jsonl",
+    "/Users/mac/.codex/sessions/2026/09/20/rollout-2026-09-20T10-01-17-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0bc8b-ddac-7df3-8dfe-bb62e58be572.jsonl"
+  ]
 }
