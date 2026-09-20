@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-20T14:51:06+0800",
+  "generated_at": "2026-09-20T15:08:45+0800",
   "regression": {
-    "modules": 66,
-    "ran": 440,
+    "modules": 76,
+    "ran": 480,
     "ok": true,
     "failed": null
   },
@@ -10,7 +10,7 @@
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-20T06:50:07.453267+00:00",
+      "probed_at": "2026-09-20T07:07:47.441917+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,8 +371,8 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 216,
-      "age_seconds": 59.202238,
+      "duration_ms": 326,
+      "age_seconds": 58.405801,
       "stale": false
     },
     "hook_runtime": {
@@ -596,7 +596,7 @@
         }
       ],
       "evidence": [
-        "回归：66 个测试模块，Ran 440，OK"
+        "回归：76 个测试模块，Ran 480，OK"
       ]
     },
     {

@@ -78,6 +78,8 @@ def run_test(module, method):
 
 def run_full_regression():
     mods = sorted(p.stem for p in ROOT.glob('test_*.py'))
+    for sub in sorted(ROOT.glob('integrations/*/test_*.py')):
+        mods.append('.'.join(sub.relative_to(ROOT).with_suffix('').parts))
     proc = subprocess.run([sys.executable, '-m', 'unittest', *mods],
                           cwd=str(ROOT), capture_output=True, text=True, timeout=1800)
     out = (proc.stdout or '') + (proc.stderr or '')

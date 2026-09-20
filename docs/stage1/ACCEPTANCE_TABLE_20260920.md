@@ -2,7 +2,7 @@
 
 本表由 `e2e/acceptance_report.py` 依据当前证据自动生成，状态只会是：通过 / 失败 / 待外部条件 / 目标不支持 / 未执行。
 
-回归：66 个测试模块，Ran 440，OK。
+回归：76 个测试模块，Ran 480，OK。
 
 验收批次：**ASG-BATCH-20260919-151740**；机器 01a329ad376e9a7f；Hook sha256:e55d586ecf77e37d8；配方 harness-efac4c5f21c6@rev7；模式 isolated_real_instance；关联会话 104 个（3 个实例）。
 
