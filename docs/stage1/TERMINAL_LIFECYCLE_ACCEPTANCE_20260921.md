@@ -185,3 +185,26 @@ security-hooks-opencode.ts），直报 8095。
 - 本轮只覆盖 opencode 平台原生插件；codex/openclaw/hermes 原生 Hook 的同类
   outbox 需按同一模式各自实现并分别验收，不继承本结果。
 - demo 实例当前保持 fail_closed=true、timeout_ms=2000（验收拓扑）。
+
+## 追加：hermes 原生 Hook outbox 功能验收 + openclaw 核心客户端同构实现（2026-09-21）
+
+实现（poc-soc-mngt 0ac5fe8，feature/0.3.2）：
+- hooks/platforms/hermes/__init__.py：_post 在 HTTPError>=500、URLError/超时路径
+  将请求（含稳定 event_id）原子追加 security-hooks-outbox.json（容量 2000），
+  后台守护线程 30 秒排空 + 加载后 2 秒首轮排空；fail-open 配置下返回值语义不变。
+- hooks/platforms/core/analyzerClient.ts（openclaw）：同一语义（event_id 盖章、
+  >=500/异常缓冲、加载与 30 秒定时排空、4xx 不缓冲），outbox 目录取
+  SECURITY_HOOK_OUTBOX_DIR || openclaw home || cwd。
+
+hermes 功能验收（本机 SOC 网关 8095，agent asg-b76e770be9e2…45ee1）：
+1. 断网关（502/拒连均按网络失败处理）调用 _post('/api/analyze/user-input')：
+   返回配置的 fallback allow，事件 1 条落盘 outbox，event_id 唯一。缺失 0。
+2. 网关恢复后调用排空：文件送达网关（200 allow），outbox 文件删除。
+3. 对同一 event_id 直接重放：网关按 sha256(agent_id|event_id) 派生主键
+  （soc-open-api a87dc3a），psql 查 traces 恰 1 行、无重复。
+
+如实的限制：
+- openclaw 核心客户端本环境无 openclaw 宿主，只做了 TypeScript transform 模式
+  语法验证，未做运行时断网/补报实测；不能继承 opencode/hermes 的功能结论。
+- codex 原生包走 ASG EventSpool→/api/asg/events 通道，服务端去重此前已验收；
+  该通道的断 SOC 补报结论不迁移到 analyze 直报路径。
