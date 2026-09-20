@@ -41,7 +41,7 @@
 | 2 完整采集真实输入输出和工作流 | 抽屉 2 分钟自动回顶 0 |  | **通过** | drawer-autoscroll.json：浏览器实测 2 分钟内回顶 0 次、抽屉保持打开 |
 | 2 完整采集真实输入输出和工作流 | 页面按会话查看对话列表、原文可展开 |  | **失败** | monitor_dashboard.renderConversation：按 session 归组、details 展开原始内容（test_conversation_view） |
 | 2 完整采集真实输入输出和工作流 | 缺失事件来源已调查并保存依据 |  | **通过** | missing-events-investigation.json：hook.loaded 已观测；['session.end'] 记为目标不支持（最近似 [["session.idle", "session.compacted", "session.updated"]]） |
-| 2 完整采集真实输入输出和工作流 | 正常用户实例独立验收 |  | **失败** | 当前正常会话独立对账：pid=9601、通道=api、3 个完整回合、10 条文本、0 条不一致、核查时间=2026-09-20T03:32:36.945673+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。 |
+| 2 完整采集真实输入输出和工作流 | 正常用户实例独立验收 |  | **失败** | 当前正常会话独立对账：pid=9601、通道=api、4 个完整回合、13 条文本、0 条不一致、核查时间=2026-09-20T03:39:31.117991+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。 |
 | 3 真实执行控制 | 隔离目标冒烟放行/拒绝 |  | **通过** | opencode/codex/zcode control-verification.json |
 | 3 真实执行控制 | 放行 20 次全部生效 |  | **通过** | /Users/mac/个人项目/asg-os-sensor-advisor-20260911/artifacts/acceptance/control-batch.json |
 | 3 真实执行控制 | 拒绝 20 次无副作用 |  | **通过** | control-batch.json#deny |

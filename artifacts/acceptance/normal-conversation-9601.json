@@ -6,8 +6,8 @@
       "scope": "turns_after_first_captured_user_input",
       "window_start_epoch": 1789869307.052,
       "pre_window_messages": 15,
-      "completed_turns_exact": 3,
-      "compared_messages": 10,
+      "completed_turns_exact": 4,
+      "compared_messages": 13,
       "unverified_no_baseline": 1,
       "redacted_messages": 0,
       "mismatches": 0,
@@ -82,6 +82,27 @@
           "sha256": "b4f4981c2f8b210e5c49f1a10878f18aba114ff4eca637f76c94114f5eda4b00",
           "chars": 1294,
           "exact": true
+        },
+        {
+          "turn_id": "01a0bcd8-d809-7f00-a851-4e9ecdfe93db",
+          "role": "assistant",
+          "sha256": "bb73bcc493b232c90da8ac18e0ebd582e5f5d1e7677fcd393d7bf2d51332db10",
+          "chars": 1003,
+          "exact": true
+        },
+        {
+          "turn_id": "01a0bce4-3573-7fa0-948a-b92e9bf41598",
+          "role": "assistant",
+          "sha256": "797b64ca3ed5929aca2be90dd0eacf869f7009f799cefe36bc55c05002a43592",
+          "chars": 1462,
+          "exact": true
+        },
+        {
+          "turn_id": "01a0bce4-3573-7fa0-948a-b92e9bf41598",
+          "role": "user",
+          "sha256": "2dce01edebede4ffd9c8124a9409c0144dd54eb0fa6cf20cb4118f972ff5f0e6",
+          "chars": 472,
+          "exact": true
         }
       ],
       "passed": false,
@@ -97,7 +118,7 @@
       ]
     }
   ],
-  "completed_turns_exact_total": 3,
+  "completed_turns_exact_total": 4,
   "mismatches_total": 0,
   "passed": false
 }
