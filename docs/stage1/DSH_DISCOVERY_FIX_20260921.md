@@ -34,3 +34,5 @@ runtime_discovery_candidate 新增信号 protocol-ecosystem-dependency：
 边界（如实）：8081 面板进程仍加载旧代码，页面上 DSH 出现需要该开发实例下次重启后
 手动扫描确认；本修复的验收证据是上述实时全机扫描与单元测试，页面确认归入重启窗口。
 固定名单 5 Agent 0 漏报与 10 个普通软件反例的系统化跑批仍按任务 3 验收标准待做。
+
+系统化矩阵验收补充（同日晚）：e2e/verify_discovery_matrix.py 实时全机跑通——固定名单 5 个真实 Agent（OpenCode 57879、桌面 Codex 41158、DSH 70828、ZCode 999、OpenCodex 43921）全部进入候选，漏报 0；10 个普通程序反例（纯 CLI、近似 mcp 依赖包、sleep、zsh 包装器、伪 MCP 服务端、5 个桌面 Helper 子进程）全部不误报。报告 artifacts/acceptance/discovery-matrix-20260921.json。
