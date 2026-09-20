@@ -119,5 +119,14 @@ ProcessLookupError 与 frozen engine never reported。修复：
    断网补报是 bridge 通道的特性，不冒充为原生通道能力。
  - user_input 钩子链在 policy 2 中 stages 为空，故含 marker 的用户消息在输入层不拦截，
    本验收按设计在 before_tool_call 层拦截；如需输入层拦截需另行配置 user_input 链。
- - 桌面 Codex 仍为 bridge-only，等待用户在其 /hooks 中信任原生包，ASG 不代批。
- - 以上仅对该 demo 实例成立；其他 Agent 需各自独立验收，不继承本结果。
+- 桌面 Codex 仍为 bridge-only，等待用户在其 /hooks 中信任原生包，ASG 不代批。
+- 以上仅对该 demo 实例成立；其他 Agent 需各自独立验收，不继承本结果。
+
+ ### 追加：ASG 全停窗口完整 10 回合批次（2026-09-21 05:5x）
+
+ 停止本机 ASG 面板（monitor_dashboard pid 已终止，pgrep=0，8081 无监听，SOC collector 本就未加载）后，
+ demo OpenCode 原生插件跑完整批次：5 allow + 5 deny，10/10 逐字对账通过
+ （docs/stage1/evidence/asg-fsreconcile.json all_pass=true；原始记录 asg-fsbatch-result.json）。
+ allow 回合 5 个文件全部真实创建，deny 回合 5 个文件均不存在且 blocked 记录在案；
+ 全程 ASG 进程为零，即直报与控制完全不依赖 ASG 运行。
+ 去重复查：107 条 traces，id 全唯一。验收后 ASG 面板以 ASG_PORT=8081 恢复（HTTP 200）。
