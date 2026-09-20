@@ -247,10 +247,20 @@ def main():
     # The sign-off table reads this single row; bind it to the exact instance,
     # transport and evidence file so a pass can never float free of its target.
     from datetime import datetime, timezone
+    instance_id=None
+    try:
+        st=json.load(urllib.request.urlopen('http://127.0.0.1:8081/api/state',timeout=15))
+        for row in (st.get('agents') or []):
+            if args.pid in (row.get('instances') or []):
+                instance_id=row.get('instance_id');break
+    except OSError:
+        pass
     summary={'pid':args.pid,'transport':transport,
+             'instance_id':instance_id,
              'completed_turns_exact':completed_total,
              'compared_messages':sum(r['compared_messages'] for r in reports),
              'mismatches':mismatch_total,'passed':output['passed'],
+             'hook_sha256':hashlib.sha256((Path.home()/'.codex/asg-observer/hook.cjs').read_bytes()).hexdigest() if (Path.home()/'.codex/asg-observer/hook.cjs').exists() else None,
              'source':'verify_normal_conversation.py --pid %d (hook records vs target rollout transcripts)'%args.pid,
              'checked_at':datetime.now(timezone.utc).isoformat(),
              'evidence':'artifacts/acceptance/normal-conversation-%d.json'%args.pid,
