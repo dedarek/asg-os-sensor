@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install/remove the endpoint collector for this user; credentials stay in config/key files."""
 import argparse
+import shutil
 import json
 import os
 import plistlib
@@ -38,6 +39,17 @@ def main():
         for field in ('backend_url','state_dir','agents'):
             if field not in config:parser.error('missing config field '+field)
         if os.name!='nt':Path(args.config).expanduser().chmod(0o600)
+        # A user installation must survive removing or updating the developer
+        # checkout: copy the endpoint runtime closure next to the state dir.
+        runtime=Path(config['state_dir']).expanduser()/'collector-runtime'
+        runtime.mkdir(parents=True,exist_ok=True)
+        for package in ('integrations','runtime'):
+            target=runtime/package
+            if target.exists():shutil.rmtree(target)
+            shutil.copytree(ROOT/package,target,ignore=shutil.ignore_patterns('test_*','__pycache__','*.pyc'))
+        sys.path.insert(0,str(runtime))
+        command=[sys.executable,'-m','integrations.soc_inventory.endpoint','--config',str(Path(args.config).expanduser().resolve())]
+        ROOT=runtime
     if sys.platform=='darwin':
         path=Path.home()/'Library/LaunchAgents'/f'{NAME}.plist';domain=f'gui/{os.getuid()}'
         if args.action=='remove':
