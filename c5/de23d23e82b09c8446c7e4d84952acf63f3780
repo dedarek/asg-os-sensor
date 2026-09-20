@@ -1,0 +1,43 @@
+docs/stage1/GAP_AUDIT_20260920.md
+  s_7a5b8096b41d01::t_e9a3f62890099e 1-150
+integrations/soc_inventory/codex_trust.py
+  s_7a5b8096b41d01::t_a49c4898ce7b9f 3-19,21-22,30-109,118-120,122-149,152-153,155,159-165,203,221,224
+integrations/soc_inventory/discovery.py
+  s_7a5b8096b41d01::t_00db896714123e 18-68,102-103,162-169,173-208,214-215
+integrations/soc_inventory/endpoint.py
+  s_7a5b8096b41d01::t_d03d693313d2fd 86-87,175-176,178-180,184-189,191-192,194-218
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_b12c7d80bd0689 22-25,34-49,53-64,73-75,77,83,86-89,94,97,100-116,123-124,133,184-190
+integrations/soc_inventory/package_runtime/soc_client.py
+  s_7a5b8096b41d01::t_ec4f1e6970b69a 20-33
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_cdc1cfc0dd0c34 57-72,76-91,102-114,116-119,121-132,141-170,173-178,202-204,206,208,213-217,223
+integrations/soc_inventory/test_channel_and_budget.py
+  s_7a5b8096b41d01::t_547d71a3ddd016 95,97-105,107-112,116,120-122
+integrations/soc_inventory/test_codex_trust.py
+  s_7a5b8096b41d01::t_ea21607bbc0f70 1-5,7,13-15,17-32,36,39-49,57,59,65-90,93-99,102,109-130,135-141,149-171
+integrations/soc_inventory/test_event_helper_js.py
+  s_7a5b8096b41d01::t_4a5b524d23a865 1-90
+integrations/soc_inventory/test_inventory_discovery_learning.py
+  s_7a5b8096b41d01::t_d063acb267f7df 1-62
+integrations/soc_inventory/test_manual_collection.py
+  s_7a5b8096b41d01::t_fc6272eb578443 6-9,15-36
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_e9b6174e89238f 46-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c5de23d23e82b09c8446c7e4d84952acf63f3780",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
