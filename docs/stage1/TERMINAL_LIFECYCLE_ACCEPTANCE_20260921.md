@@ -146,3 +146,42 @@ docs/stage1/evidence/terminal_lifecycle_0_9_3_reap_fix_report.json
 TERM→5 秒→KILL，跳过自身与父进程）。此前两轮 doctor_fault_injection 失败的
 根因正是该孤儿持有引擎端口导致新引擎 EADDRINUSE 崩溃循环。
 本轮 doctor 步骤 23.5 秒一次通过；升级回滚 143.6 秒内旧版本恢复健康。
+
+
+## 追加：原生 Hook 直报通道补报/幂等/严格阻断验收（2026-09-21 07:0x–07:3x）
+
+改动（均为通用能力，不针对特定 Agent）：
+- poc-soc-mngt 229ad0c：security-hooks-opencode 插件新增 outbox。analyze 请求携带
+  稳定 event_id；网络错误/超时/HTTP 5xx 时把完整 payload 原子写入
+  security-hooks-outbox.json（config 目录，容量 2000，满则丢最旧并告警），
+  插件加载时与每 30 秒顺序排空；4xx 不入队（重放不可能成功）。
+- soc-open-api a87dc3a：analyze 体带 64 位十六进制 event_id 时，trace 主键取
+  sha256(agent_id|event_id)（按 agent 加盐防跨方占位），TraceRepo 写入改
+  ON CONFLICT (id) DO NOTHING。重放同一事件保持一条逻辑记录。
+  运行网关二进制 sha256 前缀 ea4d17ea（备份 gateway-soc-catalog.bak-20260921b）。
+
+拓扑：demo OpenCode 实例纯原生（bridge 插件全部移入
+workspace/.opencode/disabled-bridge-20260921，opencode.json 仅加载
+security-hooks-opencode.ts），直报 8095。
+
+验收结果（全部实测，记录 /tmp/asg-noutbox-phase1.json、/tmp/asg-stress-meta.json，
+证据副本已入 docs/stage1/evidence/）：
+1. 断网补报：杀网关后跑 5 回合（聊天+write 工具），Agent 照常工作，5 个标记文件
+   全部落盘；outbox 缓冲 20 事件（user_input/before/after/agent_end 各 5），
+   event_id 全唯一。恢复网关后 outbox 排空改名 .emptied；按派生主键查询
+   traces 恰 20 行、distinct 20，正文含标记逐 hook 5 条。缺失 0、重复 0。
+2. 1000 事件补报：向 outbox 直接注入 1000 个合成 user_input 事件，30 秒排空后
+   数据库恰 1000 行、distinct 1000；随后把同一批 1000 事件重放入 outbox，
+   排空后仍恰 1000 行（重放 0 新增，正文查询 REPLAY=0 也证明未覆盖旧行）。
+   缺失 0、重复 0。
+3. 严格阻断（决策超时不偷偷放行）：配置 fail_closed=true、timeout_ms=2000 后重启
+   实例。对照组（网关在）放行且文件创建成功；实验组（网关断）回合 2.1 秒返回，
+   write 被阻断、文件不存在，会话内明确提示"安全检测服务认证或调用失败，已按
+   fail-closed 阻断"。恢复网关后该会话缓冲事件补报入库、无重复。
+
+如实的限制：
+- 严格模式下被 fail-closed 拒掉的 before_tool_call 事件同样进 outbox，恢复后
+  作为审计记录补报（status=success 的 trace 行仅表示检测流程落库，不代表放行）。
+- 本轮只覆盖 opencode 平台原生插件；codex/openclaw/hermes 原生 Hook 的同类
+  outbox 需按同一模式各自实现并分别验收，不继承本结果。
+- demo 实例当前保持 fail_closed=true、timeout_ms=2000（验收拓扑）。
