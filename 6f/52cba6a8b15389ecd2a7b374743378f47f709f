@@ -1,0 +1,25 @@
+runtime/identity.py
+  s_7a5b8096b41d01::t_dbad26af078d5b 112,116,155-160
+  s_7a5b8096b41d01::t_7bcd9436821d37 47-65
+test_discovery.py
+  s_7a5b8096b41d01::t_8f75f01325aca0 12-14,78-112
+  s_7a5b8096b41d01::t_bdcc0a11d0ff7c 113
+docs/stage1/DSH_DISCOVERY_FIX_20260921.md
+  s_7a5b8096b41d01::t_2abe0e8b0171d9 1-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6f52cba6a8b15389ecd2a7b374743378f47f709f",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
