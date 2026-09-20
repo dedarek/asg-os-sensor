@@ -1,0 +1,23 @@
+artifacts/acceptance/current-normal-conversation.json
+  s_7a5b8096b41d01::t_a89e8460be593b 2,4-6,8,10-12,14-17
+docs/stage1/GAP_AUDIT_20260920.md
+  s_7a5b8096b41d01::t_5ef9a8ccf72641 158
+e2e/verify_normal_conversation.py
+  s_7a5b8096b41d01::t_a905a63a127992 20-25,40-47,178-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4afd7a2f105f042232bba8c700c82a924bedd4ab",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
