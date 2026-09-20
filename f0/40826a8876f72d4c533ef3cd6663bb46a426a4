@@ -1,0 +1,23 @@
+e2e/acceptance_report.py
+  s_7a5b8096b41d01::t_33d84c96e1bd33 81-82
+artifacts/acceptance/acceptance-report.json
+  s_7a5b8096b41d01::t_b554af509b5336 2,4-5,13,374-375,599
+docs/stage1/ACCEPTANCE_TABLE_20260920.md
+  s_7a5b8096b41d01::t_98048b171608c6 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f040826a8876f72d4c533ef3cd6663bb46a426a4",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
