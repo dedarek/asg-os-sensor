@@ -41,6 +41,61 @@ def main():
             stream.write('refusing to start: release marked fail_start\n')
         raise SystemExit(86)
 
+    # Reap orphans from a previous supervisor that was SIGKILLed: its children
+    # (start_new_session=True) survive and keep holding the engine port, which
+    # would crash-loop every fresh engine with EADDRINUSE. Anything whose
+    # command line references this install directory, except ourselves, is a
+    # leftover of exactly this installation (the path is per-home unique).
+    def reap_orphans():
+        # Only engine/endpoint leftovers are reaped (matched by their launch
+        # signature plus this install directory); asgctl/e2e clients that merely
+        # pass --home must never be touched.
+        import subprocess as _sp
+        try:
+            listing = _sp.run(['ps', '-axo', 'pid=,command='], capture_output=True, text=True, timeout=10).stdout
+        except Exception:
+            return 0
+        me = os.getpid()
+        victims = []
+        for line in listing.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            pid_text, _, command = line.partition(' ')
+            try:
+                pid = int(pid_text)
+            except ValueError:
+                continue
+            if pid in (me, os.getppid()):
+                continue
+            if str(home) not in command:
+                continue
+            if 'monitor_dashboard.py' not in command and 'integrations.soc_inventory.endpoint' not in command:
+                continue
+            victims.append(pid)
+        if not victims:
+            return 0
+        for pid in victims:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+        deadline = time.time() + 5
+        alive = set(victims)
+        while alive and time.time() < deadline:
+            time.sleep(0.3)
+            for pid in list(alive):
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    alive.discard(pid)
+        for pid in alive:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        return len(victims)
+
     stop = threading.Event()
     children = {}
 
@@ -95,6 +150,9 @@ def main():
                           '--config', str(endpoint_config)], False),
         }
 
+    reaped = reap_orphans()
+    if reaped:
+        log('reaped %d orphan process(es) from a previous supervisor' % reaped)
     for name, (command, engine) in desired().items():
         spawn(name, command, engine)
 
