@@ -1,0 +1,40 @@
+integrations/soc_inventory/runtime_bridge.py
+  s_7a5b8096b41d01::t_8e44c23b6ec322 55
+  s_7a5b8096b41d01::t_4e3c897439c9b1 60,63,65,69
+  s_7a5b8096b41d01::t_2a9875a36d02d0 33-45,58-59,61-62,64,66-68,70
+e2e/verify_normal_conversation.py
+  s_7a5b8096b41d01::t_5ddb975937fbfd 39,43-57,59-108,110-111,115-130,132-141,143-151,153,157-168,171-182,189,191,220-232,234-238,247-257
+  s_7a5b8096b41d01::t_b7840b88275d1b 258
+artifacts/acceptance/acceptance-report.json
+  s_7a5b8096b41d01::t_ad54234be84416 2,6-7,13,374-375,504,594,599,605,620,704,716-717
+artifacts/acceptance/current-normal-conversation.json
+  s_7a5b8096b41d01::t_a419a580bcb45e 2-5,7-15
+artifacts/acceptance/normal-conversation-9601.json
+  s_7a5b8096b41d01::t_b98688dbdeaee3 1-96
+docs/stage1/ACCEPTANCE_TABLE_20260920.md
+  s_7a5b8096b41d01::t_2a287baec7aceb 5,26,28,42,44
+e2e/acceptance_report.py
+  s_7a5b8096b41d01::t_7bdb9c487ffe81 254-260
+integrations/soc_inventory/event_spool.py
+  s_7a5b8096b41d01::t_13886e92b12746 50
+integrations/soc_inventory/package_runtime/soc_client.py
+  s_7a5b8096b41d01::t_7993c5f7d08ff5 18
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_ae41b7b0464902 17-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "886742814d6a0816b0203aa70b3ced8ef9169ac5",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
