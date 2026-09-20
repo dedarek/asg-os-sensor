@@ -1,0 +1,22 @@
+integrations/soc_inventory/runtime_bridge.py
+  s_7a5b8096b41d01::t_48bb0eea8b3ec6 65
+integrations/soc_inventory/test_channel_and_budget.py
+  s_7a5b8096b41d01::t_96317634dd90b6 1-49,54-108
+  s_7a5b8096b41d01::t_78aae531ea74f2 50-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5205f5b12e0acd99749832a27c750a6a96d74f06",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
