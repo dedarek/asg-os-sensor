@@ -1,0 +1,21 @@
+docs/stage1/TERMINAL_LIFECYCLE_ACCEPTANCE_20260921.md
+  s_7a5b8096b41d01::t_f9b78b7b492ec1 211-222
+docs/stage1/evidence/terminal_lifecycle_0_9_4_state_sync_report.json
+  s_7a5b8096b41d01::t_49ca55673de79f 1-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c314a45374b7fbe1034466e8cbd92ab4e4801bba",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
