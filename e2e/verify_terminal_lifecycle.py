@@ -443,13 +443,23 @@ def main():
             terminal_cfg.write_text(terminal_original)
         # Work-loop stall: the engine process stays alive (SIGSTOP), only its
         # loop stops answering. doctor and status must both report the stall.
-        hb = runner.heartbeat()
-        engine_pid = int((hb.get('children') or {}).get('engine', {}).get('pid', 0))
-        assert engine_pid > 0, hb
-        os.kill(engine_pid, signal.SIGSTOP)
-        try:
-            stalled = False
-            deadline = time.time() + 45
+        # The supervisor may respawn the engine between the heartbeat read and
+        # the signal (the preceding SOC-offline injections legitimately disturb
+        # it), so re-read the current engine pid and retry on a vanished one.
+        def current_engine_pid():
+            hb = runner.heartbeat()
+            return int((hb.get('children') or {}).get('engine', {}).get('pid', 0))
+        engine_pid = 0
+        stalled = False
+        deadline = time.time() + 45
+        while time.time() < deadline and not stalled:
+            engine_pid = current_engine_pid()
+            assert engine_pid > 0, runner.heartbeat()
+            try:
+                os.kill(engine_pid, signal.SIGSTOP)
+            except ProcessLookupError:
+                time.sleep(1)
+                continue
             while time.time() < deadline:
                 rc, payload, _, _ = runner.asgctl(None, 'doctor')
                 checks = {item['name']: item for item in payload['checks']}
@@ -457,11 +467,14 @@ def main():
                     stalled = True
                     break
                 time.sleep(4)
-            assert stalled, 'frozen engine loop never reported by doctor'
-            rc, status, _, _ = runner.asgctl(None, 'status')
-            assert rc == 3 and any('引擎' in reason for reason in (status or {}).get('health_reasons', [])), (rc, status)
-        finally:
+        assert stalled, 'frozen engine loop never reported by doctor'
+        rc, status, _, _ = runner.asgctl(None, 'status')
+        assert rc == 3 and any('引擎' in reason for reason in (status or {}).get('health_reasons', [])), (rc, status)
+        engine_pid = current_engine_pid() or engine_pid
+        try:
             os.kill(engine_pid, signal.SIGCONT)
+        except ProcessLookupError:
+            pass  # respawned already; the recovery loop below judges the truth
         recovered = False
         deadline = time.time() + 60
         while time.time() < deadline:
