@@ -1,0 +1,25 @@
+docs/stage1/GAP_AUDIT_20260920.md
+  s_7a5b8096b41d01::t_b50432b8fc2af4 156
+docs/stage1/TERMINAL_LIFECYCLE_ACCEPTANCE_20260921.md
+  s_7a5b8096b41d01::t_d8c30ae27d84b5 149-187
+docs/stage1/evidence/asg-noutbox-phase1.json
+  s_7a5b8096b41d01::t_6dc035c1228efc 1
+docs/stage1/evidence/asg-stress-meta.json
+  s_7a5b8096b41d01::t_83af17872a34c7 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eadee14b9f2623f267dae72247ed108fa6950bf1",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
