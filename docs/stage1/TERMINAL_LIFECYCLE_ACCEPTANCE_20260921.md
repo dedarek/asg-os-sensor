@@ -83,3 +83,41 @@ ProcessLookupError 与 frozen engine never reported。修复：
 
 第 7 节"真实 Agent 全停验收"仍未跑（需要停本机采集服务约 15 分钟的空闲窗口，
 且当前直报通道在真实桌面 Codex 上仍依赖用户 /hooks 信任，见 SOC_DIRECT_INSTALLATION 文档）。
+
+ ## 追加：原生 Hook 直报 SOC 完整验收（2026-09-21 05:2x–05:4x）
+
+ 验收对象：demo OpenCode 实例（agent asg-b76e770be9e2e851717fa1f6a1a45ee1，pid 43478，端口 65189），
+ 拓扑为纯原生 security-hooks-opencode 插件直报 Go 网关 8095，ASG bridge 已停用（移至 disabled-20260921）。
+ 网关为 soc-open-api v0.3.2 + 提交 ff39681（新增 /api/agent/heartbeat 别名路由）。
+
+ ### 通过项（真实证据）
+
+ 1. 心跳链路：网关原本只注册 /api/heartbeat，原生插件 POST /api/agent/heartbeat 返回 404。
+    修复=别名路由 ff39681，重编译重启后插件每 60s 心跳成功，
+    agents.last_heartbeat=2026-09-21 05:36:23+08，status=healthy。
+ 2. 策略生效：该 agent 从 application asg-poc-terminal（无流=永远放行）改绑 asg-poc-app
+    （policy 2 全 hook 链），并关闭 observe_mode（DB + Redis 两键）。
+    观察模式曾把拦截降级为 risk+放行，已如实修复后重测。
+ 3. 10 回合逐字对账：5 allow + 5 deny（agent 发起 write 工具调用）。
+    每回合：user_input 原文逐字在 traces.metadata、助手回复逐字在 traces、
+    before_tool_call≥1、agent_end=1、allow 回合文件真实创建、deny 回合文件不存在。
+    10/10 全部通过（artifacts/acceptance/soc-direct/asg-reconcile.json，all_pass=true；
+    原始回合记录 asg-batch-result.json）。
+ 4. 真实阻断：deny 回合 traces.status=blocked，文件未创建，
+    助手如实回复被安全策略拦截（SECURITY_TOOL_CALL_BLOCKED）。
+    allow 对照回合文件内容为逐字预期值。
+ 5. 去重：63 条 traces，id 全唯一（count 与 count distinct 相等）。
+ 6. §13.1 真实 Agent 全停直报：停止本机唯一 ASG 常驻面板（pid 59266）并确认
+    pgrep monitor_dashboard/soc_inventory = 0、8081 无监听后，
+    跑 fullstop 回合：直报 user_input=1、blocked=1、agent_end=1、文件未创建，全部到达 SOC。
+    验收后 ASG 面板以 ASG_PORT=8081 恢复，HTTP 200。
+    com.asg.soc-collector 服务在本轮开始前即未加载（launchctl 无实例），维持原状。
+
+ ### 如实保留的限制
+
+ - 本批直报为原生插件 analyze 路径；该插件对 analyze 调用失败仅记 debug 日志、无本地 outbox，
+   断网补报是 bridge 通道的特性，不冒充为原生通道能力。
+ - user_input 钩子链在 policy 2 中 stages 为空，故含 marker 的用户消息在输入层不拦截，
+   本验收按设计在 before_tool_call 层拦截；如需输入层拦截需另行配置 user_input 链。
+ - 桌面 Codex 仍为 bridge-only，等待用户在其 /hooks 中信任原生包，ASG 不代批。
+ - 以上仅对该 demo 实例成立；其他 Agent 需各自独立验收，不继承本结果。
