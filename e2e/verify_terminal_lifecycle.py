@@ -546,6 +546,103 @@ def main():
         assert rc == 0 and payload.get('status') == 'not_installed', (rc, payload)
         return {}
 
+    def install_one_hook_seed(ws_name, user_edit_after):
+        # Create a learned (soc-direct-v1) install exactly the way the real
+        # onboarding path does: the release's own learned_install writes the
+        # transaction manifest, a package receipt sits in the derived state
+        # directory, and the endpoint DB rows mirror a completed onboarding.
+        python = Path(runner.home) / 'current' / 'python' / 'bin' / 'python3'
+        app = Path(runner.home) / 'current' / 'app'
+        ws = (run_dir / ws_name).resolve()
+        ws.mkdir(parents=True, exist_ok=True)
+        (ws / 'user-notes.md').write_text('unrelated user file\n')
+        script = ('import json,sys,hashlib;sys.path.insert(0,%r);'
+                  'from runtime import learned_install;from pathlib import Path;'
+                  'ws=Path(%r);'
+                  'state=ws.parent/(".asg-install-"+hashlib.sha256(str(ws).encode()).hexdigest()[:16]);'
+                  'state.mkdir(parents=True,exist_ok=True);'
+                  'plan={"version":1,"files":[{"path":"hooks/a.js","content":"module.exports={asg:true};"},'
+                  '{"path":"settings.js","content":"hooks=[];"}]};'
+                  'pid=learned_install.plan_digest(plan);'
+                  'r=learned_install.install(plan,ws,state,approved_workspace=ws,approved_digest=pid);'
+                  '(state/"package-receipt.json").write_text(json.dumps({"plan_digest":pid,"status":r["status"]}));'
+                  'print(json.dumps({"digest":pid,"state":str(state)}))') % (str(app), str(ws))
+        result = subprocess.run([str(python), '-B', '-c', script], capture_output=True, text=True, timeout=120)
+        assert result.returncode == 0, (result.stdout + result.stderr)[-300:]
+        body = json.loads(result.stdout.strip().splitlines()[-1])
+        instance = ws_name + ':1000.0'
+        db_path = Path(runner.home) / 'state' / 'endpoint' / 'outbox.sqlite'
+        for _ in range(20):
+            try:
+                con = sqlite3.connect(db_path, timeout=5)
+                with con:
+                    con.execute('CREATE TABLE IF NOT EXISTS enrolled(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL)')
+                    con.execute('CREATE TABLE IF NOT EXISTS soc_onboarding(instance TEXT PRIMARY KEY,result TEXT)')
+                    con.execute('INSERT OR REPLACE INTO enrolled VALUES(?,?)', (instance, json.dumps(
+                        {'asg_instance_id': instance, 'workspace': str(ws),
+                         'agent_id': soc_agent['id'], 'platform': 'e2e-platform',
+                         'key_file': str(run_dir / (test_agent + '.key'))})))
+                    con.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)', (instance, json.dumps(
+                        {'status': 'installed', 'transport': 'soc-direct-v1'})))
+                con.close()
+                break
+            except sqlite3.OperationalError:
+                time.sleep(1)
+        else:
+            raise AssertionError('endpoint DB busy seeding hook receipts')
+        if user_edit_after:
+            (ws / 'hooks' / 'a.js').write_text('// asg hook edited by user later\n')
+        return {'instance': instance, 'workspace': str(ws), 'state': body['state']}
+
+    def step_reinstall_seed_hooks():
+        # Re-install the same release after the default uninstall (proving the
+        # uninstall really removed the release), then seed two learned hook
+        # installs: one untouched, one user-modified after installation.
+        rc, payload, output, _ = runner.asgctl(None, 'install', '--soc-url', runner.gateway,
+                                               '--credential-file', str(cred),
+                                               '--package', str(runner.package), *install_extra)
+        assert rc == 0 and payload and payload.get('status') == 'installed', (rc, str(payload)[:200])
+        clean = install_one_hook_seed('hook-ws-clean', False)
+        modified = install_one_hook_seed('hook-ws-modified', True)
+        results['hooks'] = {'clean': clean, 'modified': modified}
+        # Doctor must flag exactly the user-modified install as drift, name the
+        # file, keep the untouched install clean, and never treat missing
+        # events as a broken hook.
+        rc, payload, output, _ = runner.asgctl(None, 'doctor')
+        checks = {item['name']: item for item in payload['checks']}
+        detail = checks['Hook 安装']['detail']
+        assert checks['Hook 安装']['ok'] is False, checks['Hook 安装']
+        assert 'hook-ws-modified' in detail and 'a.js' in detail, detail
+        assert 'hook-ws-clean' not in detail, detail
+        assert checks['Hook 活动']['ok'] is True, checks['Hook 活动']
+        return {'instances': [clean['instance'], modified['instance']]}
+
+    def step_uninstall_remove_hooks_scoped():
+        seed = results['hooks']
+        terminal_cfg = Path(runner.home) / 'config' / 'terminal.json'
+        data = json.loads(terminal_cfg.read_text())
+        data['hook_test_user_key'] = 'keep2'
+        terminal_cfg.write_text(json.dumps(data))
+        rc, payload, output, _ = runner.asgctl(None, 'uninstall', '--remove-hooks')
+        assert rc == 0, (rc, output[-300:])
+        assert 'hook-ws-clean:1000.0' in (payload.get('hooks_removed') or []), payload
+        conflicts = json.dumps(payload.get('hook_conflicts') or [], ensure_ascii=False)
+        assert 'hook-ws-modified:1000.0' in conflicts, payload
+        clean_ws = Path(seed['clean']['workspace'])
+        assert not (clean_ws / 'hooks' / 'a.js').exists(), 'untouched install file not rolled back'
+        assert not (clean_ws / 'settings.js').exists(), 'created settings not removed'
+        assert (clean_ws / 'user-notes.md').read_text() == 'unrelated user file\n'
+        mod_ws = Path(seed['modified']['workspace'])
+        assert 'edited by user later' in (mod_ws / 'hooks' / 'a.js').read_text(), 'user edit destroyed'
+        assert (mod_ws / 'user-notes.md').is_file()
+        final_cfg = json.loads(terminal_cfg.read_text())
+        assert final_cfg.get('acceptance_user_key') == 'keep-me'
+        assert final_cfg.get('hook_test_user_key') == 'keep2'
+        assert not runner.service_pids()
+        rc, payload, _, _ = runner.asgctl(None, 'uninstall')
+        assert rc == 0 and payload.get('status') == 'not_installed', (rc, payload)
+        return {'removed': payload.get('hooks_removed'), 'modified_kept_as_conflict': True}
+
     order = [
         ('install_healthy_within_60s', step_install_once,
          '干净目录安装：60 秒内心跳健康，SOC 鉴权成功，rc0'),
@@ -577,6 +674,10 @@ def main():
          '坏版本升级失败自动回滚：旧版本健康、队列记录不丢、可重复重试'),
         ('uninstall_keeps_data_and_hooks', step_uninstall_keeps_data_and_hooks,
          '默认卸载移除服务与程序但保留配置/状态/Hook 运行目录；二次运行 not_installed'),
+        ('reinstall_seed_hooks', step_reinstall_seed_hooks,
+         '重装同一发布包成功；种入两项学习 Hook 安装后，doctor 点名被用户修改的那项漂移、未修改项不误报'),
+        ('uninstall_remove_hooks_scoped', step_uninstall_remove_hooks_scoped,
+         '--remove-hooks 只回滚未修改的 ASG 写入文件；被用户修改的保留并报冲突；无关文件与用户配置键不动；再次卸载 not_installed'),
     ]
     failures = 0
     for name, fn, expected in order:
