@@ -12,7 +12,31 @@ from .protocol import canonical
 PATHS={'scan':'/api/scan','investigate':'/api/reinvestigate','continue':'/api/reinvestigate/continue',
        'cancel':'/api/reinvestigate/cancel','install':'/api/onboarding/execute','verify':'/api/onboarding/verify',
        'trust_refresh':'/api/native-trust/refresh','scan_interval':'/api/scan-interval',
-       'collect':'/api/scan','control_policy':'/api/hook-control/policy','control_resolve':'/api/hook-control/resolve','model_settings':'/api/model-settings'}
+       'collect':'/api/scan','control_policy':'/api/hook-control/policy','control_resolve':'/api/hook-control/resolve','model_settings':'/api/model-settings','fingerprints':'/api/recipe-bundle/export'}
+
+
+def fingerprint_summary(rows):
+    """Compact the local fingerprint store for periodic reporting.
+
+    Only identity, freshness and recipe-shape fields are sent; the full
+    recipe body stays on the endpoint and is fetched on demand through the
+    fingerprints command (recipe-bundle/export).
+    """
+    out = []
+    for row in rows[:64]:
+        recipe = row.get('hook_recipe') if isinstance(row.get('hook_recipe'), dict) else {}
+        hook = recipe.get('hook') if isinstance(recipe.get('hook'), dict) else {}
+        hooks = hook.get('hooks') if isinstance(hook.get('hooks'), list) else None
+        out.append({'id': row.get('id'), 'name': row.get('name'),
+                    'first_seen': row.get('first_seen'), 'last_seen': row.get('last_seen'),
+                    'match_count': row.get('match_count'),
+                    'features': row.get('features') if isinstance(row.get('features'), dict) else {},
+                    'recipe': {'confidence': recipe.get('confidence'),
+                               'host_platform': recipe.get('host_platform'),
+                               'integration_kind': (recipe.get('integration') if isinstance(recipe.get('integration'), dict) else {}).get('kind'),
+                               'install_kind': (recipe.get('install_plan') if isinstance(recipe.get('install_plan'), dict) else {}).get('kind'),
+                               'hook_count': len(hooks) if hooks is not None else (1 if recipe.get('hook') else 0)}})
+    return out
 
 class RuntimeBridge:
     def __init__(self,endpoint):
@@ -29,9 +53,14 @@ class RuntimeBridge:
         state=self.local('/api/state')
         controls=self.local('/api/hook-control/status')
         model_settings=self.local('/api/model-settings')
+        try:
+            raw=self.local('/api/fingerprints').get('fingerprints')
+            fingerprints=fingerprint_summary(raw) if isinstance(raw, list) else None
+        except Exception:
+            fingerprints=None
         for agent in self.endpoint.agents.values():
             try:
-                self._runtime_cycle(agent,state,controls,model_settings)
+                self._runtime_cycle(agent,state,controls,model_settings,fingerprints)
             except OSError as exc:
                 # One unhealthy agent (e.g. a rejected oversized report) must not
                 # strand the remaining enrolled agents for this cycle.
@@ -42,7 +71,7 @@ class RuntimeBridge:
     # under 3.5 MiB by dropping oldest hook records and label the trimming.
     REPORT_BUDGET=3*1024*1024+512*1024
 
-    def _runtime_cycle(self,agent,state,controls,model_settings):
+    def _runtime_cycle(self,agent,state,controls,model_settings,fingerprints=None):
             instance=agent.get('asg_instance_id')
             target=next((a for a in state.get('agents',[]) if a.get('instance_id')==instance),None)
             if target is None and agent.get('identity_refreshed'):
@@ -54,7 +83,7 @@ class RuntimeBridge:
             self.events.flush(agent)
             if target is None:return
             revision=int(time.time_ns())
-            payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust')}
+            payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust'),'fingerprints':fingerprints}
             records=hooks.get('records') or []
             total_records=len(records)
             while len(canonical({'instance_id':instance,'revision':revision,'payload':payload}))>self.REPORT_BUDGET and records:
@@ -82,10 +111,14 @@ class RuntimeBridge:
                         if any(a.get('instance_id')==instance and a.get('pid')==target['pid'] for a in fresh.get('agents',[])):
                             try:
                                 path=PATHS[command['operation']]
-                                if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings'):path+='?'+urlencode({'pid':target['pid']})
                                 arguments=command.get('arguments') or {}
                                 if isinstance(arguments,str):arguments=json.loads(arguments)
-                                result=self.local(path,arguments)
+                                if command['operation']=='fingerprints':
+                                    # Export is a read-only GET; the requested id is part of the query.
+                                    result=self.local(path+'?'+urlencode({'fingerprint_id':str(arguments.get('fingerprint_id') or '')}))
+                                else:
+                                    if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings'):path+='?'+urlencode({'pid':target['pid']})
+                                    result=self.local(path,arguments)
                                 if command['operation']=='collect':
                                     with self.endpoint.db:
                                         self.endpoint.db.execute('CREATE TABLE IF NOT EXISTS collection_requests(id INTEGER PRIMARY KEY AUTOINCREMENT)')

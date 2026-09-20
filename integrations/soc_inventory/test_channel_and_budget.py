@@ -81,7 +81,7 @@ class BudgetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bridge, sent = self._bridge(tmp)
             seen = []
-            def cycle(agent, state, controls, model):
+            def cycle(agent, state, controls, model, fingerprints=None):
                 seen.append(agent['agent_id'])
                 if agent['agent_id']=='bad': raise OSError('boom')
             bridge._runtime_cycle = cycle

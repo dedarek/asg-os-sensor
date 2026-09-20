@@ -150,7 +150,8 @@ def export_bundle(fingerprint_id: str, *, db: dict | None = None, note: str | No
     if asg_root is None:
         asg_root = str(_repo_root())
     if target_workspace is None:
-        target_workspace = (recipe.get("hook") or {}).get("workspace")
+        hook_section = recipe.get("hook")
+        target_workspace = hook_section.get("workspace") if isinstance(hook_section, dict) else None
     portable, counts = portable_recipe(recipe, asg_root=asg_root, target_workspace=target_workspace)
     revisions = entry.get("revisions") or []
     latest = revisions[-1] if revisions and isinstance(revisions[-1], dict) else {}
