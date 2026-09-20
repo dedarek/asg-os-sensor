@@ -1,0 +1,24 @@
+e2e/verify_discovery_matrix.py
+  s_7a5b8096b41d01::t_7532a128c4484e 1-75,78-173
+  s_7a5b8096b41d01::t_d306dad6c55e91 76-77
+artifacts/acceptance/discovery-matrix-20260921.json
+  s_7a5b8096b41d01::t_60e3ba6ad4dd79 1-110
+docs/stage1/DSH_DISCOVERY_FIX_20260921.md
+  s_7a5b8096b41d01::t_a8105b1a4f7e2c 37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6274392b340789e1009d5b42ae4230d80ebd99ce",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
