@@ -55,7 +55,6 @@ class RuntimeBridge:
             if target is None:return
             revision=int(time.time_ns())
             payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust')}
-            trimmed=0
             records=hooks.get('records') or []
             total_records=len(records)
             while len(canonical({'instance_id':instance,'revision':revision,'payload':payload}))>self.REPORT_BUDGET and records:
@@ -63,7 +62,7 @@ class RuntimeBridge:
                 records=records[drop:]
                 hooks['records']=records
                 hooks['records_trimmed']=total_records-len(records)
-            if trimmed:
+            if len(records)<total_records:
                 coverage=hooks.get('coverage') or {}
                 limitations=coverage.get('limitations') or []
                 limitations.append('上报体积超过网关上限：最早 %d 条记录本轮省略（记录本身已入事件流）'%(total_records-len(records)))
