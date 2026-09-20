@@ -1844,6 +1844,15 @@ def _scan_agents_once():
             elif learned_installation.get('installed') or learned_installation.get('status') in ('installed', 'bound', 'rebound', 'activation_rebound', 'installed_no_observation'):
                 adapter_info['hook_state'] = {'status': 'installed_pending_activation',
                     'label': '已安装，等待加载事件（可能需下次启动）', 'verified': False}
+            # Card summary must agree with the instance-bound hook_state below it:
+            # an observed live load event outranks an unregistered-adapter plan label,
+            # otherwise the UI shows "已收到当前实例事件" next to "未安装" (GAP 状态一致项).
+            _hs = adapter_info.get('hook_state') or {}
+            if _hs.get('verified') and _hs.get('status') in ('loaded', 'observing'):
+                adapter_info['hook'] = _hs['label']
+                if adapter_info.get('observation') in (None, '未接入／未验证'):
+                    adapter_info['observation'] = ('已观测（当前实例事件流）' if _hs['status'] == 'observing'
+                                                   else '已加载（当前实例事件流）')
             if autonomous_pipeline.enabled():
                 adapter_info['pipeline'] = {'next_phase': autonomous_pipeline.next_phase(instance_id, exact=is_matched),
                     'checkpoints': autonomous_pipeline.read(instance_id)}
@@ -2264,6 +2273,9 @@ def refresh_hook_observations(snapshot):
             observing=bool(obs.get('paired_calls'))
             adapter['hook_state']={'status':'observing' if observing else 'loaded',
                 'label':'工具事件已接通' if observing else '已加载，等待工具活动','verified':True,'source':'instance_event_file'}
+            adapter['hook'] = adapter['hook_state']['label']
+            if adapter.get('observation') == '未接入／未验证':
+                adapter['observation'] = ('已观测（当前实例事件流）' if observing else '已加载（当前实例事件流）')
             adapter.setdefault('assets',{})['child_executions']={'status':'collected','label':'持续读取事件文件',
                 'value':{'events':obs.get('recent_events',[]),'paired_calls':obs.get('paired_calls',[]),
                          'live_file_source':True,'last_event_time':obs.get('last_event_time')},'source':'instance_event_file'}
