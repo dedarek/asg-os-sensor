@@ -1,0 +1,27 @@
+artifacts/acceptance/acceptance-report.json
+  s_7a5b8096b41d01::t_68f868d4a6b187 2,13,374-376,717
+artifacts/acceptance/current-normal-conversation.json
+  s_7a5b8096b41d01::t_788625c0e5086f 4,6,9,11
+artifacts/acceptance/normal-conversation-9601.json
+  s_7a5b8096b41d01::t_b499f0fa6e4571 10,78-84
+docs/stage1/ACCEPTANCE_REVIEW_20260920.md
+  s_7a5b8096b41d01::t_51a9718ecf2381 1-18
+docs/stage1/ACCEPTANCE_TABLE_20260920.md
+  s_7a5b8096b41d01::t_483db2ce0587a0 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "60fe7be72bf002eb038ff9e8507a3112901501c6",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
