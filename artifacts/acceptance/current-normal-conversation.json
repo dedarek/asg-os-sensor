@@ -1,18 +1,19 @@
 {
-  "pid": 9601,
+  "pid": 41158,
   "transport": "api",
-  "instance_id": "9601:1789818900.257943",
-  "completed_turns_exact": 4,
-  "compared_messages": 13,
+  "instance_id": "41158:1789882843.33201",
+  "completed_turns_exact": 16,
+  "compared_messages": 37,
   "mismatches": 0,
-  "passed": false,
+  "passed": true,
   "hook_sha256": "9b3db51f509e2328fd44180f109660b12c49d00b293dee4f6bababea1826d3ed",
-  "source": "verify_normal_conversation.py --pid 9601 (hook records vs target rollout transcripts)",
-  "checked_at": "2026-09-20T03:39:31.117991+00:00",
-  "evidence": "artifacts/acceptance/normal-conversation-9601.json",
+  "source": "verify_normal_conversation.py --pid 41158 (hook records vs target rollout transcripts)",
+  "checked_at": "2026-09-20T14:23:57.869369+00:00",
+  "evidence": "artifacts/acceptance/normal-conversation-41158.json",
   "transcripts": [
-    "/Users/mac/.codex/sessions/2026/09/19/rollout-2026-09-19T13-49-45-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0b836-a9cd-7b43-91e0-4f859e1d33bd.jsonl",
-    "/Users/mac/.codex/sessions/2026/09/20/rollout-2026-09-20T09-57-15-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0bc88-2b1b-7553-ab01-1e263f4f7dd5.jsonl",
-    "/Users/mac/.codex/sessions/2026/09/20/rollout-2026-09-20T10-01-17-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0bc8b-ddac-7df3-8dfe-bb62e58be572.jsonl"
+    "/Users/mac/.codex/sessions/2026/09/03/rollout-2026-09-03T16-05-35-01a06631-90c5-75f1-884a-f6a10147e36e_01a0664d-46f9-7d11-b006-f14c9ead672c.jsonl",
+    "/Users/mac/.codex/sessions/2026/09/16/rollout-2026-09-16T14-50-04-01a0a457-6158-7243-bbf3-dca7aa851251_01a0a8fa-cf61-7e93-ae73-052d8f1e3e47.jsonl",
+    "/Users/mac/.codex/sessions/2026/09/20/rollout-2026-09-20T10-01-17-01a08f0c-6eae-7900-859a-5dbaa684d906_01a0bc8b-ddac-7df3-8dfe-bb62e58be572.jsonl",
+    "/Users/mac/.codex/sessions/2026/09/20/rollout-2026-09-20T12-03-54-01a0bcfc-1bec-7c80-afc1-f2f73fce2ea9.jsonl"
   ]
 }

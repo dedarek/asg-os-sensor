@@ -17,6 +17,12 @@ HIDDEN_ASSISTANT_BLOCKS = (
     re.compile(r'\n?<oai-mem-citation>.*?</oai-mem-citation>\s*', re.DOTALL),
 )
 
+# The desktop app appends rendered image placeholders to the transcript copy of
+# a user message; the Hook observes the submitted body without them.  Stripped
+# variants only serve as extra verbatim candidates, so hook text must still
+# byte-match transcript bytes minus app-injected placeholders.
+CODEX_IMAGE_PLACEHOLDER = re.compile(r'\n?<image name=\[Image #\d+\] path="[^"]*"></image>\s*')
+
 
 def visible_assistant_text(text):
     """Remove app metadata that is stored in the transcript but hidden in UI.
@@ -29,6 +35,14 @@ def visible_assistant_text(text):
     for pattern in HIDDEN_ASSISTANT_BLOCKS:
         text = pattern.sub('', text)
     return text.rstrip()
+
+
+def user_candidate_variants(text):
+    """Yield the transcript text plus app-placeholder-stripped variants."""
+    yield text
+    stripped = CODEX_IMAGE_PLACEHOLDER.sub('\n', text)
+    if stripped != text:
+        yield stripped
 
 
 def injected_user_context(text):
@@ -161,6 +175,8 @@ def reconcile(records, baseline):
                                 'exact': False, 'reason': 'missing_hook_message'})
         for role, texts in values.items():
             candidates = base.get(role, set())
+            if role == 'user':
+                candidates = {v for c in candidates for v in user_candidate_variants(c)}
             stripped = {t.rstrip() for t in candidates}
             for text, sha in texts.items():
                 row = {'turn_id': tid, 'role': role, 'sha256': sha, 'chars': len(text),

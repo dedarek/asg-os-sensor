@@ -2,7 +2,7 @@
 
 本表由 `e2e/acceptance_report.py` 依据当前证据自动生成，状态只会是：通过 / 失败 / 待外部条件 / 目标不支持 / 未执行。
 
-回归：76 个测试模块，Ran 480，OK。
+回归：78 个测试模块，Ran 497，OK。
 
 验收批次：**ASG-BATCH-20260919-151740**；机器 01a329ad376e9a7f；Hook sha256:e55d586ecf77e37d8；配方 harness-efac4c5f21c6@rev7；模式 isolated_real_instance；关联会话 104 个（3 个实例）。
 
@@ -41,7 +41,7 @@
 | 2 完整采集真实输入输出和工作流 | 抽屉 2 分钟自动回顶 0 |  | **通过** | drawer-autoscroll.json：浏览器实测 2 分钟内回顶 0 次、抽屉保持打开 |
 | 2 完整采集真实输入输出和工作流 | 页面按会话查看对话列表、原文可展开 |  | **通过** | monitor_dashboard.renderConversation：按 session 归组、details 展开原始内容（test_conversation_view） |
 | 2 完整采集真实输入输出和工作流 | 缺失事件来源已调查并保存依据 |  | **通过** | missing-events-investigation.json：hook.loaded 已观测；['session.end'] 记为目标不支持（最近似 [["session.idle", "session.compacted", "session.updated"]]） |
-| 2 完整采集真实输入输出和工作流 | 正常用户实例独立验收 |  | **失败** | 当前正常会话独立对账：pid=9601、通道=api、4 个完整回合、13 条文本、0 条不一致、核查时间=2026-09-20T03:39:31.117991+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。 |
+| 2 完整采集真实输入输出和工作流 | 正常用户实例独立验收 |  | **通过** | 当前正常会话独立对账：pid=41158、通道=api、16 个完整回合、37 条文本、0 条不一致、核查时间=2026-09-20T14:23:57.869369+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-41158.json。隔离实例或共享引擎驱动均不能替代该实例口径。 |
 | 3 真实执行控制 | 隔离目标冒烟放行/拒绝 |  | **通过** | opencode/codex/zcode control-verification.json |
 | 3 真实执行控制 | 放行 20 次全部生效 |  | **通过** | /Users/mac/个人项目/asg-os-sensor-advisor-20260911/artifacts/acceptance/control-batch.json |
 | 3 真实执行控制 | 拒绝 20 次无副作用 |  | **通过** | control-batch.json#deny |
@@ -101,7 +101,7 @@
 
 | 实例 | 已验证/总数 | 加载 | 观测 | 控制 | 独立运行 |
 | --- | --- | --- | --- | --- | --- |
-| OpenCode (PID 57879) | 5/10 | proven | proven | unsupported | not_reached |
 | OpenCodex (PID 43921) | 3/10 | not_reached | not_reached | not_reached | not_reached |
-| Codex (PID 41158) | 5/10 | proven | proven | unsupported | not_reached |
+| Codex (PID 41158) | 2/10 | not_reached | unknown | unsupported | not_reached |
+| OpenCode (PID 57879) | 3/10 | pending | unknown | unsupported | not_reached |
 | ZCode (PID 999) | 3/10 | not_reached | not_reached | not_reached | not_reached |

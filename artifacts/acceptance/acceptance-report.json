@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-20T15:08:45+0800",
+  "generated_at": "2026-09-20T22:27:43+0800",
   "regression": {
-    "modules": 76,
-    "ran": 480,
+    "modules": 78,
+    "ran": 497,
     "ok": true,
     "failed": null
   },
@@ -10,7 +10,7 @@
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-20T07:07:47.441917+00:00",
+      "probed_at": "2026-09-20T14:27:06.227547+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,8 +371,8 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 326,
-      "age_seconds": 58.405801,
+      "duration_ms": 223,
+      "age_seconds": 37.184844,
       "stale": false
     },
     "hook_runtime": {
@@ -380,18 +380,6 @@
       "reason": "no_runtime_record"
     },
     "instances": [
-      {
-        "pid": 57879,
-        "name": "OpenCode",
-        "instance_id": "57879:1789830410.756945",
-        "proven": 5,
-        "total": 10,
-        "controlling": "unsupported",
-        "loaded": "proven",
-        "observing": "proven",
-        "serving": "not_reached",
-        "trusted": "unknown"
-      },
       {
         "pid": 43921,
         "name": "OpenCodex",
@@ -408,11 +396,23 @@
         "pid": 41158,
         "name": "Codex",
         "instance_id": "41158:1789882843.33201",
-        "proven": 5,
+        "proven": 2,
         "total": 10,
         "controlling": "unsupported",
-        "loaded": "proven",
-        "observing": "proven",
+        "loaded": "not_reached",
+        "observing": "unknown",
+        "serving": "not_reached",
+        "trusted": "unknown"
+      },
+      {
+        "pid": 57879,
+        "name": "OpenCode",
+        "instance_id": "57879:1789830410.756945",
+        "proven": 3,
+        "total": 10,
+        "controlling": "unsupported",
+        "loaded": "pending",
+        "observing": "unknown",
         "serving": "not_reached",
         "trusted": "unknown"
       },
@@ -596,13 +596,13 @@
         }
       ],
       "evidence": [
-        "回归：76 个测试模块，Ran 480，OK"
+        "回归：78 个测试模块，Ran 497，OK"
       ]
     },
     {
       "task": 2,
       "name": "完整采集真实输入输出和工作流",
-      "status": "失败",
+      "status": "通过",
       "evidence": [
         "io-batch.json",
         "hook-full-acceptance.json"
@@ -713,8 +713,8 @@
         {
           "item": "正常用户实例独立验收",
           "meaning": "",
-          "status": "失败",
-          "evidence": "当前正常会话独立对账：pid=9601、通道=api、4 个完整回合、13 条文本、0 条不一致、核查时间=2026-09-20T03:39:31.117991+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。"
+          "status": "通过",
+          "evidence": "当前正常会话独立对账：pid=41158、通道=api、16 个完整回合、37 条文本、0 条不一致、核查时间=2026-09-20T14:23:57.869369+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-41158.json。隔离实例或共享引擎驱动均不能替代该实例口径。"
         }
       ]
     },
