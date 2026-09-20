@@ -19,7 +19,10 @@ let socEventConfig = null;
 let socEventToken = null;
 let socEventTimer = null;
 let socEventSending = false;
-const socEventQueue = [];
+let socOutboxDropped = 0;
+
+function socOutboxPath() { return join(dirname(LOG_PATH), "soc-outbox.jsonl"); }
+const SOC_OUTBOX_LIMIT = 20000;
 
 function loadSocEventConfig() {
   if (socEventConfig) return socEventConfig;
@@ -28,12 +31,37 @@ function loadSocEventConfig() {
   return socEventConfig;
 }
 
+function socOutboxRead() {
+  try {
+    if (!existsSync(socOutboxPath())) return [];
+    return readFileSync(socOutboxPath(), "utf8").split("\n").filter(Boolean);
+  } catch (error) { noteError("soc.events.read", error); return []; }
+}
+
+function socOutboxRewrite(lines) {
+  try {
+    mkdirSync(dirname(socOutboxPath()), { recursive: true });
+    const temporary = socOutboxPath() + ".tmp";
+    writeFileSync(temporary, lines.length ? lines.join("\n") + "\n" : "", "utf8");
+    renameSync(temporary, socOutboxPath());
+  } catch (error) { noteError("soc.events.rewrite", error); }
+}
+
 function forwardSocEvent(row) {
   try {
     const config = loadSocEventConfig();
-    const eventId = createHash("sha256").update(String(config.instance_id) + "\n" + JSON.stringify(row)).digest("hex");
-    socEventQueue.push({ event_id: eventId, instance_id: config.instance_id, event_type: row.event, timestamp: row.timestamp, payload: row });
-    if (socEventQueue.length > 500) socEventQueue.splice(0, socEventQueue.length - 500);
+    const eventId = createHash("sha256").update(String(config.instance_id) + "\\n" + JSON.stringify(row)).digest("hex");
+    const entry = { event_id: eventId, instance_id: config.instance_id, event_type: row.event, timestamp: row.timestamp, channel: "direct", payload: row };
+    let lines = socOutboxRead();
+    const known = new Set(lines.map((line) => { try { return JSON.parse(line).event_id; } catch (e) { return ""; } }));
+    if (!known.has(eventId)) lines.push(JSON.stringify(entry));
+    if (lines.length > SOC_OUTBOX_LIMIT) {
+      // Capacity gaps stay explicit; pending events are never silently spliced.
+      socOutboxDropped += lines.length - SOC_OUTBOX_LIMIT;
+      lines = lines.slice(lines.length - SOC_OUTBOX_LIMIT);
+      lines.push(JSON.stringify({ event_id: createHash("sha256").update("gap\\n" + String(socOutboxDropped)).digest("hex"), instance_id: config.instance_id, event_type: "collection.overflow", timestamp: new Date().toISOString(), channel: "direct", payload: { dropped: socOutboxDropped } }));
+    }
+    socOutboxRewrite(lines);
     if (!socEventTimer) socEventTimer = setTimeout(flushSocEvents, 50);
   } catch (error) {
     noteError("soc.events.prepare", error);
@@ -42,27 +70,49 @@ function forwardSocEvent(row) {
 
 async function flushSocEvents() {
   socEventTimer = null;
-  if (socEventSending || socEventQueue.length === 0) return;
+  if (socEventSending) return;
+  const lines = socOutboxRead();
+  if (lines.length === 0) return;
   socEventSending = true;
-  const batch = socEventQueue.splice(0, 50);
+  const batch = lines.slice(0, 50);
   try {
     const config = loadSocEventConfig();
     const response = await fetch(config.backend_url.replace(/\/$/, "") + "/api/asg/events", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + socEventToken },
-      body: JSON.stringify({ instance_id: config.instance_id, events: batch })
+      body: JSON.stringify({ instance_id: config.instance_id, events: batch.map((line) => JSON.parse(line)) })
     });
     if (!response.ok) throw new Error("HTTP " + String(response.status));
+    // The cursor advances only after the server accepted this batch; the file
+    // rewrite removes exactly the delivered prefix, so a restart at any point
+    // replays unconfirmed events without loss.
+    socOutboxRewrite(lines.slice(batch.length));
   } catch (error) {
-    socEventQueue.unshift(...batch);
-    if (socEventQueue.length > 500) socEventQueue.length = 500;
     noteError("soc.events.send", error);
   } finally {
     socEventSending = false;
-    if (socEventQueue.length && !socEventTimer) socEventTimer = setTimeout(flushSocEvents, 1000);
+    if (socOutboxRead().length && !socEventTimer) socEventTimer = setTimeout(flushSocEvents, 1000);
   }
 }
+
 '''
+
+FS_IMPORT_RE = None
+
+def _fs_import_fix(content):
+    global FS_IMPORT_RE
+    if FS_IMPORT_RE is None:
+        import re
+        FS_IMPORT_RE = re.compile('import \\{([^}]*)\\} from "node:fs"')
+    match = FS_IMPORT_RE.search(content)
+    if not match:
+        return content
+    have = [x.strip() for x in match.group(1).split(',')]
+    needed = ('appendFileSync', 'existsSync', 'mkdirSync', 'readFileSync', 'renameSync', 'writeFileSync')
+    missing = [x for x in needed if x not in have]
+    if not missing:
+        return content
+    return content.replace(match.group(0), 'import { ' + ', '.join(have + missing) + ' } from "node:fs"', 1)
 
 def wire_soc_events(content):
     if 'forwardSocEvent(row);' in content:return content
@@ -70,7 +120,8 @@ def wire_soc_events(content):
     anchor='function redact(value, depth) {'
     required=(call,anchor,'createHash','readFileSync','CONTROL_CONFIG')
     if not all(marker in content for marker in required):return content
-    return content.replace(anchor,_EVENT_HELPER+'\n'+anchor,1).replace(call,_EVENT_CALL,1)
+    content=content.replace(anchor,_EVENT_HELPER+'\n'+anchor,1).replace(call,_EVENT_CALL,1)
+    return _fs_import_fix(content)
 
 def main():
     p=argparse.ArgumentParser()
@@ -79,6 +130,7 @@ def main():
     p.add_argument('--backend-url');p.add_argument('--agent-id');p.add_argument('--agent-name',default='')
     p.add_argument('--token-file');p.add_argument('--instance-id',default='')
     p.add_argument('--dry-run',action='store_true')
+    p.add_argument('--upgrade',action='store_true')
     p.add_argument('--verify-pid',type=int)
     p.add_argument('--uninstall',action='store_true');p.add_argument('--state-dir')
     a=p.parse_args();workspace=Path(a.target).expanduser().resolve()
@@ -129,8 +181,13 @@ def main():
         previous=json.loads(receipt.read_text())
         if previous.get('binding',{'transport':'asg-local','backend_url':None,'agent_id':None}) != binding:raise ValueError('installed transport/identity differs; uninstall before switching control plane')
         if previous.get('bundle_digest') != bundle['integrity']['digest']:
-            raise ValueError('another package is installed; uninstall it before changing recipes')
-        plan=learned_install.validate_plan(previous['installed_plan'])
+            if not a.upgrade:
+                raise ValueError('another package is installed; uninstall it before changing recipes')
+            # Explicit upgrade: roll the previous plan back first, then install
+            # the newly selected package. Failures restore via the transaction
+            # manifest; nothing is silently overwritten in place.
+            if not a.dry_run:
+                learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=previous['plan_digest'])
     if a.verify_pid:
         import psutil
         process=psutil.Process(a.verify_pid)

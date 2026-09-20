@@ -15,6 +15,57 @@ from .protocol import canonical, collect_contract
 
 ENV_PATHS=('CODEX_HOME','OPENCODE_CONFIG_DIR','HERMES_HOME','HERMES_OPTIONAL_SKILLS_DIR','OPENCLAW_STATE_DIR')
 
+SERVER_KEYS=('mcpServers','mcp_servers','mcp','servers')
+
+
+def _servers_map(value):
+    if not isinstance(value,dict) or not value:return False
+    return any(isinstance(d,dict) and any(k in d for k in ('command','url','transport','type')) for d in value.values())
+
+
+def first_mcp_field(data,prefix=()):
+    """Locate the MCP servers block by declaration structure, not brand paths."""
+    if not isinstance(data,dict):return None
+    for key,value in data.items():
+        if key in SERVER_KEYS:
+            if _servers_map(value):return '.'.join((*prefix,key))
+            if isinstance(value,dict) and _servers_map(value.get('servers')):return '.'.join((*prefix,key,'servers'))
+        found=first_mcp_field(value,(*prefix,key))
+        if found:return found
+    return None
+
+
+def learned_mcp_sources(value):
+    """Turn structured investigation findings into MCP inventory scopes.
+
+    Only explicit declaration-file paths recorded by the investigation count;
+    runtime-only observations stay unscoped instead of guessing a brand path.
+    The field path is verified by parsing the file, so a wrong guess reports a
+    failed scope rather than pretending an empty scan succeeded.
+    """
+    from .protocol import config
+    out=[];seen=set()
+    items=value.get('items') if isinstance(value,dict) else None
+    for item in items or []:
+        if not isinstance(item,dict):continue
+        for key in ('config_path','source_path','path'):
+            raw=item.get(key)
+            if not isinstance(raw,str) or not raw.strip():continue
+            path=Path(raw).expanduser()
+            if not path.is_absolute():continue
+            path=path.resolve()
+            if path in seen or path.suffix.lower() not in ('.json','.json5','.jsonc','.toml','.yaml','.yml'):continue
+            try:
+                if not path.is_file() or path.stat().st_size>2*1024*1024:continue
+                field=first_mcp_field(config(path))
+            except Exception:continue
+            if field is None:continue
+            seen.add(path)
+            out.append({'path':str(path),'field':field})
+    return out
+
+
+
 def confirmed(state):
     for target in state.get('agents',[]):
         adapter=target.get('adapter') or {}
@@ -48,6 +99,8 @@ def confirmed(state):
                 path=item.get('path') if isinstance(item,dict) else None
                 if isinstance(path,str) and Path(path).is_absolute():
                     p=Path(path);agent['learned_skill_roots'].append(str(p.parent if p.name=='SKILL.md' else p))
+        mcp=(assets.get('registered_tools_and_mcp') or assets.get('mcp') or {}).get('value') or {}
+        if isinstance(mcp,dict):agent['learned_mcp_configs']=learned_mcp_sources(mcp)
         yield agent
 
 class Discovery:
@@ -106,20 +159,60 @@ class Discovery:
                 instance=candidate['asg_instance_id']
                 registered=next((row for row in self.endpoint.agents.values() if row.get('asg_instance_id')==instance),None)
                 if not registered:continue
-                prior=self.endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',(instance,)).fetchone()
-                if prior and json.loads(prior[0]).get('status') in ('installed','already_installed'):continue
+                row=self.endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',(instance,)).fetchone()
+                prior=json.loads(row[0]) if row else None
+                installed=prior and prior.get('status') in ('installed','already_installed')
+                if installed and not request_investigation:continue
+                # Keep durable lifecycle markers when merging a fresh install pass
+                # result; a later needs_investigation must not erase the record that
+                # an investigation was already requested for this instance.
+                result=dict(prior) if prior else {}
                 try:
                     pid,started=instance.split(':');process=psutil.Process(int(pid))
                     if abs(process.create_time()-float(started))>0.01:continue
-                    result=install(self.endpoint,registered,process.exe(),execute=True)
-                    if result.get('status')=='needs_investigation' and request_investigation and not (prior and json.loads(prior[0]).get('investigation_requested')):
-                        # Existing investigation pipeline owns protocol discovery and Goose fallback.
+                    if installed:
+                        # Drift check: the live catalog must still contain the exact
+                        # artifact that this instance installed. Re-selection drift or
+                        # an incompatible new build triggers an explicit upgrade pass,
+                        # not a silent skip and not a blind overwrite.
+                        from .soc_onboarding import select, integrity
+                        current_choice=select(self.endpoint,registered,process.exe())
+                        if (current_choice and current_choice['checksum']==prior.get('checksum')
+                                and current_choice['id']==prior.get('artifact_id')
+                                and integrity(self.endpoint,registered,prior)):
+                            # Same catalog artifact and the installed bytes still match
+                            # the receipt: no write, no model call, no status churn.
+                            continue
+                        if (not prior.get('drift_investigation_requested')
+                                and current_choice is None and prior.get('transport')=='soc-direct-v1'
+                                and not integrity(self.endpoint,registered,prior)):
+                            # The learned artifact left the catalog AND local bytes were
+                            # tampered with: one-shot escalation so the investigation
+                            # pipeline can re-learn, without entering install loops.
+                            prior['drift_investigation_requested']=True
+                            with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(prior)))
+                        result['upgrade_from']=prior.get('artifact_id')
+                        fresh=install(self.endpoint,registered,process.exe(),execute=True,upgrade=True,selected=current_choice)
+                        if fresh.get('status')=='needs_investigation':
+                            # Catalog no longer offers a compatible package: keep the
+                            # previous install evidence and reopen investigation.
+                            fresh={'status':'needs_investigation','route':'protocol_then_goose','reason':'catalog_package_removed_or_incompatible'}
+                        result.update(fresh)
+                        with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(result)))
+                        continue
+                    fresh=install(self.endpoint,registered,process.exe(),execute=True)
+                    result.update(fresh)
+                    if fresh.get('status')=='needs_investigation' and request_investigation and not (prior and prior.get('investigation_requested')):
+                        # Existing investigation pipeline owns protocol discovery and Goose
+                        # fallback. Request once per instance: while a prior request is live,
+                        # repeated scans must not re-arm identical investigations.
                         with build_opener(ProxyHandler({})).open(Request(self.base+'/api/reinvestigate?'+urlencode({'pid':pid}),data=b'{}',headers={'Content-Type':'application/json'}),timeout=15) as response:
                             result['investigation']=json.load(response)
                             result['investigation_requested']=True
                     with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(result)))
                 except (OSError,ValueError,psutil.Error) as exc:
-                    with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps({'status':'failed','reason':type(exc).__name__})))
+                    result['status']='failed';result['reason']=type(exc).__name__
+                    with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(result)))
         # SOC packages are always tried before protocol/Goose investigation.
         onboard(True)
         self.endpoint.db.execute('CREATE TABLE IF NOT EXISTS reported_recipes(agent TEXT,fingerprint TEXT,revision TEXT,PRIMARY KEY(agent,fingerprint,revision))')

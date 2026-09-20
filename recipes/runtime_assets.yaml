@@ -43,7 +43,11 @@ prompt: |
   find_related_files and read_related_file. Prefer actual configuration over searching a large
   executable. Read manifests and relevant JSON/TOML/YAML/text excerpts, not only lists of filenames.
   Seek configured provider/model identifiers and gateway URLs (no credentials); MCP server/tool
-  names and transports; skill names/descriptions/paths; rule files and their scope. Distinguish
+  names and transports; skill names/descriptions/paths; rule files and their scope.
+  For each MCP item, when the declaration site was located, record its absolute file
+  path as config_path (the JSON/TOML/YAML file that declares the server, never the
+  executable path). Omit config_path when the declaration site was not located.
+  Distinguish
   configured/declarative assets from runtime-loaded or observed assets. File existence alone does
   not prove activation. Mark the distinction in value and uncertainty rather than suppressing
   all useful configured information. Do not claim a file in a home directory is a loaded rule.

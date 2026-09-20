@@ -17,8 +17,20 @@ def exchange(config, data, action):
         event_id=hashlib.sha256(json.dumps([instance,data],sort_keys=True,separators=(',',':')).encode()).hexdigest()
         return request(config,'/api/asg/events',{'instance_id':instance,'events':[{'event_id':event_id,'instance_id':instance,'event_type':event_type,'timestamp':data.get('timestamp'),'channel':'direct','payload':data}]})
     if action == 'ack':
-        # This is a producer acknowledgement, not independent enforcement proof.
-        return {'accepted': True, 'scope': 'local_execution_ack', 'enforcement_verified': False}
+        # Producer acknowledgement of a delivered decision. It is reported to
+        # SOC as an execution event so a request's decision and its applied
+        # outcome share one request_id; it is not independent enforcement proof.
+        ack={'event_type':'execution.ack','request_id':str(data.get('request_id') or ''),'decision':str(data.get('decision') or ''),
+             'executed':bool(data.get('executed',True)),'tool':data.get('tool'),'call_id':data.get('call_id'),
+             'timestamp':datetime.now(timezone.utc).isoformat()}
+        try:
+            instance=str(config.get('instance_id') or config['agent_id'])
+            event_id=hashlib.sha256(json.dumps([instance,ack],sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            request(config,'/api/asg/events',{'instance_id':instance,'events':[{'event_id':event_id,'instance_id':instance,'event_type':'execution.ack','timestamp':ack['timestamp'],'channel':'direct','payload':ack}]})
+        except Exception:
+            # The Hook must never block tool execution because telemetry failed.
+            pass
+        return {'accepted': True, 'scope': 'execution_ack_reported', 'enforcement_verified': False}
     if action != 'decision':
         raise ValueError('unsupported Hook action')
     payload={'platform':config['platform'],'agent_id':config['agent_id'],'agent_name':config.get('agent_name',''),

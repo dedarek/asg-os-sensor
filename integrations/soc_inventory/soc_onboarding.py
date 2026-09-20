@@ -54,15 +54,41 @@ def _build_ok(constraints, exe):
     return True
 
 
+# Each native installer in the SOC package tree implements exactly one
+# extension mechanism per platform. A manifest that claims only protocol
+# versions outside this set describes an integration this collector cannot
+# honestly build, so automatic install must refuse and investigate instead.
+NATIVE_PROTOCOLS={'codex':{'codex-hooks-v1'},'opencode':{'opencode-plugin-v1'},
+                  'openclaw':{'openclaw-extension-v1'},
+                  'hermes':{'hermes-plugin-v1'}}
+
+
+def _scope_ok(pin, observed):
+    # Lists declare the supported scope; an unknown membership never passes.
+    if pin is None:return True
+    if not isinstance(pin,list) or not pin or observed not in pin:return False
+    return True
+
+
 def compatible(constraints, exe, agent_type, agent_version=None):
     if constraints.get('adapter')=='soc-native-v1':
         if constraints.get('agent_type')!=agent_type:return False
-        # A native package may pin the host shape and build; absent keys stay
-        # permissive so centrally built vendor packages keep working, while
-        # any explicit pin (platform, architecture, version, executable or
-        # bundle digest) must match the live target exactly.
-        if constraints.get('platform') not in (None,platform.system()):return False
-        if constraints.get('architecture') not in (None,platform.machine()):return False
+        # Fail closed: a native package must ship an auditable compatibility
+        # manifest (platform/architecture scope, protocol versions, optional
+        # version/build pins). Undeclared packages no longer get blind trust.
+        if constraints.get('compatibility_declared')is not True:return False
+        # An explicit empty/invalid list stays an empty/invalid list: it must
+        # never fall through to the absent-key default via truthiness.
+        scopes=constraints.get('platforms')
+        if scopes is None:scopes=constraints.get('platform')
+        if not _scope_ok(scopes,platform.system()):return False
+        archs=constraints.get('architectures')
+        if archs is None:archs=constraints.get('architecture')
+        if not _scope_ok(archs,platform.machine()):return False
+        declared=constraints.get('protocol_versions')
+        if isinstance(declared,list)and declared:
+            known=NATIVE_PROTOCOLS.get(agent_type,set())
+            if not known or not set(declared)&known:return False
         if not _version_ok(constraints,agent_version):return False
         if not _build_ok(constraints,exe):return False
         return True
@@ -73,20 +99,37 @@ def compatible(constraints, exe, agent_type, agent_version=None):
     return True
 
 
-def install_target(agent):
+# The native installers write platform hooks/plugins into a per-platform home
+# directory. Each platform's documented precedence matches its installer:
+# explicit environment override first, then the installer's own default.
+NATIVE_HOME_ENV={'codex':'CODEX_HOME','hermes':'HERMES_HOME','openclaw':'OPENCLAW_STATE_DIR'}
+
+
+def native_home(agent):
+    """Config home for soc-native-v1 packages: env override wins over default.
+
+    Codex/OpenClaw/Hermes load hooks from their hook home, never from the
+    process workspace; passing the workspace here would install next to an
+    unrelated cwd. None defers to the installer's standard default.
+    """
     environment=agent.get('collection_environment') or {}
-    preferred={
-        'codex':'CODEX_HOME',
-        'hermes':'HERMES_HOME',
-        'openclaw':'OPENCLAW_STATE_DIR',
-    }.get(agent['platform'])
-    value=environment.get(preferred) if preferred else None
-    if preferred and not value:
-        # This platform's hook home is an environment-scoped standard
-        # directory. Falling back to the process workspace would install the
-        # managed hook next to an unrelated cwd; return None so the installer
-        # applies its own documented standard-directory default instead.
+    preferred=NATIVE_HOME_ENV.get(agent['platform'])
+    if preferred:
+        value=environment.get(preferred)
+        if isinstance(value,str) and value.strip():return str(Path(value).expanduser())
         return None
+    # opencode native install targets OPENCODE_CONFIG_DIR (installer default
+    # ~/.config/opencode); its process workspace is a project directory.
+    if agent['platform']=='opencode':return None
+    return None
+
+
+def install_target(agent):
+    """Target for soc-direct-v1 learned plans: the concrete project workspace.
+
+    Learned file plans are workspace-relative and the installer rejects
+    anything else; the filesystem root is never a meaningful workspace.
+    """
     workspace=Path(agent['workspace']).expanduser().resolve()
     # A GUI process launched from the filesystem root has no meaningful project
     # workspace; return None so the installer applies its own standard-directory
@@ -95,10 +138,44 @@ def install_target(agent):
     return str(workspace)
 
 
-def install(endpoint, agent, exe, execute=False):
+def integrity(endpoint, agent, prior):
+    """Byte-check learned (soc-direct-v1) installs against their receipt.
+
+    Returns True when every file recorded by the install receipt still matches
+    its recorded digest, or when the transport has no local receipt to verify
+    (native packages are audited through the target trust mechanism instead).
+    A missing receipt for a direct install counts as drift.
+    """
+    if prior.get('transport') != 'soc-direct-v1':return True
+    import hashlib
+    ws=Path(agent['workspace']).expanduser().resolve()
+    state=ws.parent/('.asg-install-'+hashlib.sha256(str(ws).encode()).hexdigest()[:16])
+    receipt=state/'package-receipt.json'
+    try:
+        record=json.loads(receipt.read_text())
+        # Install-time file digests live in the learned_install transaction
+        # manifest named by the receipt's plan digest, not the receipt itself.
+        tx=json.loads((state/(str(record.get('plan_digest'))+'.json')).read_text())
+    except (OSError,json.JSONDecodeError):return False
+    if tx.get('status')!='installed':return False
+    for change in tx.get('changes',[]):
+        path=ws/change['path']
+        try:data=path.read_bytes()
+        except OSError:return False
+        if hashlib.sha256(data).hexdigest()!=change.get('after_sha256'):return False
+    return True
+
+
+def select(endpoint, agent, exe):
+    """Current catalog choice for this instance, or None (needs investigation)."""
     exe=Path(exe).resolve()
     catalog=endpoint.request(agent,'/api/asg/artifact/catalog',None,'GET')
-    selected=next((x for x in catalog['items'] if compatible(x['constraints'],exe,agent['platform'],agent.get('agent_version'))),None)
+    return next((x for x in catalog['items'] if compatible(x['constraints'],exe,agent['platform'],agent.get('agent_version'))),None)
+
+
+def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
+    exe=Path(exe).resolve()
+    if selected is None:selected=select(endpoint,agent,exe)
     if selected is None:return {'status':'needs_investigation','route':'protocol_then_goose','reason':'no_compatible_SOC_package','model_calls':0}
     key=Path(agent['key_file']).read_text().strip()
     route=selected['download_path']
@@ -121,18 +198,26 @@ def install(endpoint, agent, exe, execute=False):
         process=psutil.Process(int(pid))
         if abs(process.create_time()-float(started))>0.01 or Path(process.exe()).resolve()!=exe or Path(process.cwd()).resolve()!=Path(agent['workspace']).resolve():
             raise ValueError('target instance changed during package download')
-    target=install_target(agent)
     if selected['transport']=='soc-native-v1':
+        # Native packages must target the platform hook home (honouring the
+        # instance's own env override), never the process workspace.
+        home=native_home(agent)
         args=['bash',str(root/'install/install.sh'),'--platform',agent['platform'],'--backend-url',endpoint.url,'--agent-id',agent['agent_id'],'--agent-name',agent.get('name') or agent['platform'],'--token',key]
-        if target is not None:args+=['--target',target]
+        if home is not None:args+=['--target',home]
     elif selected['transport']=='soc-direct-v1':
+        target=install_target(agent)
         if target is None:raise ValueError('learned package requires a concrete Agent workspace')
         args=[sys.executable,str(root/'install.py'),'--target',target,'--exe',str(exe),'--platform',agent['platform'],'--backend-url',endpoint.url,'--agent-id',agent['agent_id'],'--agent-name',agent.get('name') or agent['platform'],'--instance-id',agent.get('asg_instance_id',''),'--token-file',agent['key_file']]
     else:
         raise ValueError('unsupported SOC package transport')
+    if upgrade:
+        # The learned installer understands --upgrade (rollback then install);
+        # the native bash installer only understands --force (replace a target
+        # it already manages). Passing the wrong flag must fail before writes.
+        args+=['--upgrade' if selected['transport']=='soc-direct-v1' else '--force']
     result=subprocess.run(args+([] if execute else ['--dry-run']),capture_output=True,text=True,timeout=45)
     output=(result.stdout or result.stderr).strip()
     try:body=json.loads(output)
     except json.JSONDecodeError:body={'status':'installed' if result.returncode==0 and execute else 'validated' if result.returncode==0 else 'failed','output':output[-4000:]}
     if result.returncode!=0:raise ValueError('SOC package installer failed: '+str(body.get('error') or body.get('output') or result.returncode))
-    return {'status':body.get('status','installed' if result.returncode==0 else 'failed'),'artifact_id':selected['id'],'model_calls':0,'transport':selected['transport'],'result':body}
+    return {'status':body.get('status','installed' if result.returncode==0 else 'failed'),'artifact_id':selected['id'],'checksum':selected['checksum'],'model_calls':0,'transport':selected['transport'],'result':body}

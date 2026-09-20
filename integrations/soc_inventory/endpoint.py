@@ -83,6 +83,8 @@ class Endpoint:
         CREATE TABLE IF NOT EXISTS known_scopes(id TEXT,scope TEXT,PRIMARY KEY(id,scope));
         CREATE TABLE IF NOT EXISTS packages(agent TEXT,installation TEXT,digest TEXT,PRIMARY KEY(agent,installation));
         ''')
+        self.db.execute('CREATE TABLE IF NOT EXISTS collection_requests(id INTEGER PRIMARY KEY AUTOINCREMENT)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS pending_discoveries(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL,envelope BLOB NOT NULL)')
         self.agents={a['agent_id']:a for a in configuration.get('agents',[])}
         if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='enrolled'").fetchone():
             for row in self.db.execute('SELECT configuration FROM enrolled'):
@@ -168,24 +170,52 @@ class Endpoint:
                     except (OSError,ValueError,KeyError) as exc:LOG.warning('Runtime report pending: %s',type(exc).__name__)
                     time.sleep(15)
             threading.Thread(target=runtime_loop,daemon=True).start()
-        self.db.execute('CREATE TABLE IF NOT EXISTS collection_requests(id INTEGER PRIMARY KEY AUTOINCREMENT)')
         next_collect={}
         while True:
-            if self.config.get('collection_mode')=='manual' and not once:
+            manual=self.config.get('collection_mode')=='manual' and not once
+            if manual:
                 pending=self.db.execute('SELECT id FROM collection_requests ORDER BY id LIMIT 1').fetchone()
-                if not pending:
-                    time.sleep(2)
-                    continue
-                with self.db:self.db.execute('DELETE FROM collection_requests WHERE id=?',(pending[0],))
-                next_collect={}
+                if pending:
+                    with self.db:self.db.execute('DELETE FROM collection_requests WHERE id=?',(pending[0],))
+                    next_collect={};manual=False
             collection_failed=False
             active=set(self.agents)
             if discovery:
-                try:active=set(discovery.refresh()) | {a['agent_id'] for a in self.config.get('agents',[])}
+                # Lifecycle discovery, registration and cached-report replay run
+                # in every mode: manual only gates deep asset collection, never
+                # finding/enrolling new instances or retrying queued receipts.
+                try:
+                    active=set(discovery.refresh()) | {a['agent_id'] for a in self.config.get('agents',[])}
+                    discovery_pending=self.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0]
                 except (OSError,ValueError,KeyError) as e:
-                    active=set();collection_failed=True
+                    active=set(self.agents);discovery_pending=1
+                    collection_failed=True
                     LOG.warning('Discovery pending: %s',type(e).__name__)
-            self.flush()
+                self.flush()
+                if not manual:
+                    for agent in list(self.agents.values()):
+                        identity,_=self.stream_identity(agent)
+                        retained=self.db.execute('SELECT 1 FROM drafts WHERE id=?',(identity,)).fetchone()
+                        if not retained and (agent['agent_id'] not in active or time.monotonic()<next_collect.get(agent['agent_id'],0)):continue
+                        try:
+                            self.enqueue(agent)
+                            next_collect[agent['agent_id']]=time.monotonic()+max(10,self.config.get('interval_seconds',600))
+                        except (OSError,ValueError,KeyError) as e:
+                            collection_failed=True
+                            LOG.warning('Collection pending: %s',type(e).__name__)
+                    self.flush()
+                    if discovery_pending:collection_failed=True
+                    if once:return not collection_failed and self.db.execute("SELECT count(*) FROM queue").fetchone()[0] == 0 and self.db.execute("SELECT count(*) FROM drafts").fetchone()[0] == 0
+                    time.sleep(15)
+                    continue
+                if discovery_pending:collection_failed=True
+                if once:return not collection_failed and self.db.execute("SELECT count(*) FROM queue").fetchone()[0] == 0 and self.db.execute("SELECT count(*) FROM pending_discoveries").fetchone()[0] == 0 and self.db.execute("SELECT count(*) FROM drafts").fetchone()[0] == 0
+                time.sleep(15)
+                continue
+            if manual:
+                self.flush()
+                time.sleep(2)
+                continue
             for agent in list(self.agents.values()):
                 identity,_=self.stream_identity(agent)
                 retained=self.db.execute('SELECT 1 FROM drafts WHERE id=?',(identity,)).fetchone()
@@ -197,7 +227,6 @@ class Endpoint:
                     collection_failed=True
                     LOG.warning('Collection pending: %s',type(e).__name__)
             self.flush()
-            if discovery and self.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0]:collection_failed=True
             if once:return not collection_failed and self.db.execute("SELECT count(*) FROM queue").fetchone()[0] == 0 and self.db.execute("SELECT count(*) FROM drafts").fetchone()[0] == 0
             time.sleep(15 if discovery else max(10,self.config.get('interval_seconds',600))+random.uniform(0,5))
 

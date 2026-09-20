@@ -92,23 +92,34 @@ class BudgetTests(unittest.TestCase):
 
 
 class NativeConstraintTests(unittest.TestCase):
-    def test_native_package_honours_pinned_platform(self):
+    def test_native_package_requires_declared_compatibility_scope(self):
         import platform as pf
-        loose = {'adapter':'soc-native-v1','agent_type':'codex'}
-        self.assertTrue(compatible(loose, Path('/bin/ls'), 'codex'))
-        self.assertFalse(compatible(loose, Path('/bin/ls'), 'opencode'))
-        wrong_platform = {'adapter':'soc-native-v1','agent_type':'codex','platform':'NonExistingOS'}
+        undeclared = {'adapter':'soc-native-v1','agent_type':'codex'}
+        # Fail closed: without an auditable manifest no automatic install happens.
+        self.assertFalse(compatible(undeclared, Path('/bin/ls'), 'codex'))
+        declared = {'adapter':'soc-native-v1','agent_type':'codex','compatibility_declared':True,
+                    'platforms':[pf.system()],'architectures':[pf.machine()],
+                    'protocol_versions':['codex-hooks-v1']}
+        self.assertTrue(compatible(declared, Path('/bin/ls'), 'codex'))
+        self.assertFalse(compatible(declared, Path('/bin/ls'), 'opencode'))
+        wrong_platform = dict(declared, platforms=['NonExistingOS'])
         self.assertFalse(compatible(wrong_platform, Path('/bin/ls'), 'codex'))
-        right_platform = {'adapter':'soc-native-v1','agent_type':'codex','platform':pf.system(),
-                          'architecture':pf.machine()}
-        self.assertTrue(compatible(right_platform, Path('/bin/ls'), 'codex'))
+        # A manifest that claims a protocol this collector cannot build is a
+        # mismatch: it must go to investigation, never to blind installation.
+        foreign = dict(declared, protocol_versions=['some-future-hook-protocol'])
+        self.assertFalse(compatible(foreign, Path('/bin/ls'), 'codex'))
+        unknown_scope = dict(declared, platforms=[])
+        self.assertFalse(compatible(unknown_scope, Path('/bin/ls'), 'codex'))
 
     def test_pinned_build_and_version_must_match(self):
         import hashlib
+        import platform as pf
         from pathlib import Path
         exe = Path('/bin/ls')
         good = hashlib.sha256(exe.read_bytes()).hexdigest()
-        base = {'adapter':'soc-native-v1','agent_type':'codex'}
+        base = {'adapter':'soc-native-v1','agent_type':'codex','compatibility_declared':True,
+                'platforms':[pf.system()],'architectures':[pf.machine()],
+                'protocol_versions':['codex-hooks-v1']}
         # An explicit executable pin is honoured: right build passes, wrong
         # build and unreadable executables are rejected, never a silent match.
         self.assertTrue(compatible({**base,'executable':good}, exe, 'codex'))
