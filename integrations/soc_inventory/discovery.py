@@ -114,6 +114,7 @@ class Discovery:
         if not self.host.exists():self.host.write_text(str(uuid.uuid4()))
         endpoint.db.execute('CREATE TABLE IF NOT EXISTS enrolled(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL)')
         endpoint.db.execute('CREATE TABLE IF NOT EXISTS pending_discoveries(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL,envelope BLOB NOT NULL)')
+        endpoint.db.execute('CREATE TABLE IF NOT EXISTS soc_onboarding(instance TEXT PRIMARY KEY,result TEXT)')
     def refresh(self):
         try:
             with build_opener(ProxyHandler({})).open(self.base+'/api/state',timeout=15) as r:state=json.load(r)
@@ -124,6 +125,29 @@ class Discovery:
         for agent in current:
             instance=agent['asg_instance_id']
             if self.endpoint.db.execute('SELECT 1 FROM enrolled WHERE instance=?',(instance,)).fetchone():continue
+            # Same live process, drifted identity stamp: macOS create_time reads
+            # can flap by ~1s, which would double-enroll one process, duplicate
+            # SOC cards and strand queued commands. Transfer the enrollment and
+            # onboarding receipt instead (pid match within 2s).
+            try:
+                dpi,dct=instance.split(':',1);dct=float(dct)
+                match=next((row for row in self.endpoint.db.execute('SELECT instance,configuration FROM enrolled').fetchall()
+                    if row[0].split(':',1)[0]==dpi and len(row[0].split(':',1))==2
+                    and row[0].split(':',1)[1].replace('.','',1).isdigit()
+                    and abs(float(row[0].split(':',1)[1])-dct)<=2.0),None)
+            except ValueError:
+                match=None
+            if match:
+                prior=json.loads(match[1])
+                prior['asg_instance_id']=instance;prior['identity_refreshed']=True
+                with self.endpoint.db:
+                    self.endpoint.db.execute('DELETE FROM enrolled WHERE instance=?',(match[0],))
+                    self.endpoint.db.execute('INSERT OR REPLACE INTO enrolled VALUES(?,?)',(instance,json.dumps(prior)))
+                    row=self.endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',(match[0],)).fetchone()
+                    if row:
+                        self.endpoint.db.execute('DELETE FROM soc_onboarding WHERE instance=?',(match[0],))
+                        self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,row[0]))
+                continue
             if self.endpoint.db.execute('SELECT 1 FROM pending_discoveries WHERE instance=?',(instance,)).fetchone():continue
             envelope=collect_contract({**agent,'agent_id':'pending-enrollment'},'pending-registration',1,
                 env=agent.get('collection_environment'),bounded=True)

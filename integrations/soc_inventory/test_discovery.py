@@ -36,6 +36,30 @@ class DiscoveryTest(unittest.TestCase):
             self.assertEqual(draft['categories']['skill']['scopes'][0]['items'][0]['name'],'offline-original')
             self.assertEqual(draft['agent_id'],'enrolled')
             self.assertEqual(resumed.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0],0)
+    def test_create_time_flap_transfers_enrollment_instead_of_dual_enroll(self):
+        # macOS create_time can flap by ~1s for one live process. The collector
+        # must move the enrollment and onboarding receipt to the new stamp, not
+        # register the same process a second time under a duplicate SOC card.
+        import tempfile, json
+        from .endpoint import Endpoint
+        from .discovery import Discovery
+        with tempfile.TemporaryDirectory() as directory:
+            cfg={'backend_url':'http://127.0.0.1:1','state_dir':directory,'agents':[], 'discovery':{'application_key_file':'unused'}}
+            e=Endpoint(cfg);discovery=Discovery(e)
+            prior={'name':'Example','platform':'codex','workspace':'/','asg_instance_id':'42:100.0','source_instance_id':'42:99.0','identity_refreshed':True,'agent_id':'asg-old','key_file':'unused','classification':'pending'}
+            e.db.execute('INSERT INTO enrolled VALUES(?,?)',('42:100.0',json.dumps(prior)))
+            e.db.execute('INSERT INTO soc_onboarding VALUES(?,?)',('42:100.0',json.dumps({'status':'installed','artifact_id':'a1'})))
+            drifted={'name':'Example','asg_instance_id':'42:101.0','source_instance_id':'42:100.0','identity_refreshed':True,'platform':'codex','workspace':'/','collection_environment':{}}
+            e.request=lambda *args: (_ for _ in ()).throw(AssertionError('must not re-enroll'))
+            with patch('integrations.soc_inventory.discovery.confirmed',return_value=iter([drifted])):
+                discovery.refresh()
+            rows=e.db.execute('SELECT instance,configuration FROM enrolled').fetchall()
+            self.assertEqual([row[0] for row in rows],['42:101.0'])
+            self.assertEqual(json.loads(rows[0][1])['agent_id'],'asg-old')
+            onboard=e.db.execute('SELECT instance,result FROM soc_onboarding').fetchall()
+            self.assertEqual([row[0] for row in onboard],['42:101.0'])
+            self.assertEqual(e.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0],0)
+            e.db.close()
     def test_reused_pid_rejected(self):
         process=Mock();process.create_time.return_value=124
         with patch('psutil.Process',return_value=process):self.assertEqual(list(confirmed({'agents':[self.target()]})),[])

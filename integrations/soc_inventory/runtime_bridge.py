@@ -12,7 +12,7 @@ from .protocol import canonical
 PATHS={'scan':'/api/scan','investigate':'/api/reinvestigate','continue':'/api/reinvestigate/continue',
        'cancel':'/api/reinvestigate/cancel','install':'/api/onboarding/execute','verify':'/api/onboarding/verify',
        'trust_refresh':'/api/native-trust/refresh','scan_interval':'/api/scan-interval',
-       'collect':'/api/scan','control_policy':'/api/hook-control/policy','control_resolve':'/api/hook-control/resolve'}
+       'collect':'/api/scan','control_policy':'/api/hook-control/policy','control_resolve':'/api/hook-control/resolve','model_settings':'/api/model-settings'}
 
 class RuntimeBridge:
     def __init__(self,endpoint):
@@ -82,7 +82,7 @@ class RuntimeBridge:
                         if any(a.get('instance_id')==instance and a.get('pid')==target['pid'] for a in fresh.get('agents',[])):
                             try:
                                 path=PATHS[command['operation']]
-                                if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve'):path+='?'+urlencode({'pid':target['pid']})
+                                if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings'):path+='?'+urlencode({'pid':target['pid']})
                                 arguments=command.get('arguments') or {}
                                 if isinstance(arguments,str):arguments=json.loads(arguments)
                                 result=self.local(path,arguments)
