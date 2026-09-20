@@ -157,6 +157,18 @@ def main():
     args = parser.parse_args()
 
     run_dir = Path(tempfile.mkdtemp(prefix='asg-lifecycle-acceptance-'))
+    # A leftover acceptance engine from a previous failed run keeps holding its
+    # chosen port; a fresh free_port() can collide with it and the new engine
+    # crash-loops on bind. Clear strays before starting.
+    stray = subprocess.run(['pgrep', '-f', 'asg-lifecycle-acceptance-.*/(monitor_dashboard|service_main|endpoint)'],
+                           capture_output=True, text=True)
+    for pid in [p for p in stray.stdout.split() if p.strip()]:
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except OSError:
+            pass
+    if stray.stdout.strip():
+        time.sleep(1)
     runner = Runner(args.package, args.gateway, args.enrollment_key, run_dir)
     runner.home = run_dir / 'home'
     psqphost, remainder = args.psql.split(':', 1)
