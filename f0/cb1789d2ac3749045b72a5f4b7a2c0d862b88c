@@ -1,0 +1,57 @@
+docs/stage1/HOOK_VALIDATION.md
+  s_7a5b8096b41d01::t_6e8b1724ea3d32 1-26
+docs/stage1/HOOK_VERIFICATION_20260914.md
+  s_7a5b8096b41d01::t_51b5f0acf86c95 1-18
+e2e/verify_confirmation_delivery.py
+  s_7a5b8096b41d01::t_2968d79cb913a8 1-34
+e2e/verify_control_delivery.py
+  s_7a5b8096b41d01::t_48d92606ebf61b 1-40
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_2a126916fafbf7 36,909-923,1893-1906,1935-1950,1968-1969,2238-2248,2303-2319,2367-2377,2484-2486,2673-2761,2769-2770,2774,2930,3013,3060,3068,3089-3166,3287-3314,3316-3340,3342-3350,3413,3453-3454,3505-3506,3530
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_bd9a73563573c0 60-61
+recipes/runtime_hook_analyst.yaml
+  s_7a5b8096b41d01::t_9cbb88055b2f1e 60-75
+runtime/analyst_evidence.py
+  s_7a5b8096b41d01::t_a193865c06e755 20,458-471
+runtime/analyst_tools.py
+  s_7a5b8096b41d01::t_1688ab96ffa2f5 902-905
+runtime/autonomous_pipeline.py
+  s_7a5b8096b41d01::t_c0b367356d8287 31,39,50-55,60-91
+runtime/hook_acceptance.py
+  s_7a5b8096b41d01::t_243734cd26b0fc 1-32
+runtime/hook_control.py
+  s_7a5b8096b41d01::t_bcf8911ac77d44 1-159
+runtime/hook_control_client.py
+  s_7a5b8096b41d01::t_4a3a605538d9f1 1-26
+runtime/hook_data.py
+  s_7a5b8096b41d01::t_9699dcb7f47396 1-622
+runtime/investigation_findings.py
+  s_7a5b8096b41d01::t_49168d35f509be 18
+runtime/observation_source.py
+  s_7a5b8096b41d01::t_c3fc0415c8ad67 23,44-46,64,345,407,460-464
+test_autonomous_pipeline.py
+  s_7a5b8096b41d01::t_6184d9b9fa25cb 32-33
+test_hook_acceptance.py
+  s_7a5b8096b41d01::t_eeb36cda518631 1-12
+test_hook_control.py
+  s_7a5b8096b41d01::t_1084251fee2518 1-38
+test_hook_data.py
+  s_7a5b8096b41d01::t_35c3db7d2fa05b 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f0cb1789d2ac3749045b72a5f4b7a2c0d862b88c",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}

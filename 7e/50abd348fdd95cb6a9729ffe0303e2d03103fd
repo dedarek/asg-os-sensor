@@ -1,0 +1,305 @@
+.env.example
+  s_1512a994888af5::t_38eb5842a8b96c 1-32
+.gitignore
+  s_7a5b8096b41d01::t_c9e5f6e5290c0d 1-37
+AGENTS.md
+  s_1512a994888af5::t_3ff177b9719c95 1-7
+PLAN.md
+  s_1512a994888af5::t_d7131c4a7bfdcb 1-60
+README.md
+  s_1512a994888af5::t_2da1650c8de865 1-74
+RELEASE.md
+  s_7a5b8096b41d01::t_84e61226ee19d5 1-6
+REVIEW.md
+  s_1512a994888af5::t_479a612e155c15 1-277
+WORKLOG.md
+  s_1512a994888af5::t_6fad0573c6023f 1-480
+asg_os_sensor.py
+  s_1512a994888af5::t_130ffb2440ebe2 1-488
+config/observation_source.example.json
+  s_1512a994888af5::t_4a8ff3e64d2817 1-27
+docs/stage1/ASSET_CHECKPOINT_20260911.md
+  s_7a5b8096b41d01::t_acf64d7831cc97 1-28
+docs/stage1/AUTONOMOUS_DELIVERY.md
+  s_7a5b8096b41d01::t_67b27e71d1dda7 1-75
+docs/stage1/HOOK_INSTALL_PLAN.md
+  s_1512a994888af5::t_0162bbb9b8dbe5 1-30
+docs/stage1/LEARNED_INSTALL.md
+  s_1512a994888af5::t_b6f0f75b58537a 1-18
+docs/stage1/MVP_DEMO.md
+  s_1512a994888af5::t_07b1a44f390121 1-34
+docs/stage1/PLAN.md
+  s_1512a994888af5::t_76a9da26d9311a 1-154
+docs/stage1/PRODUCT_AND_COLLABORATION.md
+  s_1512a994888af5::t_5e4c5115fb53bf 1-52
+docs/stage1/REVIEW.md
+  s_1512a994888af5::t_1eb8c0264cb980 1-158
+docs/stage1/TOOL_DELIVERY_STATUS.md
+  s_1512a994888af5::t_d0811ade0438ff 1-8
+docs/stage1/WORKLOG.md
+  s_1512a994888af5::t_aa0d0236d60688 1-455
+e2e/AUDIT-20260905-023752.md
+  s_1512a994888af5::t_24cff42fddca00 1-30
+e2e/AUDIT-20260905-024239.md
+  s_1512a994888af5::t_deb41a6f013290 1-30
+e2e/AUDIT-20260905-025140.md
+  s_1512a994888af5::t_e6a1ffadffa32f 1-31
+e2e/adapters/harness-01.json
+  s_1512a994888af5::t_ffd5e33609d8fd 1-33
+e2e/data/note.txt
+  s_1512a994888af5::t_8afb5a5dcb7cf9 1
+e2e/data/note2.txt
+  s_1512a994888af5::t_2d82bd641d60ef 1
+e2e/e2e_unknown.py
+  s_1512a994888af5::t_18090994cb9a3e 1-331
+e2e/hook/sitecustomize.py
+  s_1512a994888af5::t_ca58aa1274689e 1-92
+e2e/marker_hook.js
+  s_1512a994888af5::t_0cc2c71d73249d 1-3
+e2e/mini_bridge.py
+  s_1512a994888af5::t_a9319c5a0dc83b 1-197
+e2e/otel_sink.js
+  s_1512a994888af5::t_7f7ffb8b93bd9e 1-19
+e2e/real_autonomous_demo.py
+  s_7a5b8096b41d01::t_bf4441685a668f 1-118
+e2e/run_e2e.py
+  s_1512a994888af5::t_ca70fdc392977e 1-243
+e2e/unknown_harness.py
+  s_1512a994888af5::t_85fa32497943d9 1-59
+e2e/verify_autonomous_delivery.py
+  s_7a5b8096b41d01::t_134c21c8340c8f 1-61
+evil_agent.py
+  s_1512a994888af5::t_8a7932a2419667 1-45
+find_agents.py
+  s_1512a994888af5::t_9e955ad3d15f39 1-35
+find_agents_behavior.py
+  s_1512a994888af5::t_47475c5b3a0022 1-157
+find_agents_v2.py
+  s_1512a994888af5::t_4e2d49067b8d6d 1-208
+good_agent.py
+  s_1512a994888af5::t_06af28ecfa8ee9 1-18
+honey/id_rsa_fake
+  s_1512a994888af5::t_6482e991f0d2e8 1-4
+identities.yaml
+  s_1512a994888af5::t_9cb02c47c87c85 1-30
+llm.yaml
+  s_1512a994888af5::t_d236f595352d4b 1-41
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_b4ea6111298627 1-3315
+policies.yaml
+  s_1512a994888af5::t_e0e367308cb923 1-57
+recipes/runtime_analyst.yaml
+  s_7a5b8096b41d01::t_53d5b1a5d9b7cf 1-123
+recipes/runtime_assets.yaml
+  s_7a5b8096b41d01::t_78bf795919ffe4 1-108
+recipes/runtime_hook_analyst.yaml
+  s_7a5b8096b41d01::t_ed47c37bb8741a 1-62
+requirements.txt
+  s_1512a994888af5::t_3824ed45f5192b 1-5
+runtime/analyst_evidence.py
+  s_7a5b8096b41d01::t_9f580e972f4ca0 1-557
+runtime/analyst_tools.py
+  s_7a5b8096b41d01::t_dfcc185c474008 1-1039
+runtime/analyzer.py
+  s_1512a994888af5::t_0bedf16be25f49 1-168
+runtime/asset_pass.py
+  s_7a5b8096b41d01::t_c86035c6ba900b 1-48
+runtime/autonomous_pipeline.py
+  s_7a5b8096b41d01::t_771351f94c0195 1-51
+runtime/collection.py
+  s_1512a994888af5::t_f41b4a29d8235c 1-95
+runtime/compatibility.py
+  s_1512a994888af5::t_59ef55b61ba8bb 1-54
+runtime/fingerprints.json
+  s_7a5b8096b41d01::t_a653f044cc1bf4 1
+runtime/hook_node/preload.js
+  s_1512a994888af5::t_52c60e0510df0e 1-107
+runtime/identity.py
+  s_1512a994888af5::t_cfa82b41d33338 1-164
+runtime/investigation_activity.py
+  s_1512a994888af5::t_5e1d592e7f0e93 1-132
+runtime/investigation_findings.py
+  s_7a5b8096b41d01::t_092607dc1a9fb8 1-213
+runtime/learned_events.py
+  s_1512a994888af5::t_372ad14ebc9d09 1-76
+runtime/learned_install.py
+  s_1512a994888af5::t_2c2cad9ef8bb9f 1-206
+runtime/learned_onboarding.py
+  s_1512a994888af5::t_60c5da3de62de1 1-355
+runtime/learned_presentation.py
+  s_1512a994888af5::t_927c153add224e 1-49
+runtime/llm_config.py
+  s_7a5b8096b41d01::t_01336ae3a55aa6 1-189
+runtime/llm_proxy.py
+  s_1512a994888af5::t_04609cfdf3f909 1-194
+runtime/matcher.py
+  s_1512a994888af5::t_fd9ed9c89590b9 1-386
+runtime/model_settings.py
+  s_7a5b8096b41d01::t_3dd2b391d578be 1-112
+runtime/observation_registry.py
+  s_7a5b8096b41d01::t_670d801be1444c 1-55
+runtime/observation_source.py
+  s_1512a994888af5::t_71b6b5a56c83d0 1-455
+runtime/onboarding.py
+  s_7a5b8096b41d01::t_3edb0fa589ef26 1-791
+runtime/opencode/asg-observe.js
+  s_1512a994888af5::t_ee9d1e0132a561 1-91
+runtime/opencode/asg-observe.mjs
+  s_1512a994888af5::t_f46913a2730be1 1-46
+runtime/opencode/event_api.py
+  s_1512a994888af5::t_7f2407f5e31b34 1-130
+runtime/opencode/ghost_install.py
+  s_1512a994888af5::t_adb2e0236a52fe 1-266
+runtime/opencode/server.py
+  s_1512a994888af5::t_0d51b626f831d8 1-384
+runtime/prober.py
+  s_1512a994888af5::t_2a8bc70a884a21 1-27
+runtime/recipe_schema.py
+  s_1512a994888af5::t_771f11a70c5577 1-145
+runtime/recipe_validation.py
+  s_1512a994888af5::t_1062d446d0b753 1-190
+runtime/status.py
+  s_1512a994888af5::t_b300b8eaad1a73 1-80
+runtime/stream_parser.py
+  s_1512a994888af5::t_7bc690f9fe9f1e 1-98
+runtime/tool_context.py
+  s_1512a994888af5::t_4eff92e43f760e 1-71
+runtime/tool_transport_health.py
+  s_1512a994888af5::t_5e48c8e3ba88ce 1-36
+service.py
+  s_7a5b8096b41d01::t_122c9fcc36cca6 1-55
+start_dashboard.bat
+  s_1512a994888af5::t_781726ec0f159e 1-42
+start_dashboard.sh
+  s_1512a994888af5::t_b9d9ad492074cf 1-39
+test_activation_coordinate.py
+  s_1512a994888af5::t_88931984e1b9e0 1-184
+test_activation_coordinate_gates.py
+  s_1512a994888af5::t_52bc0bc901f9ee 1-173
+test_activation_rebind.py
+  s_1512a994888af5::t_0598e4ee442067 1-215
+test_activity_ui.py
+  s_1512a994888af5::t_3e502d273d0843 1-37
+test_adapter_stage1.py
+  s_1512a994888af5::t_84e605b58eed77 1-93
+test_analyst_evidence.py
+  s_7a5b8096b41d01::t_99fda94ecf4fad 1-267
+test_asset_followup_gate.py
+  s_1512a994888af5::t_9265b4e3b371d7 1-138
+test_asset_pass.py
+  s_7a5b8096b41d01::t_5b4e049fc83b6c 1-200
+test_autonomous_pipeline.py
+  s_1eed84eec01292::t_159e780cbc3fb9 1-140
+test_buffered_transport.py
+  s_1512a994888af5::t_20f442341ab041 1-21
+test_config_directory_evidence.py
+  s_1512a994888af5::t_0511b8071a7505 1-14
+test_dashboard_http.py
+  s_1512a994888af5::t_01b96641dc647a 1-361
+test_discovery.py
+  s_1512a994888af5::t_de9a582b70c6bc 1-123
+test_field_label_redaction.py
+  s_1512a994888af5::t_98ba7579deb75d 1-7
+test_file_plan_dispatch.py
+  s_1512a994888af5::t_0d75cf75f87f1e 1-28
+test_follow_related_directory.py
+  s_7a5b8096b41d01::t_1506f5f3b8b2f6 1-30
+test_goose_stage1.py
+  s_1512a994888af5::t_1bf79af61527f8 1-340
+test_history_render.py
+  s_7a5b8096b41d01::t_d6cd3ec0febd7b 1-34
+test_investigation_activity.py
+  s_1512a994888af5::t_6bf2dc53302116 1-36
+test_investigation_lifecycle.py
+  s_1512a994888af5::t_b47a420dbe4b3a 1-195
+test_learned_events.py
+  s_1512a994888af5::t_9f0f08b256e9a1 1-23
+test_learned_install.py
+  s_1512a994888af5::t_ff976b84440279 1-64
+test_learned_onboarding.py
+  s_1512a994888af5::t_e24504b97fbec0 1-41
+test_learned_presentation.py
+  s_1512a994888af5::t_5a90bb8d28373e 1-51
+test_matcher_stage1.py
+  s_1512a994888af5::t_9eb64074f5f4b1 1-413
+test_model_settings.py
+  s_7a5b8096b41d01::t_e0853f30d23b43 1-41
+test_observation_binding_restore.py
+  s_1512a994888af5::t_a471d01f9c4890 1-20
+test_observation_declaration.py
+  s_1512a994888af5::t_cb022da7b32bc1 1-210
+test_observation_file_source.py
+  s_1512a994888af5::t_fb64a159f7fdf6 1-390
+test_observe_page.py
+  s_1512a994888af5::t_6f62e087d720f3 1-173
+test_onboarding.py
+  s_1512a994888af5::t_4bfa0d2fdbff30 1-436
+test_onboarding_observation.py
+  s_1512a994888af5::t_57fc177bc225b9 1-184
+test_opencode_plugin.js
+  s_1512a994888af5::t_9aa5652d9c5845 1-11
+test_opencode_plugin.py
+  s_1512a994888af5::t_6776f3d8d70c19 1-213
+test_proposal_phase.py
+  s_1512a994888af5::t_af6cdd82e6ff67 1-50
+test_readable_assets.py
+  s_7a5b8096b41d01::t_582cf50f16f25a 1-44
+test_real_cli.py
+  s_1512a994888af5::t_8c365327e8d62d 1-164
+test_recipe_evolution_contract.py
+  s_1512a994888af5::t_4b17483b7845b3 1-220
+test_reuse_exact_fileplan.py
+  s_1512a994888af5::t_99d5855e5a68b5 1-206
+test_route_context.py
+  s_1512a994888af5::t_2abd35dbe391d8 1-15
+test_route_request_options.py
+  s_1512a994888af5::t_5242e4b5465611 1-52
+test_status_stage1.py
+  s_1512a994888af5::t_618acf37ece9a5 1-294
+test_symlink_guard.py
+  s_1512a994888af5::t_02b33fea307847 1-75
+test_synthetic_hook_integration.py
+  s_1512a994888af5::t_b241d7001824c1 1-147
+test_tool_context.py
+  s_1512a994888af5::t_58834114c7ceb9 1-25
+test_tool_transport_health.py
+  s_1512a994888af5::t_89f28d68b552ff 1-37
+tmp/good_agent_note.txt
+  s_1512a994888af5::t_84de0322afb752 1
+verify.py
+  s_1512a994888af5::t_ce3dd18691be1d 1-82
+verify_llm.py
+  s_1512a994888af5::t_972278a22db850 1-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7e50abd348fdd95cb6a9729ffe0303e2d03103fd",
+  "prompts": {},
+  "sessions": {
+    "s_1512a994888af5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0843f-7250-7591-b63b-e46e5fa83725",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_1eed84eec01292": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f25-d6d0-73e0-a5d7-c2450145cb7f",
+        "model": "command-code/deepseek-deepseek-v4.1-flash"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    },
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
