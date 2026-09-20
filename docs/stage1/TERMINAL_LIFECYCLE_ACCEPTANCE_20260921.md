@@ -66,3 +66,20 @@ SOC 网关：http://127.0.0.1:8095（本机 SOC POC 栈）。
 
 - 交付项 7（终端生命周期：安装、启动、检查、升级、卸载入口）：**通过**，绑定包摘要 5362cd0a。
 - 交付项 1–6：状态不变，逐项见 GAP_AUDIT_20260920.md 的 G01–G13、G15、G16，本报告不改变任何未验收项的结论。
+
+## 追加：绑定最新提交的重跑（2026-09-21 04:5x）
+
+发布包 0.9.2（构建自提交 6274392，manifest sha256 317732f5cd8045175e14157135ba809960f8e366474d8a7d0061b76a8e259cc0）
+全量 17 步重跑通过，失败 0：
+/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-lifecycle-acceptance-8v1ix06j/report.json
+doctor 四类故障注入 23.5 秒通过；升级回滚 143.9 秒（含二次重试）内旧版本恢复健康。
+
+前两轮失败的根因与修复（如实记录）：上一轮失败运行遗留的孤儿验收引擎进程占住端口，
+新一轮引擎绑定冲突崩溃循环，doctor 步骤两轮先后报
+ProcessLookupError 与 frozen engine never reported。修复：
+(a) 验收脚本启动前 pgrep 清理历史 asg-lifecycle 残留进程；
+(b) SIGSTOP/SIGCONT 处容忍监督器合法重启引擎（重读 pid、45 秒预算内重试）。
+均为验收脚本健壮性修复，不改变被验产品行为。
+
+第 7 节"真实 Agent 全停验收"仍未跑（需要停本机采集服务约 15 分钟的空闲窗口，
+且当前直报通道在真实桌面 Codex 上仍依赖用户 /hooks 信任，见 SOC_DIRECT_INSTALLATION 文档）。
