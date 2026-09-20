@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -79,9 +80,10 @@ class Runner:
                     pass
         return result.returncode, payload, (result.stdout or '') + (result.stderr or ''), time.time() - started
 
-    def step(self, name, fn):
+    def step(self, name, fn, expected=''):
         started = time.time()
-        entry = {'step': name, 'package_sha256': sha256_file(self.package / 'release.json'),
+        entry = {'step': name, 'expected': expected,
+                 'package_sha256': sha256_file(self.package / 'release.json'),
                  'started_at': started}
         try:
             detail = fn() or {}
@@ -306,7 +308,9 @@ def main():
         return {'snapshots': int(total)}
 
     def step_start_stop_cycles():
-        for index in range(5):
+        # Spec: 10 consecutive starts keep exactly one process; after stop the
+        # service manager must not auto-restart for at least 30 seconds.
+        for index in range(10):
             rc, payload, output, _ = runner.asgctl(None, 'start')
             assert rc == 0, 'start %d: %s' % (index, output[-200:])
             pids = runner.service_pids()
@@ -315,8 +319,11 @@ def main():
             assert rc == 0, 'stop %d: %s' % (index, output[-200:])
             time.sleep(2)
             assert not runner.service_pids(), 'stop %d: service still loaded' % index
+        time.sleep(30)
+        assert not runner.service_pids(), 'service auto-restarted within 30s of stop'
         rc, _, output, _ = runner.asgctl(None, 'start')
         assert rc == 0, output
+        return {'cycles': 10, 'no_autorestart_30s': True}
 
     def step_bad_credential_rc5():
         bad = run_dir / 'bad-credential'
@@ -406,6 +413,65 @@ def main():
         rc, payload, _, _ = runner.asgctl(None, 'doctor')
         integrity = next(item for item in payload['checks'] if item['name'] == '程序完整性')
         assert integrity['ok'] is True, integrity
+        # SOC network down: use a TEST-NET address (RFC 5737, not routable) so
+        # the failure is genuinely network-layer. A refused loopback port is a
+        # service failure, not a network failure, and must not be conflated.
+        terminal_cfg = Path(runner.home) / 'config' / 'terminal.json'
+        terminal_original = terminal_cfg.read_text()
+        offline_cfg = json.loads(terminal_original)
+        offline_cfg['soc_url'] = 'http://192.0.2.1:80'
+        terminal_cfg.write_text(json.dumps(offline_cfg))
+        try:
+            started = time.time()
+            rc, payload, _, _ = runner.asgctl(None, 'doctor')
+            assert time.time() - started < 30, 'doctor hung on unreachable SOC'
+            checks = {item['name']: item for item in payload['checks']}
+            assert checks['SOC 网络']['ok'] is False, checks['SOC 网络']
+            assert checks['SOC 鉴权']['ok'] is False and '网络不可达' in checks['SOC 鉴权']['detail'], checks['SOC 鉴权']
+        finally:
+            terminal_cfg.write_text(terminal_original)
+        # Refused loopback port: still a failed SOC check, and auth stays
+        # unverified rather than being reported as a credential problem.
+        offline_cfg['soc_url'] = 'http://127.0.0.1:%d' % dead_port
+        terminal_cfg.write_text(json.dumps(offline_cfg))
+        try:
+            rc, payload, _, _ = runner.asgctl(None, 'doctor')
+            checks = {item['name']: item for item in payload['checks']}
+            assert checks['SOC 网络']['ok'] is False, checks['SOC 网络']
+            assert checks['SOC 鉴权']['ok'] is False and '凭据' not in checks['SOC 鉴权']['detail'], checks['SOC 鉴权']
+        finally:
+            terminal_cfg.write_text(terminal_original)
+        # Work-loop stall: the engine process stays alive (SIGSTOP), only its
+        # loop stops answering. doctor and status must both report the stall.
+        hb = runner.heartbeat()
+        engine_pid = int((hb.get('children') or {}).get('engine', {}).get('pid', 0))
+        assert engine_pid > 0, hb
+        os.kill(engine_pid, signal.SIGSTOP)
+        try:
+            stalled = False
+            deadline = time.time() + 45
+            while time.time() < deadline:
+                rc, payload, _, _ = runner.asgctl(None, 'doctor')
+                checks = {item['name']: item for item in payload['checks']}
+                if checks['工作循环']['ok'] is False and '引擎' in checks['工作循环']['detail']:
+                    stalled = True
+                    break
+                time.sleep(4)
+            assert stalled, 'frozen engine loop never reported by doctor'
+            rc, status, _, _ = runner.asgctl(None, 'status')
+            assert rc == 3 and any('引擎' in reason for reason in (status or {}).get('health_reasons', [])), (rc, status)
+        finally:
+            os.kill(engine_pid, signal.SIGCONT)
+        recovered = False
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            rc, payload, _, _ = runner.asgctl(None, 'doctor')
+            checks = {item['name']: item for item in payload['checks']}
+            if checks['工作循环']['ok'] is True:
+                recovered = True
+                break
+            time.sleep(4)
+        assert recovered, 'work loop still reported stalled after resume'
         return {}
 
     def step_user_config_key_preserved():
@@ -481,25 +547,40 @@ def main():
         return {}
 
     order = [
-        ('install_healthy_within_60s', step_install_once),
-        ('service_survives_package_removal', step_package_survives_source_removal),
-        ('repeat_install_idempotent', step_repeat_install_idempotent),
-        ('register_test_agent', step_register_test_agent),
-        ('first_collection_reaches_soc', step_first_collection_reports),
-        ('disconnect_queues_reconnect_drains', step_disconnect_queues_then_reconnect_drains),
-        ('soc_snapshots_no_duplicates', step_no_duplicate_snapshots),
-        ('start_stop_cycles', step_start_stop_cycles),
-        ('bad_credential_rc5_and_repair', step_bad_credential_rc5),
-        ('negative_installs', step_negative_installs),
-        ('doctor_fault_injection', step_doctor_fault_injection),
-        ('seed_user_config_key', step_user_config_key_preserved),
-        ('upgrade_a_to_b', step_upgrade_a_to_b),
-        ('upgrade_failure_rolls_back_within_90s', step_upgrade_failure_rolls_back),
-        ('uninstall_keeps_data_and_hooks', step_uninstall_keeps_data_and_hooks),
+        ('install_healthy_within_60s', step_install_once,
+         '干净目录安装：60 秒内心跳健康，SOC 鉴权成功，rc0'),
+        ('service_survives_package_removal', step_package_survives_source_removal,
+         '删除/改名解压目录后服务心跳与子进程仍正常'),
+        ('repeat_install_idempotent', step_repeat_install_idempotent,
+         '重复安装 3 次：只有一个服务、一个运行实例，rc0 already_installed'),
+        ('register_test_agent', step_register_test_agent,
+         '隔离测试 Agent 经网关注册成功并写入采集配置'),
+        ('first_collection_reaches_soc', step_first_collection_reports,
+         '首轮清点快照到达 SOC，队列清空'),
+        ('disconnect_queues_reconnect_drains', step_disconnect_queues_then_reconnect_drains,
+         'SOC 不可达时队列增长；恢复后自动补报清空且无需重装'),
+        ('soc_snapshots_no_duplicates', step_no_duplicate_snapshots,
+         'SOC 快照数等于去重后的修订数（无逻辑重复）'),
+        ('start_stop_cycles', step_start_stop_cycles,
+         '10 轮 start 只有一个进程；stop 后 30 秒不被服务管理器拉起'),
+        ('bad_credential_rc5_and_repair', step_bad_credential_rc5,
+         '错误凭据：install rc5 报鉴权失败；更正凭据重装修复，不出现已连接误报'),
+        ('negative_installs', step_negative_installs,
+         '缺文件 rc2 点名缺失；篡改摘要 rc2 拒绝；SOC 离线仍可装成并明示离线'),
+        ('doctor_fault_injection', step_doctor_fault_injection,
+         '四类故障各自给出正确原因：坏凭据/网络断/缺文件/工作循环停滞；恢复后 OK'),
+        ('seed_user_config_key', step_user_config_key_preserved,
+         '写入用户自定义配置键，供升级后核验保留'),
+        ('upgrade_a_to_b', step_upgrade_a_to_b,
+         '升级后版本变新，用户配置键与流水线状态保留'),
+        ('upgrade_failure_rolls_back_within_90s', step_upgrade_failure_rolls_back,
+         '坏版本升级失败自动回滚：旧版本健康、队列记录不丢、可重复重试'),
+        ('uninstall_keeps_data_and_hooks', step_uninstall_keeps_data_and_hooks,
+         '默认卸载移除服务与程序但保留配置/状态/Hook 运行目录；二次运行 not_installed'),
     ]
     failures = 0
-    for name, fn in order:
-        if not runner.step(name, fn):
+    for name, fn, expected in order:
+        if not runner.step(name, fn, expected):
             failures += 1
 
     report = run_dir / 'report.json'
