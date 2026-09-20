@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-20T11:12:03+0800",
+  "generated_at": "2026-09-20T11:34:33+0800",
   "regression": {
     "modules": 66,
     "ran": 438,
@@ -10,7 +10,7 @@
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-20T03:11:36.077252+00:00",
+      "probed_at": "2026-09-20T03:33:30.192939+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,9 +371,9 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 243,
-      "age_seconds": 27.599855,
-      "stale": false
+      "duration_ms": 241,
+      "age_seconds": 63.35141,
+      "stale": true
     },
     "hook_runtime": {
       "status": "not_running",
@@ -714,7 +714,7 @@
           "item": "正常用户实例独立验收",
           "meaning": "",
           "status": "失败",
-          "evidence": "当前正常会话独立对账：pid=9601、通道=api、3 个完整回合、9 条文本、0 条不一致、核查时间=2026-09-20T03:05:40.106617+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。"
+          "evidence": "当前正常会话独立对账：pid=9601、通道=api、3 个完整回合、10 条文本、0 条不一致、核查时间=2026-09-20T03:32:36.945673+00:00；要求至少 10 回合，逐回合明细见 artifacts/acceptance/normal-conversation-9601.json。隔离实例或共享引擎驱动均不能替代该实例口径。"
         }
       ]
     },

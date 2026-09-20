@@ -7,7 +7,7 @@
       "window_start_epoch": 1789869307.052,
       "pre_window_messages": 15,
       "completed_turns_exact": 3,
-      "compared_messages": 9,
+      "compared_messages": 10,
       "unverified_no_baseline": 1,
       "redacted_messages": 0,
       "mismatches": 0,
@@ -74,6 +74,13 @@
           "role": "assistant",
           "sha256": "c2fefce45b004b6e97bdc28fd10c825bf0ba7f47579440819b77f34187418aa4",
           "chars": 1911,
+          "exact": true
+        },
+        {
+          "turn_id": "01a0bcae-fd1b-74d1-b762-a70d24b39010",
+          "role": "assistant",
+          "sha256": "b4f4981c2f8b210e5c49f1a10878f18aba114ff4eca637f76c94114f5eda4b00",
+          "chars": 1294,
           "exact": true
         }
       ],
