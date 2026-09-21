@@ -1,0 +1,46 @@
+runtime/protocol_discovery.py
+  s_7a5b8096b41d01::t_1bc74d0fabd1b3 37-51,63-65,81,93,106,113,119
+test_protocol_fastpath.py
+  s_7a5b8096b41d01::t_1bc74d0fabd1b3 6
+integrations/soc_inventory/deployment_package.py
+  s_7a5b8096b41d01::t_df2bee582774a3 16-18
+runtime/protocol_package.py
+  s_7a5b8096b41d01::t_df2bee582774a3 1-106
+integrations/soc_inventory/discovery.py
+  s_7a5b8096b41d01::t_8560fb5195fcc7 118,178-209
+test_protocol_package.py
+  s_7a5b8096b41d01::t_113f919d5921e2 1-86
+runtime/soc_command_protocol_hook.py
+  s_7a5b8096b41d01::t_df2bee582774a3 1-113
+test_protocol_transports.py
+  s_7a5b8096b41d01::t_57205bb744ced1 122-123,129-135
+docs/stage1/CORRECTION_REVIEW_20260921.md
+  s_7a5b8096b41d01::t_d8f362a27d623e 1-32
+docs/stage1/evidence/deterministic_protocol_soc_e2e_20260921.json
+  s_7a5b8096b41d01::t_d8f362a27d623e 1-2,4-35
+  s_7a5b8096b41d01::t_5f28af9b925f0f 3
+test_created_hook_install.py
+  s_7a5b8096b41d01::t_1bc74d0fabd1b3 32,43
+  s_7a5b8096b41d01::t_113f919d5921e2 12-22
+runtime/command_protocol_hook.py
+  s_7a5b8096b41d01::t_f22e6d530e8e72 10
+  s_7a5b8096b41d01::t_df2bee582774a3 1,3-6
+runtime/protocol_fastpath.py
+  s_7a5b8096b41d01::t_1bc74d0fabd1b3 1,3-6,11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "43b3f0bb97831377b40d8de1e382b6282ada0895",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
