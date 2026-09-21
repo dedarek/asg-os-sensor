@@ -185,6 +185,58 @@ def wire_model_request_payload(content):
         content_complete: requestBody.complete,"""
     return content.replace(route,replacement,1)
 
+def merge_structured_patch(plan, workspace):
+    """Preserve unrelated YAML patch entries on a reused profile.
+
+    A learned plan records the complete patch file seen during investigation.
+    A compatible new instance may already contain other user/administrator
+    entries, so requiring the historical whole-file digest would turn a safe
+    insertion into a false corruption error.  For the narrow, auditable shape
+    used by loader patch layers (a top-level YAML list containing only
+    ``insert`` groups with stable ids), append the learned group and bind the
+    transaction precondition to the *current* bytes. Unknown YAML shapes and
+    conflicting ids still fail closed.
+    """
+    try:import yaml
+    except ImportError:return plan
+    for item in plan['files']:
+        path=workspace/item['path']
+        if path.suffix.lower() not in ('.yaml','.yml') or not path.is_file():continue
+        try:
+            desired=yaml.safe_load(item['content'])
+            current_text=path.read_text()
+            current=yaml.safe_load(current_text)
+        except (OSError,UnicodeError,yaml.YAMLError):continue
+        def insertions(value):
+            if not isinstance(value,list) or not value:return None
+            found=[]
+            for group in value:
+                if not isinstance(group,dict) or set(group)!= {'insert'} or not isinstance(group['insert'],list) or not group['insert']:
+                    return None
+                for entry in group['insert']:
+                    if not isinstance(entry,dict) or not isinstance(entry.get('id'),str) or not entry['id'] or not isinstance(entry.get('name'),str):
+                        return None
+                    found.append(entry)
+            return found
+        wanted=insertions(desired);present=insertions(current)
+        if wanted is None or present is None:continue
+        by_id={entry['id']:entry for entry in present}
+        additions=[]
+        for entry in wanted:
+            prior=by_id.get(entry['id'])
+            if prior is not None and prior!=entry:
+                raise ValueError('conflicting YAML patch id: '+entry['id'])
+            if prior is None:additions.append(entry)
+        if additions:
+            # Append the already validated source fragment verbatim. This
+            # preserves comments, custom tags and formatting in the target.
+            merged=current_text.rstrip()+"\n"+item['content'].lstrip()
+        else:
+            merged=current_text
+        item['content']=merged
+        item['expected_sha256']=hashlib.sha256(current_text.encode()).hexdigest()
+    return plan
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--platform');p.add_argument('--target',required=True)
@@ -247,6 +299,7 @@ def main():
         for rel,content in [('runtime/hook_control_client.py',(ROOT/'soc_client.py').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
             plan['files'].append({'path':'.soc-hook/'+rel,'content':content,'expected_sha256':None})
         plan=learned_install.validate_plan(plan)
+    plan=merge_structured_patch(plan,workspace)
     # Full file contents are present: absent files are a clean install, never an overwrite.
     for item in plan['files']:
         target=workspace/item['path']

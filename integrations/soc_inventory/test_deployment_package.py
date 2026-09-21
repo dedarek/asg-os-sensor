@@ -11,9 +11,40 @@ import unittest
 from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
 from integrations.soc_inventory.soc_onboarding import integrity
-from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client
+from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_reused_profile_keeps_existing_yaml_patch_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);target=workspace/'cordis.patch.yml'
+            original="""# existing administrator patch
+- insert:
+    - id: existing-hook
+      name: ./existing.mjs
+"""
+            target.write_text(original)
+            plan={'version':1,'files':[{'path':'cordis.patch.yml','content':"""- insert:
+    - id: asg-observer
+      name: ./plugins/asg-observer.mjs
+""",'expected_sha256':'0'*64}]}
+            merged=merge_structured_patch(plan,workspace)
+            content=merged['files'][0]['content']
+            self.assertIn('existing-hook',content);self.assertIn('asg-observer',content)
+            self.assertEqual(merged['files'][0]['expected_sha256'],hashlib.sha256(original.encode()).hexdigest())
+            # Re-running on a file that already contains the same entry is
+            # idempotent; a same-id/different-target collision is rejected.
+            target.write_text(content)
+            again=merge_structured_patch({'version':1,'files':[dict(plan['files'][0],content="""- insert:
+    - id: asg-observer
+      name: ./plugins/asg-observer.mjs
+""")]},workspace)
+            self.assertEqual(again['files'][0]['content'],content)
+            with self.assertRaisesRegex(ValueError,'conflicting YAML patch id'):
+                merge_structured_patch({'version':1,'files':[{'path':'cordis.patch.yml','content':"""- insert:
+    - id: asg-observer
+      name: ./other.mjs
+""",'expected_sha256':None}]},workspace)
+
     def test_model_request_capture_includes_available_payload_and_redaction(self):
         source="""const bounded = (value) => ({ content: value, complete: true })
 function apply (ctx) {
