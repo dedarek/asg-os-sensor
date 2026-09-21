@@ -1,0 +1,26 @@
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_9c3bf5b8303714 133-134,137-138
+  s_7a5b8096b41d01::t_5f75085aa2ee22 242-243,245-246,250-251
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_9ec9be1bdf4c19 446-458
+  s_7a5b8096b41d01::t_c1fa2e8d88c1df 409-416
+  s_7a5b8096b41d01::t_5f75085aa2ee22 16-20,374,376-377,389,399-400,406-408,424
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_5f75085aa2ee22 208,210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "18b7b388bcfe360d0b19dc10991790d599b96ff1",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
