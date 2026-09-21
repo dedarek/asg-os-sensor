@@ -223,6 +223,59 @@ def _workspace(struct: dict[str, Any]) -> str | None:
     return cwd
 
 
+def _file_plan_workspace(struct: dict[str, Any], recipe: dict[str, Any]) -> str | None:
+    """Resolve a learned relative file plan against the live process.
+
+    A recipe records the directory used while it was learned, but that absolute
+    path is evidence from the old instance, not a portable install destination.
+    Reuse first looks for the plan's relative anchor files among files opened by
+    the current process.  Only one best-scoring root is accepted.  The recorded
+    directory remains usable when the current process itself is demonstrably
+    running in or reading from it; otherwise reuse must wait for investigation.
+    """
+    hook = recipe.get("hook") if isinstance(recipe.get("hook"), dict) else {}
+    recorded = hook.get("workspace")
+    plan = recipe.get("install_plan") if isinstance(recipe.get("install_plan"), dict) else {}
+    relpaths = []
+    for item in plan.get("files") or []:
+        raw = item.get("path") if isinstance(item, dict) else None
+        if not isinstance(raw, str) or not raw:
+            continue
+        rel = Path(raw)
+        if rel.is_absolute() or ".." in rel.parts:
+            continue
+        relpaths.append(rel)
+    opened = []
+    try:
+        opened = [Path(row.path) for row in psutil.Process(int(struct["pid"])).open_files()]
+    except (KeyError, TypeError, ValueError, psutil.Error):
+        opened = []
+    scores: dict[Path, int] = {}
+    for opened_path in opened:
+        for rel in relpaths:
+            if len(opened_path.parts) < len(rel.parts):
+                continue
+            if tuple(opened_path.parts[-len(rel.parts):]) != tuple(rel.parts):
+                continue
+            root = opened_path
+            for _ in rel.parts:
+                root = root.parent
+            scores[root] = scores.get(root, 0) + 1
+    if scores:
+        best = max(scores.values())
+        winners = sorted(root for root, score in scores.items() if score == best)
+        if len(winners) == 1 and winners[0].is_dir():
+            return str(winners[0])
+    if isinstance(recorded, str) and recorded:
+        root = Path(recorded)
+        cwd = struct.get("cwd")
+        cwd_in_root = isinstance(cwd, str) and cwd and (Path(cwd) == root or root in Path(cwd).parents)
+        opened_in_root = any(path == root or root in path.parents for path in opened)
+        if root.is_dir() and (cwd_in_root or opened_in_root):
+            return str(root)
+    return None
+
+
 def _trusted_source(source: str | None) -> bool:
     if source == "goose":
         return True
@@ -267,7 +320,7 @@ def _common_plan(struct: dict[str, Any], match_status: str, entry: dict[str, Any
     hook = recipe.get("hook", {})
     adapter = "file_plan" if hook.get("method") == "file_plan" else hook.get("adapter")
     contract = {"installer": "runtime.learned_install"} if adapter == "file_plan" else ADAPTER_REGISTRY.get(adapter, {})
-    workspace = hook.get("workspace") if adapter == "file_plan" else _workspace(struct)
+    workspace = _file_plan_workspace(struct, recipe) if adapter == "file_plan" else _workspace(struct)
     return {
         "plan_version": 1,
         "instance_id": iid,

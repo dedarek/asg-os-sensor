@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import psutil
 
@@ -169,6 +170,30 @@ class ExactReuseTests(unittest.TestCase):
         plan = onboarding.plan_from_match(changed, match)
         self.assertEqual(plan['action'], 'install_reused_recipe')
         self.assertEqual(plan['observed_compatibility']['launch'], 'profile-a')
+
+    def test_reuse_relocates_relative_plan_to_live_process_profile(self):
+        first = self.live_target()
+        self.write_evidence(first)
+        recipe = self.recipe()
+        recipe['install_plan']['files'].append({
+            'path': 'profile.yml', 'content': 'enabled: true\n',
+            'expected_sha256': '0' * 64,
+        })
+        evidence = validate(recipe, self.evidence_dir, target=first)['evidence']
+        matcher.remember_verified(self.struct(first), recipe, evidence, source='goose')
+
+        current = self.root / 'current-profile'
+        current.mkdir()
+        anchor = current / 'profile.yml'
+        anchor.write_text('enabled: false\n')
+        second = self.live_target()
+        struct = self.struct(second)
+        with patch('runtime.onboarding.psutil.Process') as process:
+            process.return_value.open_files.return_value = [SimpleNamespace(path=str(anchor))]
+            match = matcher.classify(struct)
+            plan = onboarding.plan_from_match(struct, match)
+        self.assertEqual(plan['workspace'], str(current))
+        self.assertEqual(plan['reuse_recipe']['hook']['workspace'], str(self.workspace))
 
     def test_rebind_is_refused_without_the_rebind_scope(self):
         first = self.live_target()
