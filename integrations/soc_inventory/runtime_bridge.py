@@ -78,6 +78,29 @@ class RuntimeBridge:
                 old=next((a for a in state.get('agents',[]) if a.get('instance_id')==agent.get('source_instance_id')),None)
                 if old:
                     target={'pid':old['pid'],'name':agent['name'],'instance_id':instance,'status':'rediscovered','adapter':{'agent_classification':{'status':'pending','roles':[]},'onboarding':{'status':'requires_fresh_plan'}}} 
+            if target is not None:
+                # SOC-first installation is owned by the endpoint service, so
+                # merge its durable receipt into the runtime card. The UI must
+                # not keep saying "not installed" after the package selector
+                # has installed or failed a concrete artifact.
+                try:row=self.endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',(instance,)).fetchone()
+                except Exception:row=None
+                if row:
+                    try:
+                        receipt=json.loads(row[0])
+                        target=json.loads(json.dumps(target))
+                        adapter=target.setdefault('adapter',{})
+                        onboarding=adapter.setdefault('onboarding',{})
+                        onboarding['soc_install']=receipt
+                        status=receipt.get('status')
+                        if status in ('installed','already_installed','installed_waiting_activation','activation_verified'):
+                            onboarding['install']={'status':'installed','reason':status,
+                                                   'artifact_id':receipt.get('artifact_id'),
+                                                   'checksum':receipt.get('checksum')}
+                        elif status=='failed':
+                            onboarding['install']={'status':'failed','reason':receipt.get('reason') or 'package_install_failed'}
+                    except (ValueError,TypeError):
+                        pass
             hooks=self.local('/api/hook-data?'+urlencode({'instance_id':instance,'limit':200,'max_bytes':1048576}))
             self.events.collect(agent,hooks)
             self.events.flush(agent)

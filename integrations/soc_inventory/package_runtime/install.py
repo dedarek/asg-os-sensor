@@ -132,6 +132,51 @@ def wire_soc_control_client(content, asg_root):
     return re.sub(r'(["\'])[^"\'\n]*hook-control-client\.json\1',
                   lambda match: json.dumps(config),content)
 
+def wire_model_request_payload(content):
+    """Capture the request object exposed by a learned agent/request hook.
+
+    The route metadata alone is not a model-input record. Preserve the full
+    callback payload made available by the target, with recursive secret-key
+    redaction and the existing size bound. If the target exposes no payload,
+    the event stays explicit rather than claiming transport-level coverage.
+    """
+    if 'request_payload: requestBody.content' in content:return content
+    route="""        content: {
+          provider: (resolved && resolved.provider) ?? null,
+          model: (resolved && resolved.model) ?? null,
+          reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,
+        },
+        content_complete: true,"""
+    if route not in content or "ctx.on('agent/request'" not in content:return content
+    helper="""const redactRequest = (value, key = '', depth = 0) => {
+  if (depth > 12) return '[MAX_DEPTH]'
+  if (/token|secret|password|api[_-]?key|authorization|cookie/i.test(key)) return '[REDACTED]'
+  if (Array.isArray(value)) return value.map((item) => redactRequest(item, key, depth + 1))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, redactRequest(item, name, depth + 1)]))
+  }
+  if (typeof value === 'string') return value.replace(/Bearer\\s+[^\\s]+/gi, 'Bearer [REDACTED]')
+  return value
+}
+
+"""
+    anchor="  // ── 2. 模型请求路由（waterfall：必须原样返回 next() 结果）──\n"
+    if anchor in content:content=content.replace(anchor,helper+anchor,1)
+    section=content.find("ctx.on('agent/request'")
+    resolved=content.find("    const resolved = await next()\n",section)
+    if resolved < 0:return content
+    insertion=resolved+len("    const resolved = await next()\n")
+    content=content[:insertion]+"    const requestBody = bounded(redactRequest(payload))\n"+content[insertion:]
+    replacement="""        content: {
+          provider: (resolved && resolved.provider) ?? null,
+          model: (resolved && resolved.model) ?? null,
+          reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,
+          request_payload: requestBody.content,
+          request_payload_complete: requestBody.complete,
+        },
+        content_complete: requestBody.complete,"""
+    return content.replace(route,replacement,1)
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--platform');p.add_argument('--target',required=True)
@@ -189,6 +234,7 @@ def main():
             item['content']=re.sub(r'(const CONTROL_PYTHON\s*=\s*)[\"\'][^\"\']+[\"\']',lambda m:m[1]+json.dumps(sys.executable),item['content'])
             item['content']=wire_soc_events(item['content'])
             item['content']=wire_soc_control_client(item['content'],asg_root)
+            item['content']=wire_model_request_payload(item['content'])
         cfg={'backend_url':a.backend_url,'agent_id':a.agent_id,'agent_name':a.agent_name,'platform':a.platform,'instance_id':a.instance_id or a.agent_id,'token_file':str(asg_root/'agent.key')}
         for rel,content in [('runtime/hook_control_client.py',(ROOT/'soc_client.py').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
             plan['files'].append({'path':'.soc-hook/'+rel,'content':content,'expected_sha256':None})

@@ -217,6 +217,20 @@ def classify(struct: dict) -> dict:
         'exact reuse only provides a recipe for investigation; hook install and effectiveness remain unverified',
     ]
 
+    def same_build(prior: dict | None) -> bool:
+        """The installed program is byte-identical; only launch parameters changed.
+
+        A profile name, port, or cwd identifies an instance, not a different
+        build.  Reuse is still fail-closed later: the endpoint must bind the
+        recipe workspace to a config file opened by the live process and must
+        verify a fresh callback for that pid/create_time before promotion.
+        """
+        if not isinstance(compatible, dict) or not isinstance(prior, dict):
+            return False
+        left = {key: value for key, value in compatible.items() if key != 'launch'}
+        right = {key: value for key, value in prior.items() if key != 'launch'}
+        return left == right
+
     def packaged_native_launch_equivalent(prior: dict | None) -> bool:
         """Ignore only inherited cwd drift for an unchanged packaged desktop app.
 
@@ -248,11 +262,21 @@ def classify(struct: dict) -> dict:
             for revision in reversed(entry.get('revisions', [])):
                 same_compatibility = revision.get('compatibility') == compatible
                 cwd_only_drift = packaged_native_launch_equivalent(revision.get('compatibility'))
-                if same_compatibility or cwd_only_drift:
-                    rank = (revision.get('validated_at_ns', 0), position, revision.get('revision', 0))
+                revision_recipe = revision.get('recipe') if isinstance(revision.get('recipe'), dict) else {}
+                executable_recipe = (revision_recipe.get('hook') or {}).get('method') == 'file_plan'
+                build_compatible = same_build(revision.get('compatibility')) and executable_recipe
+                if same_compatibility or cwd_only_drift or build_compatible:
+                    # A structurally executable, evidence-validated plan is more
+                    # useful than a newer exact-launch record whose hook contract
+                    # cannot be installed. Exact launch still wins among plans of
+                    # the same executable class.
+                    rank = (1 if executable_recipe else 0, 1 if same_compatibility else 0,
+                            revision.get('validated_at_ns', 0), position, revision.get('revision', 0))
                     candidate = {'status': 'exact', 'entry': deepcopy(dict(entry, hook_recipe=revision['recipe'], revision=revision['revision'])),
                             'bounds': EXACT_BOUNDS,
-                            'reason': ('Packaged app build and argv structure unchanged; inherited cwd drift ignored; Hook still unverified'
+                            'reason': ('Program and entry bytes unchanged; launch parameters changed; live config-root binding and callback verification required'
+                                       if build_compatible and not same_compatibility and not cwd_only_drift else
+                                       'Packaged app build and argv structure unchanged; inherited cwd drift ignored; Hook still unverified'
                                        if cwd_only_drift and not same_compatibility else
                                        'Observed build and launch constraints unchanged; Hook still unverified'),
                             'match_ms': int((time.monotonic()-start)*1000)}

@@ -7,7 +7,9 @@ import json
 import base64
 import hashlib
 import os
+import re
 import uuid
+import psutil
 from pathlib import Path
 from urllib.request import Request, build_opener, ProxyHandler
 from urllib.parse import urlsplit, urlencode
@@ -16,6 +18,30 @@ from .protocol import canonical, collect_contract
 ENV_PATHS=('CODEX_HOME','OPENCODE_CONFIG_DIR','HERMES_HOME','HERMES_OPTIONAL_SKILLS_DIR','OPENCLAW_STATE_DIR')
 
 SERVER_KEYS=('mcpServers','mcp_servers','mcp','servers')
+
+
+def platform_id(identity):
+    """Return a stable SOC type id without embedding machine paths.
+
+    Investigation identities may intentionally include an absolute package
+    path (``package:/.../node_modules/@scope/name``). That is useful evidence
+    but is not a portable artifact type and creates one type per machine. Keep
+    known symbolic ids, derive scoped package ids from package coordinates,
+    and slug every fallback into the SOC platform contract.
+    """
+    raw=str((identity or {}).get('id') or 'unknown').strip()
+    candidate=raw
+    if raw.startswith('package:'):
+        path=raw.split(':',1)[1].replace('\\','/')
+        parts=[part for part in path.split('/') if part]
+        if 'node_modules' in parts:
+            tail=parts[parts.index('node_modules')+1:]
+            candidate='-'.join(tail[:2] if tail and tail[0].startswith('@') else tail[:1])
+        elif parts:
+            candidate=parts[-1]
+    candidate=candidate.lower().lstrip('@')
+    candidate=re.sub(r'[^a-z0-9_-]+','-',candidate).strip('-_')
+    return candidate[:80] or 'unknown'
 
 
 def _servers_map(value):
@@ -74,7 +100,6 @@ def confirmed(state):
         if classification.get('roles') and 'agent' not in classification['roles']:continue
         instance=target.get('instance_id','');source_instance=instance;changed=False
         try:
-            import psutil
             pid,created=instance.split(':',1);process=psutil.Process(int(pid))
             if int(pid)!=target['pid']:continue
             if abs(process.create_time()-float(created))>0.01:
@@ -88,12 +113,16 @@ def confirmed(state):
             environment={k:v for k,v in process.environ().items() if k in ENV_PATHS}
         except (ValueError,KeyError,psutil.Error):continue
         identity=target.get('identity') or {}
-        platform=str(identity.get('id') or 'unknown')
+        platform=platform_id(identity)
         plan=(adapter.get('onboarding') or {}).get('plan') or {}
         hook_workspace=plan.get('workspace')
+        workspace_binding='investigation_evidence'
+        if plan.get('recipe_source') == 'fingerprint_reuse':
+            hook_workspace=resolve_reused_workspace(process,plan)
+            workspace_binding='live_open_file' if hook_workspace else 'unresolved'
         if not isinstance(hook_workspace,str) or not Path(hook_workspace).is_absolute():
             hook_workspace=None
-        agent={'platform':platform,'workspace':workspace,'hook_workspace':hook_workspace,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
+        agent={'platform':platform,'workspace':workspace,'hook_workspace':hook_workspace,'hook_workspace_binding':workspace_binding,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
                'hook_fingerprint':plan.get('fingerprint_id'),'agent_version':str(identity.get('version') or target.get('version') or 'unknown'),'classification':classification.get('status','pending'),'name':target.get('name') or platform,'learned_skill_roots':[],'learned_mcp_configs':[]}
         # Only explicit resource paths in structured evidence, no prose extraction.
         assets=adapter.get('assets') or {}
@@ -106,6 +135,38 @@ def confirmed(state):
         mcp=(assets.get('registered_tools_and_mcp') or assets.get('mcp') or {}).get('value') or {}
         if isinstance(mcp,dict):agent['learned_mcp_configs']=learned_mcp_sources(mcp)
         yield agent
+
+
+def resolve_reused_workspace(process, plan):
+    """Bind a portable file plan to the config root used by this live process.
+
+    The recipe contributes only relative file names.  The endpoint derives a
+    candidate root from files actually opened by the target process, so a new
+    profile never inherits the learning instance's absolute directory.
+    """
+    recipe=plan.get('reuse_recipe') or {}
+    install_plan=recipe.get('install_plan') or {}
+    relative=[]
+    for item in install_plan.get('files') or []:
+        value=item.get('path') if isinstance(item,dict) else None
+        if not isinstance(value,str):continue
+        path=Path(value)
+        if path.is_absolute() or '..' in path.parts or not path.parts:continue
+        relative.append(path)
+    if not relative:return None
+    candidates={}
+    try:opened=[Path(item.path).resolve() for item in process.open_files()]
+    except (psutil.Error,OSError):return None
+    for actual in opened:
+        for rel in relative:
+            if len(actual.parts)<len(rel.parts) or actual.parts[-len(rel.parts):] != rel.parts:continue
+            root=Path(*actual.parts[:-len(rel.parts)])
+            if not root.is_absolute() or str(root)==str(root.anchor):continue
+            candidates.setdefault(root,set()).add(str(rel))
+    if not candidates:return None
+    ranked=sorted(candidates.items(),key=lambda pair:(len(pair[1]),len(str(pair[0]))),reverse=True)
+    if len(ranked)>1 and len(ranked[0][1])==len(ranked[1][1]):return None
+    return str(ranked[0][0])
 
 class Discovery:
     def __init__(self,endpoint):

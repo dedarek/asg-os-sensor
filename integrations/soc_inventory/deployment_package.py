@@ -10,6 +10,18 @@ from runtime import learned_install,recipe_bundle
 from .protocol import canonical
 ROOT=Path(__file__).resolve().parents[2]
 
+def validate_text_files(bundle):
+    """Reject broken structured files before publishing an installation."""
+    import yaml
+    files=((bundle.get('recipe') or {}).get('install_plan') or {}).get('files') or []
+    for item in files:
+        if not isinstance(item,dict):continue
+        name=str(item.get('path') or '')
+        if Path(name).suffix.lower() not in ('.yaml','.yml'):continue
+        try:yaml.compose(item.get('content',''))
+        except yaml.YAMLError as exc:
+            raise ValueError('installation package contains invalid YAML: '+name) from exc
+
 def supports_direct_events(bundle):
     files=((bundle.get('recipe') or {}).get('install_plan') or {}).get('files') or []
     for item in files:
@@ -30,6 +42,7 @@ def supports_direct_events(bundle):
 def build(bundle):
     recipe_bundle.validate_bundle(bundle)
     learned_install.validate_plan(bundle['recipe']['install_plan'])
+    validate_text_files(bundle)
     portability=recipe_bundle.scan_portability(bundle)
     if portability['credential_hits'] or portability['chat_hits']:
         raise ValueError('installation package contains credentials or chat content')

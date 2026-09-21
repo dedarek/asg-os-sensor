@@ -355,9 +355,15 @@ def plan_from_match(struct: dict[str, Any], match_result: dict[str, Any]) -> dic
         # original build snapshot and the original evidence references. The new
         # instance is never allowed to inherit the old evidence binding, and a
         # missing source is reported instead of being silently skipped.
+        def same_build(left, right):
+            if not isinstance(left, dict) or not isinstance(right, dict):
+                return False
+            return ({k: v for k, v in left.items() if k != 'launch'} ==
+                    {k: v for k, v in right.items() if k != 'launch'})
         matched = next((r for r in reversed(entry.get("revisions") or [])
                         if isinstance(r, dict) and r.get("revision") == entry.get("revision")
-                        and r.get("compatibility") == struct.get("compatibility")),
+                        and (r.get("compatibility") == struct.get("compatibility")
+                             or same_build(r.get("compatibility"), struct.get("compatibility")))),
                        None)
         refs = [e.get("evidence_id") for e in ((matched or {}).get("evidence") or [])
                 if isinstance(e, dict) and e.get("evidence_id")]

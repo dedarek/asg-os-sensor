@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from .discovery import first_mcp_field, learned_mcp_sources, confirmed
+from .discovery import first_mcp_field, learned_mcp_sources, confirmed, resolve_reused_workspace
 
 
 class McpLearning(unittest.TestCase):
@@ -70,6 +70,25 @@ class McpLearning(unittest.TestCase):
         agent = list(confirmed(target))[0]
         self.assertEqual(agent["workspace"], "/runtime/cwd")
         self.assertEqual(agent["hook_workspace"], "/profiles/isolated")
+
+    def test_reused_recipe_binds_to_config_root_opened_by_live_process(self):
+        process = unittest.mock.Mock()
+        process.open_files.return_value = [
+            unittest.mock.Mock(path="/profiles/current/cordis.patch.yml"),
+            unittest.mock.Mock(path="/profiles/current/package.json"),
+        ]
+        plan = {"reuse_recipe": {"install_plan": {"files": [
+            {"path": "cordis.patch.yml"},
+            {"path": "plugins/asg-observer.mjs"},
+        ]}}}
+        self.assertEqual(resolve_reused_workspace(process, plan), "/profiles/current")
+
+    def test_reused_recipe_does_not_fall_back_to_historical_workspace(self):
+        process = unittest.mock.Mock()
+        process.open_files.return_value = [unittest.mock.Mock(path="/tmp/unrelated.log")]
+        plan = {"workspace": "/profiles/historical", "reuse_recipe": {
+            "install_plan": {"files": [{"path": "cordis.patch.yml"}]}}}
+        self.assertIsNone(resolve_reused_workspace(process, plan))
 
 
 if __name__ == "__main__":

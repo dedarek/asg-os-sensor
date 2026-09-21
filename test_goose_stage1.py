@@ -220,7 +220,8 @@ class GooseStageTests(unittest.TestCase):
                  'expected_sha256': hashlib.sha256(b'{}').hexdigest()},
             ],
         }
-        recipe = dict(self.recipe, hook=dict(self.recipe['hook'], method='file_plan'), install_plan=plan)
+        recipe = dict(self.recipe, hook=dict(self.recipe['hook'], method='file_plan',
+                                             workspace=str(self.root.resolve())), install_plan=plan)
         out = validate(recipe, self.root, target=self.TARGET)
         self.assertEqual(len(out['evidence']), 1)
         self.assertFalse(out['hook_evidence_supported'])

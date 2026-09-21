@@ -152,6 +152,24 @@ class ExactReuseTests(unittest.TestCase):
         self.assertEqual(history['bindings'][-1]['target'], second)
         self.assertEqual(history['bindings'][-1]['previous_target'], first)
 
+    def test_same_file_plan_build_with_changed_launch_parameters_is_reusable(self):
+        first = self.live_target()
+        self.write_evidence(first)
+        original = self.struct(first)
+        original['compatibility'] = dict(BUILD, launch='profile-a')
+        evidence = validate(self.recipe(), self.evidence_dir, target=first)['evidence']
+        matcher.remember_verified(original, self.recipe(), evidence, source='goose')
+
+        second = self.live_target()
+        changed = self.struct(second)
+        changed['compatibility'] = dict(BUILD, launch='profile-b')
+        match = matcher.classify(changed)
+        self.assertEqual(match['status'], 'exact', match)
+        self.assertIn('launch parameters changed', match['reason'])
+        plan = onboarding.plan_from_match(changed, match)
+        self.assertEqual(plan['action'], 'install_reused_recipe')
+        self.assertEqual(plan['observed_compatibility']['launch'], 'profile-a')
+
     def test_rebind_is_refused_without_the_rebind_scope(self):
         first = self.live_target()
         self.write_evidence(first)

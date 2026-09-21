@@ -488,7 +488,7 @@
      "source": "goose"
     }
    ],
-   "match_count": 1831,
+   "match_count": 3288,
    "name": "ZCode",
    "hook_recipe": {
     "agent_identity_name": "ZCode",
@@ -605,7 +605,7 @@
    "hook_verified": false,
    "mount_ms": 120862,
    "recipe_source": "goose",
-   "last_seen": "2026-09-20T21:15:41"
+   "last_seen": "2026-09-21T15:40:09"
   },
   {
    "id": "harness-f4891e902ef6",
@@ -814,7 +814,7 @@
      "source": "goose"
     }
    ],
-   "match_count": 1826,
+   "match_count": 3283,
    "name": "ChatGPT Codex app-server",
    "hook_recipe": {
     "agent_identity_name": "ChatGPT Codex app-server",
@@ -960,7 +960,7 @@
    "hook_verified": false,
    "mount_ms": 120750,
    "recipe_source": "goose",
-   "last_seen": "2026-09-20T21:15:41"
+   "last_seen": "2026-09-21T15:40:09"
   },
   {
    "id": "harness-efac4c5f21c6",
@@ -2567,7 +2567,7 @@
      "source": "goose"
     }
    ],
-   "match_count": 3951,
+   "match_count": 5327,
    "name": "opencode-ai",
    "hook_recipe": {
     "agent_identity_name": "opencode-ai",
@@ -2736,7 +2736,2210 @@
    "hook_verified": false,
    "mount_ms": 565903,
    "recipe_source": "goose",
-   "last_seen": "2026-09-20T21:15:41"
+   "last_seen": "2026-09-21T12:35:58"
+  },
+  {
+   "id": "harness-18017d5a2dad",
+   "features": {
+    "exe": "node",
+    "runtime": "node",
+    "entry_token": "",
+    "flags": [
+     "--no-open",
+     "--port"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-20T23:59:16",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "@deepseek-ai/dsh",
+      "integration": {
+       "family": "plugin",
+       "evidence_refs": [
+        "ev-1789919694612927000-81d0dcd2d4"
+       ],
+       "missing_capabilities": [
+        "未检测到 supervisor command_hooks 或 ACP；当前插件已配置但本次无法独立证明其在 PID 70828 中完成运行时激活/事件交付",
+        "当前证据未证明模型网关、MCP、skills、rules 的完整运行时清单"
+       ],
+       "fallback_reason": "优先检查的 command_hooks 与 ACP 在 supervisor 绑定范围内均未检测到；目标自身明确支持 Cordis profile patch/plugin 扩展，因此只能使用已证实的文件插件通道，不能假设更早通道存在。"
+      },
+      "match_features": {
+       "runtime": "Node.js 24.16.0; @deepseek-ai/dsh 0.1.5-rc.1; web profile via dsh launcher"
+      },
+      "hook": {
+       "method": "plugin",
+       "restart_required": "unknown",
+       "workspace": "/Users/mac/.dsh/profiles/web",
+       "capabilities": [
+        "观察 user.input、assistant.output、model.request/model.response、tool.execute.before/tool.execute.after、session lifecycle",
+        "在 tools/pre-execute 上进行同步 supervisor decision gate；deny/ask/error/timeout/abort 以 native deny 结果阻止工具 dispatch",
+        "写 workspace-relative JSONL observation log，并向 generic control client 发送 event/decision/ack",
+        "配置声明 patchReload=live，实际重载/激活仍需 supervisor 独立验证"
+       ],
+       "verification": "Supervisor 应验证 workspace profile 的 cordis.patch.yml 通过 id=asg-runtime-observer 插入 ./asg-runtime-observer/index.mjs，检查 Hook 的事件日志字段 event/pid/timestamp/tool/call_id 与 target PID/create_time 绑定；另独立验证 tools/pre-execute 的 decision 在工具执行前生效。现有 observation 仅证明收到事件，不能证明安装或激活。",
+       "rollback": "在已证实的 /Users/mac/.dsh/profiles/web/cordis.patch.yml 中删除 id=asg-runtime-observer 的 insert 行，或恢复其已读版本 SHA256 849e5caad08795cfc8e2a16906d3c15f4b3e9c32a2dd0b41df57c2a82ad1acc2；不要把当前方案表述为已安装。",
+       "limitations": [
+        "目标已经存在且被打开的 file-based plugin；不能把现有文件误当成需要生成的安装内容",
+        "supervisor integration inspection 未检测到 command_hooks/ACP；插件通道能力边界依赖目标 Cordis loader",
+        "未观察到实际任务、模型响应、工具调用或 blocking 结果",
+        "配置发现不等于 activation；已有 observer 代码/配置不能单独证明当前实例已加载它",
+        "model transport capture 明确标注为 unsupported；网络 LISTEN 43123 不证明模型网关"
+       ]
+      },
+      "observation": "已确认 @deepseek-ai/dsh 0.1.5-rc.1 的 web profile 通过 dsh loader 组合 bundle、profile patch 与 live patch reload；cordis.patch.yml 的 id=asg-runtime-observer 指向真实 ESM 插件，插件代码声明 agent/session、LLM stream 与 tools/pre/post 扩展点，并实现控制客户端的 decision 与 ack。当前 PID 70828 为该 launcher 的 Node 进程，但 supervisor stream 为空，故 Hook 仍属已配置、未独立验证激活。",
+      "fallback": "若 supervisor 无法独立验证现有 Cordis 插件的挂载、事件交付或同步 decision gate，则保持当前目标未验证，不执行安装/重启；仅将 @deepseek-ai/dsh 及其配置/插件作为调查结果，不能降级为未经证实的 ACP/command hook。",
+      "confidence": 0.82,
+      "observation_source": {
+       "log_path": "asg-runtime-observer/events.jsonl",
+       "fields": {
+        "event": "event",
+        "pid": "pid",
+        "timestamp": "timestamp",
+        "tool": "tool",
+        "call_id": "call_id"
+       },
+       "event_names": {
+        "hook.loaded": "hook.loaded",
+        "tool.execute.before": "tool.execute.before",
+        "tool.execute.after": "tool.execute.after",
+        "user.input": "user.input",
+        "assistant.output": "assistant.output",
+        "model.request": "model.request",
+        "model.response": "model.response"
+       }
+      },
+      "evidence_refs": [
+       "ev-1789919671125210000-4175f0fe21",
+       "ev-1789919689467335000-c424cfcd26",
+       "ev-1789919689503794000-d55ecd1e39",
+       "ev-1789919689437925000-b39ca07619",
+       "ev-1789919689488185000-9a1040f77e",
+       "ev-1789919689516152000-283c46d152",
+       "ev-1789919694612927000-81d0dcd2d4",
+       "ev-1789919676118744000-21e569ccbf",
+       "ev-1789919676103019000-61da183207",
+       "ev-1789919752449109000-2c2dfa4868",
+       "ev-1789919752436005000-9412c57ce9",
+       "ev-1789919752419998000-fb52f4fff7"
+      ],
+      "investigation": {
+       "identity_evidence": {
+        "sources": [
+         "ev-1789919671125210000-4175f0fe21",
+         "ev-1789919689467335000-c424cfcd26",
+         "ev-1789919689503794000-d55ecd1e39",
+         "ev-1789919689437925000-b39ca07619"
+        ],
+        "uncertainty": [
+         "运行时激活未独立证明",
+         "本次未观察到真实任务编排/工具调用行为"
+        ],
+        "summary": "@deepseek-ai/dsh 是 Node.js web profile Harness/host，并保留 agent 角色作为已证实的扩展运行面；当前实例的 Hook activation 未验证。"
+       },
+       "assets": {
+        "model_gateway": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789919676104375000-1e144707c9",
+          "ev-1789919676118744000-21e569ccbf"
+         ],
+         "uncertainty": [
+          "仅观察到本地 LISTEN 43123，未证明模型网关或模型流量"
+         ],
+         "summary": "没有足够证据确认模型网关。"
+        },
+        "mcp": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789919676118744000-21e569ccbf"
+         ],
+         "uncertainty": [
+          "配置快照未发现 protocol observations；未收集到 MCP 运行时证据"
+         ],
+         "summary": "MCP 状态未知，不能当作空。"
+        },
+        "skills": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789919752449109000-2c2dfa4868",
+          "ev-1789919752436005000-9412c57ce9"
+         ],
+         "uncertainty": [
+          "目标 loader/配置未给出 skill root；profile 根的 bounded enumeration 未发现 SKILL.md，但不能据此断言全局无 skills"
+         ],
+         "summary": "技能条目清单未建立；目标技能根未证实。"
+        },
+        "rules": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789919752419998000-fb52f4fff7"
+         ],
+         "uncertainty": [
+          "未发现已证实 rules root 或实际规则条目"
+         ],
+         "summary": "规则状态未知。"
+        }
+       }
+      }
+     },
+     "validated_at_ns": 1789919956581716000,
+     "compatibility": {
+      "executable": "1ee75375e33b94fc34b3b19aede049e11dae90efb63b374dc96d6bdace70c4b8",
+      "entry": "0ff7f1d72c4e0cbe14001709c81e20a04b70464118a7f78568952988e28f2ac5",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "node",
+      "launch": "ac37b2349d781d6cd6b21c2bd337db186ae65e2b4d5900bdf3965a92ee536647",
+      "entry_path": "/Users/mac/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh/lib/bin.js"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789919671125210000-4175f0fe21",
+       "tool": "inspect_entry_surface"
+      },
+      {
+       "evidence_id": "ev-1789919689467335000-c424cfcd26",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789919689503794000-d55ecd1e39",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789919689437925000-b39ca07619",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789919689488185000-9a1040f77e",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789919689516152000-283c46d152",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789919694612927000-81d0dcd2d4",
+       "tool": "inspect_integration_protocols"
+      },
+      {
+       "evidence_id": "ev-1789919676118744000-21e569ccbf",
+       "tool": "inspect_config_surface"
+      },
+      {
+       "evidence_id": "ev-1789919676103019000-61da183207",
+       "tool": "inspect_stream"
+      },
+      {
+       "evidence_id": "ev-1789919752449109000-2c2dfa4868",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789919752436005000-9412c57ce9",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789919752419998000-fb52f4fff7",
+       "tool": "find_related_files"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 578,
+   "name": "@deepseek-ai/dsh",
+   "hook_recipe": {
+    "agent_identity_name": "@deepseek-ai/dsh",
+    "integration": {
+     "family": "plugin",
+     "evidence_refs": [
+      "ev-1789919694612927000-81d0dcd2d4"
+     ],
+     "missing_capabilities": [
+      "未检测到 supervisor command_hooks 或 ACP；当前插件已配置但本次无法独立证明其在 PID 70828 中完成运行时激活/事件交付",
+      "当前证据未证明模型网关、MCP、skills、rules 的完整运行时清单"
+     ],
+     "fallback_reason": "优先检查的 command_hooks 与 ACP 在 supervisor 绑定范围内均未检测到；目标自身明确支持 Cordis profile patch/plugin 扩展，因此只能使用已证实的文件插件通道，不能假设更早通道存在。"
+    },
+    "match_features": {
+     "runtime": "Node.js 24.16.0; @deepseek-ai/dsh 0.1.5-rc.1; web profile via dsh launcher"
+    },
+    "hook": {
+     "method": "plugin",
+     "restart_required": "unknown",
+     "workspace": "/Users/mac/.dsh/profiles/web",
+     "capabilities": [
+      "观察 user.input、assistant.output、model.request/model.response、tool.execute.before/tool.execute.after、session lifecycle",
+      "在 tools/pre-execute 上进行同步 supervisor decision gate；deny/ask/error/timeout/abort 以 native deny 结果阻止工具 dispatch",
+      "写 workspace-relative JSONL observation log，并向 generic control client 发送 event/decision/ack",
+      "配置声明 patchReload=live，实际重载/激活仍需 supervisor 独立验证"
+     ],
+     "verification": "Supervisor 应验证 workspace profile 的 cordis.patch.yml 通过 id=asg-runtime-observer 插入 ./asg-runtime-observer/index.mjs，检查 Hook 的事件日志字段 event/pid/timestamp/tool/call_id 与 target PID/create_time 绑定；另独立验证 tools/pre-execute 的 decision 在工具执行前生效。现有 observation 仅证明收到事件，不能证明安装或激活。",
+     "rollback": "在已证实的 /Users/mac/.dsh/profiles/web/cordis.patch.yml 中删除 id=asg-runtime-observer 的 insert 行，或恢复其已读版本 SHA256 849e5caad08795cfc8e2a16906d3c15f4b3e9c32a2dd0b41df57c2a82ad1acc2；不要把当前方案表述为已安装。",
+     "limitations": [
+      "目标已经存在且被打开的 file-based plugin；不能把现有文件误当成需要生成的安装内容",
+      "supervisor integration inspection 未检测到 command_hooks/ACP；插件通道能力边界依赖目标 Cordis loader",
+      "未观察到实际任务、模型响应、工具调用或 blocking 结果",
+      "配置发现不等于 activation；已有 observer 代码/配置不能单独证明当前实例已加载它",
+      "model transport capture 明确标注为 unsupported；网络 LISTEN 43123 不证明模型网关"
+     ]
+    },
+    "observation": "已确认 @deepseek-ai/dsh 0.1.5-rc.1 的 web profile 通过 dsh loader 组合 bundle、profile patch 与 live patch reload；cordis.patch.yml 的 id=asg-runtime-observer 指向真实 ESM 插件，插件代码声明 agent/session、LLM stream 与 tools/pre/post 扩展点，并实现控制客户端的 decision 与 ack。当前 PID 70828 为该 launcher 的 Node 进程，但 supervisor stream 为空，故 Hook 仍属已配置、未独立验证激活。",
+    "fallback": "若 supervisor 无法独立验证现有 Cordis 插件的挂载、事件交付或同步 decision gate，则保持当前目标未验证，不执行安装/重启；仅将 @deepseek-ai/dsh 及其配置/插件作为调查结果，不能降级为未经证实的 ACP/command hook。",
+    "confidence": 0.82,
+    "observation_source": {
+     "log_path": "asg-runtime-observer/events.jsonl",
+     "fields": {
+      "event": "event",
+      "pid": "pid",
+      "timestamp": "timestamp",
+      "tool": "tool",
+      "call_id": "call_id"
+     },
+     "event_names": {
+      "hook.loaded": "hook.loaded",
+      "tool.execute.before": "tool.execute.before",
+      "tool.execute.after": "tool.execute.after",
+      "user.input": "user.input",
+      "assistant.output": "assistant.output",
+      "model.request": "model.request",
+      "model.response": "model.response"
+     }
+    },
+    "evidence_refs": [
+     "ev-1789919671125210000-4175f0fe21",
+     "ev-1789919689467335000-c424cfcd26",
+     "ev-1789919689503794000-d55ecd1e39",
+     "ev-1789919689437925000-b39ca07619",
+     "ev-1789919689488185000-9a1040f77e",
+     "ev-1789919689516152000-283c46d152",
+     "ev-1789919694612927000-81d0dcd2d4",
+     "ev-1789919676118744000-21e569ccbf",
+     "ev-1789919676103019000-61da183207",
+     "ev-1789919752449109000-2c2dfa4868",
+     "ev-1789919752436005000-9412c57ce9",
+     "ev-1789919752419998000-fb52f4fff7"
+    ],
+    "investigation": {
+     "identity_evidence": {
+      "sources": [
+       "ev-1789919671125210000-4175f0fe21",
+       "ev-1789919689467335000-c424cfcd26",
+       "ev-1789919689503794000-d55ecd1e39",
+       "ev-1789919689437925000-b39ca07619"
+      ],
+      "uncertainty": [
+       "运行时激活未独立证明",
+       "本次未观察到真实任务编排/工具调用行为"
+      ],
+      "summary": "@deepseek-ai/dsh 是 Node.js web profile Harness/host，并保留 agent 角色作为已证实的扩展运行面；当前实例的 Hook activation 未验证。"
+     },
+     "assets": {
+      "model_gateway": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789919676104375000-1e144707c9",
+        "ev-1789919676118744000-21e569ccbf"
+       ],
+       "uncertainty": [
+        "仅观察到本地 LISTEN 43123，未证明模型网关或模型流量"
+       ],
+       "summary": "没有足够证据确认模型网关。"
+      },
+      "mcp": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789919676118744000-21e569ccbf"
+       ],
+       "uncertainty": [
+        "配置快照未发现 protocol observations；未收集到 MCP 运行时证据"
+       ],
+       "summary": "MCP 状态未知，不能当作空。"
+      },
+      "skills": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789919752449109000-2c2dfa4868",
+        "ev-1789919752436005000-9412c57ce9"
+       ],
+       "uncertainty": [
+        "目标 loader/配置未给出 skill root；profile 根的 bounded enumeration 未发现 SKILL.md，但不能据此断言全局无 skills"
+       ],
+       "summary": "技能条目清单未建立；目标技能根未证实。"
+      },
+      "rules": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789919752419998000-fb52f4fff7"
+       ],
+       "uncertainty": [
+        "未发现已证实 rules root 或实际规则条目"
+       ],
+       "summary": "规则状态未知。"
+      }
+     }
+    }
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 291080,
+   "recipe_source": "goose",
+   "last_seen": "2026-09-21T15:40:09"
+  },
+  {
+   "id": "harness-b866457ac657",
+   "features": {
+    "exe": "bun.exe",
+    "runtime": "native",
+    "entry_token": "",
+    "flags": [
+     "--port"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-21T07:15:36",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "@bitkyc08/opencodex",
+      "integration": {
+       "family": "unsupported",
+       "evidence_refs": [
+        "ev-1789946090849346000-b6fd17c705"
+       ],
+       "missing_capabilities": [
+        "未检测到目标范围内可验证的 command_hooks",
+        "未检测到目标范围内可验证的 ACP 握手/回调",
+        "未检测到可验证的插件扩展加载点",
+        "未建立该进程自主接收任务、决策后续动作并执行工具的 Agent 角色",
+        "无法据此建立同步 tool.execute.before 决策门或完整事件回调"
+       ],
+       "fallback_reason": "优先检查的 command_hooks 与 ACP 在目标配置/握手证据范围内均未检测到；源码虽显示 provider proxy、客户端集成和 MCP 工具能力，但没有证明这些扩展已被此 PID 加载或激活，且 plugin 机制也没有目标范围内的加载证据，因此不能用 plugin 补齐缺口。"
+      },
+      "match_features": {
+       "runtime": "Bun 1.4.0"
+      },
+      "hook": {
+       "method": "unsupported",
+       "restart_required": "unknown",
+       "capabilities": [],
+       "verification": "不适用：协议检查未发现可验证集成，且未提出安装或激活；现有 stream 无事件样本，不能作为 Hook 验证。",
+       "rollback": "不适用：未安装、未修改任何目标文件。",
+       "limitations": [
+        "目标被识别为 model gateway/tool service 候选，而非已确认自主 Agent",
+        "未证明任务编排、模型决策链或工具执行由该 PID 完成",
+        "配置发现不证明加载或激活",
+        "不能把 ACP 权限或网络监听推断为每项操作的控制能力"
+       ]
+      },
+      "observation": "PID 43921 的运行身份、功能角色候选和协议检查结果已记录；未执行命令、未安装或修改文件。",
+      "fallback": "不安装 Hook，不声称激活或阻断；等待有证据的目标扩展点后再重新调查。",
+      "investigation": {
+       "identity_evidence": {
+        "sources": [
+         "ev-1789946062667827000-e71c3507ff",
+         "ev-1789946066636657000-00b6ea10e9",
+         "ev-1789946070377367000-4bf80f2f34",
+         "ev-1789946070360780000-34f2483bec",
+         "ev-1789946062522552000-adeb25afe0",
+         "ev-1789946085812249000-f249a6882a",
+         "ev-1789946085746760000-0a2b955764"
+        ],
+        "uncertainty": [
+         "自主 Agent 角色未建立",
+         "协议未检测不等于全局不存在",
+         "配置和源码能力不证明运行时加载/激活"
+        ],
+        "summary": "已确认包和运行入口，功能角色更符合 gateway/tool service 候选；未确认自主 Agent 或可用 Hook。"
+       },
+       "assets": {
+        "model_gateway": {
+         "status": "collected",
+         "sources": [
+          "ev-1789946070377367000-4bf80f2f34",
+          "ev-1789946062522552000-adeb25afe0"
+         ],
+         "summary": "包描述为 provider proxy，且目标监听 10100 并存在远端连接；具体模型端点未在当前边界中采集。",
+         "uncertainty": [
+          "网络快照不证明每个连接用途"
+         ]
+        },
+        "mcp": {
+         "status": "collected",
+         "sources": [
+          "ev-1789946070377367000-4bf80f2f34",
+          "ev-1789946078837028000-f5002976ce",
+          "ev-1789946085812249000-f249a6882a"
+         ],
+         "summary": "发现 @modelcontextprotocol/sdk 依赖及 Cursor MCP 配置/管理源码；未证明运行时已连接或调用 MCP。",
+         "uncertainty": [
+          "依赖和实现能力不等于当前实例激活"
+         ]
+        },
+        "skills": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789946066636657000-00b6ea10e9",
+          "ev-1789946066638632000-fbd395bccf"
+         ],
+         "summary": "当前证据未建立目标的 skill 搜索根、entry manifest 或已注册技能。",
+         "uncertainty": [
+          "配置快照受限且未发现可验证 skill inventory 根"
+         ]
+        },
+        "rules": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789946066638632000-fbd395bccf"
+         ],
+         "summary": "未采集到可验证的规则文件、加载根或运行时注入证据。",
+         "uncertainty": [
+          "受限配置读取不代表全局不存在规则"
+         ]
+        }
+       }
+      },
+      "confidence": 0.9,
+      "evidence_refs": [
+       "ev-1789946062667827000-e71c3507ff",
+       "ev-1789946066636657000-00b6ea10e9",
+       "ev-1789946070377367000-4bf80f2f34",
+       "ev-1789946070360780000-34f2483bec",
+       "ev-1789946062522552000-adeb25afe0",
+       "ev-1789946085812249000-f249a6882a",
+       "ev-1789946085746760000-0a2b955764",
+       "ev-1789946090849346000-b6fd17c705"
+      ]
+     },
+     "validated_at_ns": 1789946136443163000,
+     "compatibility": {
+      "executable": "539598c775882420b9d8deb7dc14d845f20f7d26f5600c50ab067dde6ac3f3bf",
+      "entry": "5daf375e66c9911f9efda2e2799f5d1ec9a9d88af33290d434f3c0aa3c9901b4",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "bun",
+      "launch": "844897c510ee6da18f332135f4e9737494f3e8903f8f475e1f5ecdbd888c3392",
+      "entry_path": "/Users/mac/opencodex/src/cli/index.ts"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789946062667827000-e71c3507ff",
+       "tool": "inspect_loader_surface"
+      },
+      {
+       "evidence_id": "ev-1789946066636657000-00b6ea10e9",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789946070377367000-4bf80f2f34",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789946070360780000-34f2483bec",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789946062522552000-adeb25afe0",
+       "tool": "inspect_network_peers"
+      },
+      {
+       "evidence_id": "ev-1789946085812249000-f249a6882a",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789946085746760000-0a2b955764",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789946090849346000-b6fd17c705",
+       "tool": "inspect_integration_protocols"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 574,
+   "name": "@bitkyc08/opencodex",
+   "hook_recipe": {
+    "agent_identity_name": "@bitkyc08/opencodex",
+    "integration": {
+     "family": "unsupported",
+     "evidence_refs": [
+      "ev-1789946090849346000-b6fd17c705"
+     ],
+     "missing_capabilities": [
+      "未检测到目标范围内可验证的 command_hooks",
+      "未检测到目标范围内可验证的 ACP 握手/回调",
+      "未检测到可验证的插件扩展加载点",
+      "未建立该进程自主接收任务、决策后续动作并执行工具的 Agent 角色",
+      "无法据此建立同步 tool.execute.before 决策门或完整事件回调"
+     ],
+     "fallback_reason": "优先检查的 command_hooks 与 ACP 在目标配置/握手证据范围内均未检测到；源码虽显示 provider proxy、客户端集成和 MCP 工具能力，但没有证明这些扩展已被此 PID 加载或激活，且 plugin 机制也没有目标范围内的加载证据，因此不能用 plugin 补齐缺口。"
+    },
+    "match_features": {
+     "runtime": "Bun 1.4.0"
+    },
+    "hook": {
+     "method": "unsupported",
+     "restart_required": "unknown",
+     "capabilities": [],
+     "verification": "不适用：协议检查未发现可验证集成，且未提出安装或激活；现有 stream 无事件样本，不能作为 Hook 验证。",
+     "rollback": "不适用：未安装、未修改任何目标文件。",
+     "limitations": [
+      "目标被识别为 model gateway/tool service 候选，而非已确认自主 Agent",
+      "未证明任务编排、模型决策链或工具执行由该 PID 完成",
+      "配置发现不证明加载或激活",
+      "不能把 ACP 权限或网络监听推断为每项操作的控制能力"
+     ]
+    },
+    "observation": "PID 43921 的运行身份、功能角色候选和协议检查结果已记录；未执行命令、未安装或修改文件。",
+    "fallback": "不安装 Hook，不声称激活或阻断；等待有证据的目标扩展点后再重新调查。",
+    "investigation": {
+     "identity_evidence": {
+      "sources": [
+       "ev-1789946062667827000-e71c3507ff",
+       "ev-1789946066636657000-00b6ea10e9",
+       "ev-1789946070377367000-4bf80f2f34",
+       "ev-1789946070360780000-34f2483bec",
+       "ev-1789946062522552000-adeb25afe0",
+       "ev-1789946085812249000-f249a6882a",
+       "ev-1789946085746760000-0a2b955764"
+      ],
+      "uncertainty": [
+       "自主 Agent 角色未建立",
+       "协议未检测不等于全局不存在",
+       "配置和源码能力不证明运行时加载/激活"
+      ],
+      "summary": "已确认包和运行入口，功能角色更符合 gateway/tool service 候选；未确认自主 Agent 或可用 Hook。"
+     },
+     "assets": {
+      "model_gateway": {
+       "status": "collected",
+       "sources": [
+        "ev-1789946070377367000-4bf80f2f34",
+        "ev-1789946062522552000-adeb25afe0"
+       ],
+       "summary": "包描述为 provider proxy，且目标监听 10100 并存在远端连接；具体模型端点未在当前边界中采集。",
+       "uncertainty": [
+        "网络快照不证明每个连接用途"
+       ]
+      },
+      "mcp": {
+       "status": "collected",
+       "sources": [
+        "ev-1789946070377367000-4bf80f2f34",
+        "ev-1789946078837028000-f5002976ce",
+        "ev-1789946085812249000-f249a6882a"
+       ],
+       "summary": "发现 @modelcontextprotocol/sdk 依赖及 Cursor MCP 配置/管理源码；未证明运行时已连接或调用 MCP。",
+       "uncertainty": [
+        "依赖和实现能力不等于当前实例激活"
+       ]
+      },
+      "skills": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789946066636657000-00b6ea10e9",
+        "ev-1789946066638632000-fbd395bccf"
+       ],
+       "summary": "当前证据未建立目标的 skill 搜索根、entry manifest 或已注册技能。",
+       "uncertainty": [
+        "配置快照受限且未发现可验证 skill inventory 根"
+       ]
+      },
+      "rules": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789946066638632000-fbd395bccf"
+       ],
+       "summary": "未采集到可验证的规则文件、加载根或运行时注入证据。",
+       "uncertainty": [
+        "受限配置读取不代表全局不存在规则"
+       ]
+      }
+     }
+    },
+    "confidence": 0.9,
+    "evidence_refs": [
+     "ev-1789946062667827000-e71c3507ff",
+     "ev-1789946066636657000-00b6ea10e9",
+     "ev-1789946070377367000-4bf80f2f34",
+     "ev-1789946070360780000-34f2483bec",
+     "ev-1789946062522552000-adeb25afe0",
+     "ev-1789946085812249000-f249a6882a",
+     "ev-1789946085746760000-0a2b955764",
+     "ev-1789946090849346000-b6fd17c705"
+    ]
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 83783,
+   "recipe_source": "goose",
+   "last_seen": "2026-09-21T15:40:09"
+  },
+  {
+   "id": "harness-35264b505422",
+   "features": {
+    "exe": "node",
+    "runtime": "node",
+    "entry_token": "vite.js",
+    "flags": [
+     "--config"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-21T09:34:46",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "vite",
+      "integration": {
+       "family": "unsupported",
+       "evidence_refs": [
+        "ev-1789954177673532000-2827af8176"
+       ],
+       "missing_capabilities": [
+        "未发现目标进程已加载的 command_hooks、ACP 或可验证的插件扩展点",
+        "未建立可同步包围工具执行的目标回调",
+        "未建立用户、模型、工具、会话事件的运行时入口"
+       ],
+       "fallback_reason": "优先检查的配置、入口与 loader 证据未检测到 command_hooks 或 ACP；Vite 6.3.5 是前端开发服务器，loader 检查为 no_app_bundle，且未发现可验证的插件扩展加载点，因此不能安全地选择 plugin 或生成文件计划。"
+      },
+      "match_features": {
+       "runtime": "node"
+      },
+      "hook": {
+       "method": "unsupported",
+       "restart_required": "unknown",
+       "capabilities": [],
+       "verification": "不适用：当前证据未建立可安装或激活的目标 Hook；现有 Vite 进程的监听端口和静态技能文件不能证明 Hook 激活。",
+       "rollback": "不适用：未提出安装或修改计划，因此没有需要回滚的变更。",
+       "limitations": [
+        "目标是 Vite 开发服务器而非已证实 Agent；未观察到任务接收、自主决策、模型调用或工具执行。",
+        "配置发现不等于运行时加载；已读取的 SKILL.md 仅证明 opened，未证明 registered 或 invoked。",
+        "无法依据当前证据同步阻断工具执行，也无法提供端到端事件覆盖。"
+       ]
+      },
+      "observation": "PID 24329 由 Node 启动 Vite 6.3.5，入口为 vite/bin/vite.js，监听 8096；进程树仅见 esbuild 子进程，未见 Agent 编排或模型、工具调用事件。",
+      "fallback": "将 PID 24329 作为 Vite 前端宿主保留在调查结果中；若需 Agent Hook，应绑定实际接收任务并调用模型、工具的后端 Agent 进程，重新调查其 command_hooks、ACP 或证据充分的插件扩展点。",
+      "confidence": 0.97,
+      "investigation": {
+       "identity_evidence": {
+        "sources": [
+         "ev-1789954143587414000-cc05a122ab",
+         "ev-1789954148854344000-942fc563ce",
+         "ev-1789954148872405000-779f071260"
+        ],
+        "uncertainty": [
+         "角色结论限于 supervisor 绑定的 PID 24329；未观察到 Agent 编排不等于系统全局不存在 Agent。"
+        ],
+        "summary": "已识别为 Vite 6.3.5 前端开发服务器宿主/其他工具进程，未证实为 Agent。"
+       },
+       "assets": {
+        "model_gateway": {
+         "status": "empty",
+         "sources": [
+          "ev-1789954148854344000-942fc563ce",
+          "ev-1789954143585386000-626f9ced1c"
+         ],
+         "summary": "配置快照未发现 model SDK 或 protocol dependencies；仅见目标进程监听本地 8096，未见模型网关连接。",
+         "uncertainty": [
+          "仅为目标进程的有界快照；不涵盖子进程或历史网络行为。"
+         ]
+        },
+        "mcp": {
+         "status": "empty",
+         "sources": [
+          "ev-1789954148854344000-942fc563ce"
+         ],
+         "summary": "配置快照的 protocol_dependencies 为空，未发现 MCP 配置。",
+         "uncertainty": [
+          "非 JSON 配置、插件集合和运行时动态连接未覆盖。"
+         ]
+        },
+        "skills": {
+         "status": "collected",
+         "sources": [
+          "ev-1789954159397900000-36733187fc"
+         ],
+         "summary": "已在 workspace 根发现并读取 SKILL.md；条目已 opened，未证明注册或调用。",
+         "uncertainty": [
+          "Vite no_app_bundle，未证明该实例加载这些技能。"
+         ]
+        },
+        "rules": {
+         "status": "collected",
+         "sources": [
+          "ev-1789954148891227000-4e021920ac"
+         ],
+         "summary": "配置面发现 AGENTS.md 规则资产；只证明配置面收集到名称，不证明 Vite 运行时应用规则。",
+         "uncertainty": [
+          "原始规则内容不代表目标运行时加载。"
+         ]
+        }
+       }
+      },
+      "evidence_refs": [
+       "ev-1789954143587414000-cc05a122ab",
+       "ev-1789954148854344000-942fc563ce",
+       "ev-1789954148872405000-779f071260",
+       "ev-1789954143585386000-626f9ced1c",
+       "ev-1789954143555784000-61da183207",
+       "ev-1789954143581419000-ab1aa9606a",
+       "ev-1789954159403564000-82d5723f45",
+       "ev-1789954177673532000-2827af8176"
+      ]
+     },
+     "validated_at_ns": 1789954486149580000,
+     "compatibility": {
+      "executable": "27db838bb204ef7c21df2931f5656e4c8fb32e6e947f363a402b49714d32b5b1",
+      "entry": "8498a58e0d311572c409038515df0e5d707bdc6ab5927153f487e36ef1c9052c",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "node",
+      "launch": "5c1d2f9ce6a47fe6470a124c46a8a4761df4e7378876149a7c26568e20988305",
+      "entry_path": "/Users/mac/Documents/ChatGPT/asg/soc-review/poc-soc-mngt/frontend/node_modules/.pnpm/vite@6.3.5_@types+node@22.15.31_jiti@2.7.0_less@4.6.7_lightningcss@1.30.1_terser@5.48.0/node_modules/vite/bin/vite.js"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789954143587414000-cc05a122ab",
+       "tool": "inspect_config_surface"
+      },
+      {
+       "evidence_id": "ev-1789954148854344000-942fc563ce",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789954148872405000-779f071260",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789954143585386000-626f9ced1c",
+       "tool": "inspect_network_peers"
+      },
+      {
+       "evidence_id": "ev-1789954143555784000-61da183207",
+       "tool": "inspect_stream"
+      },
+      {
+       "evidence_id": "ev-1789954143581419000-ab1aa9606a",
+       "tool": "observe_tree"
+      },
+      {
+       "evidence_id": "ev-1789954159403564000-82d5723f45",
+       "tool": "inspect_loader_surface"
+      },
+      {
+       "evidence_id": "ev-1789954177673532000-2827af8176",
+       "tool": "inspect_integration_protocols"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 0,
+   "name": "vite",
+   "hook_recipe": {
+    "agent_identity_name": "vite",
+    "integration": {
+     "family": "unsupported",
+     "evidence_refs": [
+      "ev-1789954177673532000-2827af8176"
+     ],
+     "missing_capabilities": [
+      "未发现目标进程已加载的 command_hooks、ACP 或可验证的插件扩展点",
+      "未建立可同步包围工具执行的目标回调",
+      "未建立用户、模型、工具、会话事件的运行时入口"
+     ],
+     "fallback_reason": "优先检查的配置、入口与 loader 证据未检测到 command_hooks 或 ACP；Vite 6.3.5 是前端开发服务器，loader 检查为 no_app_bundle，且未发现可验证的插件扩展加载点，因此不能安全地选择 plugin 或生成文件计划。"
+    },
+    "match_features": {
+     "runtime": "node"
+    },
+    "hook": {
+     "method": "unsupported",
+     "restart_required": "unknown",
+     "capabilities": [],
+     "verification": "不适用：当前证据未建立可安装或激活的目标 Hook；现有 Vite 进程的监听端口和静态技能文件不能证明 Hook 激活。",
+     "rollback": "不适用：未提出安装或修改计划，因此没有需要回滚的变更。",
+     "limitations": [
+      "目标是 Vite 开发服务器而非已证实 Agent；未观察到任务接收、自主决策、模型调用或工具执行。",
+      "配置发现不等于运行时加载；已读取的 SKILL.md 仅证明 opened，未证明 registered 或 invoked。",
+      "无法依据当前证据同步阻断工具执行，也无法提供端到端事件覆盖。"
+     ]
+    },
+    "observation": "PID 24329 由 Node 启动 Vite 6.3.5，入口为 vite/bin/vite.js，监听 8096；进程树仅见 esbuild 子进程，未见 Agent 编排或模型、工具调用事件。",
+    "fallback": "将 PID 24329 作为 Vite 前端宿主保留在调查结果中；若需 Agent Hook，应绑定实际接收任务并调用模型、工具的后端 Agent 进程，重新调查其 command_hooks、ACP 或证据充分的插件扩展点。",
+    "confidence": 0.97,
+    "investigation": {
+     "identity_evidence": {
+      "sources": [
+       "ev-1789954143587414000-cc05a122ab",
+       "ev-1789954148854344000-942fc563ce",
+       "ev-1789954148872405000-779f071260"
+      ],
+      "uncertainty": [
+       "角色结论限于 supervisor 绑定的 PID 24329；未观察到 Agent 编排不等于系统全局不存在 Agent。"
+      ],
+      "summary": "已识别为 Vite 6.3.5 前端开发服务器宿主/其他工具进程，未证实为 Agent。"
+     },
+     "assets": {
+      "model_gateway": {
+       "status": "empty",
+       "sources": [
+        "ev-1789954148854344000-942fc563ce",
+        "ev-1789954143585386000-626f9ced1c"
+       ],
+       "summary": "配置快照未发现 model SDK 或 protocol dependencies；仅见目标进程监听本地 8096，未见模型网关连接。",
+       "uncertainty": [
+        "仅为目标进程的有界快照；不涵盖子进程或历史网络行为。"
+       ]
+      },
+      "mcp": {
+       "status": "empty",
+       "sources": [
+        "ev-1789954148854344000-942fc563ce"
+       ],
+       "summary": "配置快照的 protocol_dependencies 为空，未发现 MCP 配置。",
+       "uncertainty": [
+        "非 JSON 配置、插件集合和运行时动态连接未覆盖。"
+       ]
+      },
+      "skills": {
+       "status": "collected",
+       "sources": [
+        "ev-1789954159397900000-36733187fc"
+       ],
+       "summary": "已在 workspace 根发现并读取 SKILL.md；条目已 opened，未证明注册或调用。",
+       "uncertainty": [
+        "Vite no_app_bundle，未证明该实例加载这些技能。"
+       ]
+      },
+      "rules": {
+       "status": "collected",
+       "sources": [
+        "ev-1789954148891227000-4e021920ac"
+       ],
+       "summary": "配置面发现 AGENTS.md 规则资产；只证明配置面收集到名称，不证明 Vite 运行时应用规则。",
+       "uncertainty": [
+        "原始规则内容不代表目标运行时加载。"
+       ]
+      }
+     }
+    },
+    "evidence_refs": [
+     "ev-1789954143587414000-cc05a122ab",
+     "ev-1789954148854344000-942fc563ce",
+     "ev-1789954148872405000-779f071260",
+     "ev-1789954143585386000-626f9ced1c",
+     "ev-1789954143555784000-61da183207",
+     "ev-1789954143581419000-ab1aa9606a",
+     "ev-1789954159403564000-82d5723f45",
+     "ev-1789954177673532000-2827af8176"
+    ]
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 355259,
+   "recipe_source": "goose"
+  },
+  {
+   "id": "harness-14f726bfbc37",
+   "features": {
+    "exe": "node",
+    "runtime": "node",
+    "entry_token": "bin.js",
+    "flags": [
+     "--from-default-profile",
+     "--no-open",
+     "--profile"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-21T12:33:27",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "@deepseek-ai/dsh",
+      "integration": {
+       "family": "plugin",
+       "evidence_refs": [
+        "ev-1789965014528952000-6af247d0b1"
+       ],
+       "missing_capabilities": [
+        "No observed command-hook callback or ACP handshake for this PID",
+        "No evidence of a synchronous tool-execution decision callback",
+        "No evidence of a normalized event emission API or target callback interception",
+        "The concrete Cordis plugin/patch extension point is observed, but its runtime callback contract for ASG control is unresolved"
+       ],
+       "fallback_reason": "Command-hooks and ACP were checked against bounded target evidence and were not detected. The dsh Cordis bundle/patch loader is the only concrete extension mechanism observed, but evidence does not establish synchronous gating or normalized event emission."
+      },
+      "match_features": {
+       "runtime": "Node.js 24.16.0; @deepseek-ai/dsh 0.1.5-rc.1; profile web; Cordis profile bundles and live patch loading"
+      },
+      "hook": {
+       "method": "unsupported",
+       "restart_required": "unknown",
+       "workspace": "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921",
+       "capabilities": [],
+       "verification": "No Hook is installed or activated. Independent verification requires a target-specific Cordis callback contract and supervisor mechanism check.",
+       "rollback": "No changes proposed or made; no rollback action is applicable.",
+       "limitations": [
+        "Target is not a confirmed autonomous Agent for this PID.",
+        "Profile patch files are configuration layers, not proven ASG Hook callbacks.",
+        "No eligible package or callback API was evidenced.",
+        "Empty observation stream is not proof of inactivity or unsupported behavior.",
+        "Configuration and dependencies do not prove loading, activation, blocking, or orchestration."
+       ]
+      },
+      "observation": "PID 58802 runs @deepseek-ai/dsh 0.1.5-rc.1 with the web profile and local listener 43124. Its profile composes dsh-base and dsh-web-app bundles, Cordis patch layers, and live patch reload; protocol inspection found no command_hooks or ACP handshake. Evidence establishes a configurable web/tool-service host, not autonomous task orchestration or an ASG-compatible Hook.",
+      "fallback": "Remain observation-only and do not install or activate a Hook. Reinvestigate when a target-specific Cordis callback contract, command-hook handshake, or ACP endpoint is observed; otherwise do not claim synchronous blocking or complete normalized event capture.",
+      "confidence": 0.79,
+      "investigation": {
+       "identity_evidence": {
+        "sources": [
+         "ev-1789964968280951000-a669518218",
+         "ev-1789964971696846000-8703c6acba",
+         "ev-1789964977049085000-9966330cec",
+         "ev-1789964983726073000-b39ca07619"
+        ],
+        "uncertainty": [
+         "Role remains unresolved between tool_service/web host and autonomous agent.",
+         "No task-receive, subsequent-decision, or tool-execution event was observed.",
+         "Protocol absence is bounded and not universal impossibility."
+        ],
+        "summary": "Package metadata, argv, config identity, and profile loader source identify @deepseek-ai/dsh; observed composition does not establish autonomous Agent behavior."
+       },
+       "assets": {
+        "model_gateway": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789964977049085000-9966330cec",
+          "ev-1789964977058980000-ae51f06d29"
+         ],
+         "summary": "No model gateway configuration or remote model connection was established; only a local listener was observed.",
+         "uncertainty": [
+          "Snapshots are bounded; absence is not proof of no gateway."
+         ]
+        },
+        "mcp": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789964971696846000-8703c6acba",
+          "ev-1789964977049085000-9966330cec",
+          "ev-1789965014528952000-6af247d0b1"
+         ],
+         "summary": "Package metadata lists an MCP client dependency, but active servers or handshake were not established.",
+         "uncertainty": [
+          "Dependency declaration does not prove loading or activation."
+         ]
+        },
+        "skills": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789965018925819000-4b1db08ebf",
+          "ev-1789964977037721000-6cf8af7e65"
+         ],
+         "summary": {
+          "configuration_status": "mechanism partially observed; actual entries not established",
+          "items": [],
+          "coverage": {
+           "checked_roots": [
+            "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921",
+            "/Users/mac/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh"
+           ],
+           "pending_roots": [
+            "enabled bundle package roots and any user/workspace skill roots"
+           ],
+           "complete": false
+          }
+         },
+         "uncertainty": [
+          "No actual SKILL.md entries, registration, or invocation evidence was found in checked roots; coverage incomplete."
+         ]
+        },
+        "rules": {
+         "status": "unknown",
+         "sources": [
+          "ev-1789964983685227000-dc38f818a0",
+          "ev-1789964983697391000-717e7177a5",
+          "ev-1789964977049085000-9966330cec"
+         ],
+         "summary": "Profile root and patch layer are empty arrays and bundles are listed, but no independent rules inventory or runtime registration evidence was established.",
+         "uncertainty": [
+          "Empty bounded files do not prove no rules in bundle layers or home-level patches."
+         ]
+        }
+       }
+      },
+      "evidence_refs": [
+       "ev-1789964968280951000-a669518218",
+       "ev-1789964971696846000-8703c6acba",
+       "ev-1789964977049085000-9966330cec",
+       "ev-1789964983726073000-b39ca07619",
+       "ev-1789964977037721000-6cf8af7e65",
+       "ev-1789964983685227000-dc38f818a0",
+       "ev-1789964983697391000-717e7177a5",
+       "ev-1789965014528952000-6af247d0b1",
+       "ev-1789964977049833000-61da183207",
+       "ev-1789964977047280000-3824c8b61c",
+       "ev-1789964977058980000-ae51f06d29"
+      ]
+     },
+     "validated_at_ns": 1789965207801458000,
+     "compatibility": {
+      "executable": "1ee75375e33b94fc34b3b19aede049e11dae90efb63b374dc96d6bdace70c4b8",
+      "entry": "0ff7f1d72c4e0cbe14001709c81e20a04b70464118a7f78568952988e28f2ac5",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "node",
+      "launch": "0663d7f2341cede569c998bc70e31109a302ee326f7640e00f4cb7dd4169b3aa",
+      "entry_path": "/Users/mac/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh/lib/bin.js"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789964968280951000-a669518218",
+       "tool": "inspect_entry_surface"
+      },
+      {
+       "evidence_id": "ev-1789964971696846000-8703c6acba",
+       "tool": "read_evidence"
+      },
+      {
+       "evidence_id": "ev-1789964977049085000-9966330cec",
+       "tool": "inspect_config_surface"
+      },
+      {
+       "evidence_id": "ev-1789964983726073000-b39ca07619",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789964977037721000-6cf8af7e65",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789964983685227000-dc38f818a0",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789964983697391000-717e7177a5",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789965014528952000-6af247d0b1",
+       "tool": "inspect_integration_protocols"
+      },
+      {
+       "evidence_id": "ev-1789964977049833000-61da183207",
+       "tool": "inspect_stream"
+      },
+      {
+       "evidence_id": "ev-1789964977047280000-3824c8b61c",
+       "tool": "observe_tree"
+      },
+      {
+       "evidence_id": "ev-1789964977058980000-ae51f06d29",
+       "tool": "inspect_network_peers"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 5,
+   "name": "@deepseek-ai/dsh",
+   "hook_recipe": {
+    "agent_identity_name": "@deepseek-ai/dsh",
+    "integration": {
+     "family": "plugin",
+     "evidence_refs": [
+      "ev-1789965014528952000-6af247d0b1"
+     ],
+     "missing_capabilities": [
+      "No observed command-hook callback or ACP handshake for this PID",
+      "No evidence of a synchronous tool-execution decision callback",
+      "No evidence of a normalized event emission API or target callback interception",
+      "The concrete Cordis plugin/patch extension point is observed, but its runtime callback contract for ASG control is unresolved"
+     ],
+     "fallback_reason": "Command-hooks and ACP were checked against bounded target evidence and were not detected. The dsh Cordis bundle/patch loader is the only concrete extension mechanism observed, but evidence does not establish synchronous gating or normalized event emission."
+    },
+    "match_features": {
+     "runtime": "Node.js 24.16.0; @deepseek-ai/dsh 0.1.5-rc.1; profile web; Cordis profile bundles and live patch loading"
+    },
+    "hook": {
+     "method": "unsupported",
+     "restart_required": "unknown",
+     "workspace": "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921",
+     "capabilities": [],
+     "verification": "No Hook is installed or activated. Independent verification requires a target-specific Cordis callback contract and supervisor mechanism check.",
+     "rollback": "No changes proposed or made; no rollback action is applicable.",
+     "limitations": [
+      "Target is not a confirmed autonomous Agent for this PID.",
+      "Profile patch files are configuration layers, not proven ASG Hook callbacks.",
+      "No eligible package or callback API was evidenced.",
+      "Empty observation stream is not proof of inactivity or unsupported behavior.",
+      "Configuration and dependencies do not prove loading, activation, blocking, or orchestration."
+     ]
+    },
+    "observation": "PID 58802 runs @deepseek-ai/dsh 0.1.5-rc.1 with the web profile and local listener 43124. Its profile composes dsh-base and dsh-web-app bundles, Cordis patch layers, and live patch reload; protocol inspection found no command_hooks or ACP handshake. Evidence establishes a configurable web/tool-service host, not autonomous task orchestration or an ASG-compatible Hook.",
+    "fallback": "Remain observation-only and do not install or activate a Hook. Reinvestigate when a target-specific Cordis callback contract, command-hook handshake, or ACP endpoint is observed; otherwise do not claim synchronous blocking or complete normalized event capture.",
+    "confidence": 0.79,
+    "investigation": {
+     "identity_evidence": {
+      "sources": [
+       "ev-1789964968280951000-a669518218",
+       "ev-1789964971696846000-8703c6acba",
+       "ev-1789964977049085000-9966330cec",
+       "ev-1789964983726073000-b39ca07619"
+      ],
+      "uncertainty": [
+       "Role remains unresolved between tool_service/web host and autonomous agent.",
+       "No task-receive, subsequent-decision, or tool-execution event was observed.",
+       "Protocol absence is bounded and not universal impossibility."
+      ],
+      "summary": "Package metadata, argv, config identity, and profile loader source identify @deepseek-ai/dsh; observed composition does not establish autonomous Agent behavior."
+     },
+     "assets": {
+      "model_gateway": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789964977049085000-9966330cec",
+        "ev-1789964977058980000-ae51f06d29"
+       ],
+       "summary": "No model gateway configuration or remote model connection was established; only a local listener was observed.",
+       "uncertainty": [
+        "Snapshots are bounded; absence is not proof of no gateway."
+       ]
+      },
+      "mcp": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789964971696846000-8703c6acba",
+        "ev-1789964977049085000-9966330cec",
+        "ev-1789965014528952000-6af247d0b1"
+       ],
+       "summary": "Package metadata lists an MCP client dependency, but active servers or handshake were not established.",
+       "uncertainty": [
+        "Dependency declaration does not prove loading or activation."
+       ]
+      },
+      "skills": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789965018925819000-4b1db08ebf",
+        "ev-1789964977037721000-6cf8af7e65"
+       ],
+       "summary": {
+        "configuration_status": "mechanism partially observed; actual entries not established",
+        "items": [],
+        "coverage": {
+         "checked_roots": [
+          "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921",
+          "/Users/mac/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh"
+         ],
+         "pending_roots": [
+          "enabled bundle package roots and any user/workspace skill roots"
+         ],
+         "complete": false
+        }
+       },
+       "uncertainty": [
+        "No actual SKILL.md entries, registration, or invocation evidence was found in checked roots; coverage incomplete."
+       ]
+      },
+      "rules": {
+       "status": "unknown",
+       "sources": [
+        "ev-1789964983685227000-dc38f818a0",
+        "ev-1789964983697391000-717e7177a5",
+        "ev-1789964977049085000-9966330cec"
+       ],
+       "summary": "Profile root and patch layer are empty arrays and bundles are listed, but no independent rules inventory or runtime registration evidence was established.",
+       "uncertainty": [
+        "Empty bounded files do not prove no rules in bundle layers or home-level patches."
+       ]
+      }
+     }
+    },
+    "evidence_refs": [
+     "ev-1789964968280951000-a669518218",
+     "ev-1789964971696846000-8703c6acba",
+     "ev-1789964977049085000-9966330cec",
+     "ev-1789964983726073000-b39ca07619",
+     "ev-1789964977037721000-6cf8af7e65",
+     "ev-1789964983685227000-dc38f818a0",
+     "ev-1789964983697391000-717e7177a5",
+     "ev-1789965014528952000-6af247d0b1",
+     "ev-1789964977049833000-61da183207",
+     "ev-1789964977047280000-3824c8b61c",
+     "ev-1789964977058980000-ae51f06d29"
+    ]
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 243955,
+   "recipe_source": "goose",
+   "last_seen": "2026-09-21T12:35:59"
+  },
+  {
+   "id": "harness-47823dd32ae8",
+   "features": {
+    "exe": "node",
+    "runtime": "node",
+    "entry_token": "bin.js",
+    "flags": [
+     "--no-open",
+     "--port",
+     "--profile"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-21T13:12:46",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "dsh (DeepSeek Harness) web surface — @deepseek-ai/dsh 0.1.5-rc.1",
+      "confidence": 0.72,
+      "evidence_refs": [
+       "ev-1789966937551979000-75e701808f",
+       "ev-1789966943214048000-cd489c7ca7",
+       "ev-1789966952246994000-8be90511c2",
+       "ev-1789966952260488000-717e7177a5",
+       "ev-1789966952239933000-3ad4827073",
+       "ev-1789966965992455000-5f016eef17",
+       "ev-1789966966025163000-ae51f06d29",
+       "ev-1789966971529182000-b39ca07619",
+       "ev-1789966971625573000-fb211a4b40",
+       "ev-1789966988109933000-61bf5810e6",
+       "ev-1789967000291068000-54e510f4cf",
+       "ev-1789967010780427000-2a961949bf",
+       "ev-1789967031590753000-3e499d6a4a",
+       "ev-1789967036540697000-1272f99f77",
+       "ev-1789967044888438000-002a34d44c",
+       "ev-1789967051440693000-94cf46a60e",
+       "ev-1789967051449895000-4b4d8e7da5",
+       "ev-1789967086211557000-a184b8653e",
+       "ev-1789967105199708000-7bf42d63a9",
+       "ev-1789967117491546000-8ce28f7c4b",
+       "ev-1789967122013540000-dd34f762f5",
+       "ev-1789967179988709000-3c3913045f",
+       "ev-1789966943198902000-96811fbde7",
+       "ev-1789967036648922000-2c26494d17",
+       "ev-1789967155208320000-32011dd59d",
+       "ev-1789967021840810000-6fc997ea15",
+       "ev-1789967179980185000-072a0d53b3",
+       "ev-1789967227443369000-536f7f5924",
+       "ev-1789967227641209000-17b3a4c633"
+      ],
+      "fallback": "若 supervisor 校验发现 (a) loader 未按 ./ 相对名从 profile 目录解析模块，改用 dsh plugin --profile asg-e2e-clean-web-20260921 add <pkg> 安装为包依赖后以裸包名挂载；(b) session/event 或 agent/request 在宿主平面收不到事件（属 agent 作用域派发），退化为只保留 tools/pre-execute 与 tools/result 两个已证实的宿主平面门控点，其余事件记为未覆盖；(c) patchReload: live 未生效（watchUserPatches 未挂载或 fiber 未就绪），则重启该 profile 进程加载，restart_required 转为 true。任何情况下都不使用二进制补丁、IPC 或网络中间人等 supervisor 未实现的机制。",
+      "hook": {
+       "capabilities": [
+        "工具执行前同步门控：在 tools/pre-execute 瀑布上 await 控制客户端 decision，非 allow 即返回 deny，工具不进入 dispatch",
+        "工具执行后观测：tools/result(exec, result) 只读最终结果",
+        "持久用户输入捕获：session/event type=user/message",
+        "模型请求路由捕获：agent/request 解析后的 provider/model（原样返回，不改路由）",
+        "模型响应与助手输出捕获：session/event type=assistant/message（含 turn/step/seq）",
+        "本地 JSONL 证据日志，且每个归一化事件以 action=event 送通用控制客户端",
+        "保留目标既有策略：先调用 next() 取内层决定，上游 deny/ask 不被覆盖"
+       ],
+       "limitations": [
+        "门控只覆盖经 dsh-tools 注册表派发的工具调用；不经该管线的副作用（宿主 webserver RPC、子进程内部行为）不在范围内",
+        "tools/pre-execute 设计上不能改写 exec.arguments，故只能允许或拒绝，不能净化入参",
+        "控制客户端不可用时按控制契约 fail-closed（拒绝），会中断该会话工具使用；ASG_HOOK_MODE=observe 可切为只观测",
+        "每个归一化事件 fork 一次客户端进程，高频事件下有性能开销",
+        "宿主平面 ctx.on 对 agent 作用域派发（session/event、agent/request）的可见性由第一方 host 行（timeout-policy 在 host 平面拦截 agent 工具调用）类比推得，尚未在本实例运行时验证",
+        "未安装、未激活：本 recipe 仅为候选，文件写入与执行需 supervisor 单独批准"
+       ],
+       "method": "file_plan",
+       "restart_required": false,
+       "rollback": "把 cordis.patch.yml 恢复为写入前内容（sha256 ef189a8c27db6d63930aa3046a3040482e952eafcb7487c644d508e8d461f027，即仅含注释与空数组 []）；patchReload: live 会重新组合并 dispose asg-observer fiber。随后删除 plugins/asg-observer.mjs 与 plugins/asg-observer.jsonl。回滚后确认日志不再增长且插件清单中该行消失。",
+       "verification": "1) 写入两文件后，用 dsh --profile asg-e2e-clean-web-20260921 --dump-config 或在 Web 插件清单页（dsh-host-plugin-inventory）确认出现 id=asg-observer 行；2) 在 43124 的 Web 会话发起一次会调用工具的请求，确认 plugins/asg-observer.jsonl 依次出现 hook.loaded、tool.execute.before（含 request_id）、tool.execute.after；3) 由 supervisor 将某次 decision 置为 deny，随后独立核验实际效果未发生（例：被拒的 bash touch /tmp/<唯一名> 之后该文件不存在），并确认模型侧收到以 Error: 开头的拒绝结果；4) 比对控制端收到的 event 条数与本地 JSONL 行数；5) 删除 cordis.patch.yml 中的 insert 条目，确认 fiber 被 dispose（日志不再增长），证明可热卸载。任一步失败即视为未验证，不得声称 Hook 已生效。",
+       "workspace": "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921"
+      },
+      "install_plan": {
+       "files": [
+        {
+         "content": "/**\n * asg-observer — ASG 观测与工具门控 Hook（Cordis 插件，dsh profile 局部）\n *\n * 挂接方式：本 profile 的 cordis.patch.yml 追加一条 insert 项\n *   id: asg-observer, name: ./plugins/asg-observer.mjs\n * 启动器在 patchReload: live 下监视 cordis.patch.yml，写入即热挂接；\n * loader 的 import() 以 profile 目录为 baseUrl 解析 ./ 相对名\n * （见 @deepseek-ai/cordis-plugin-loader 的 EntryTree.import）。\n *\n * 事件名与载荷形状取自本安装内第一方实现：\n *   tools/pre-execute      ctx.waterfall 门控，监听器 (exec, next)，返回\n *                          allow / deny+reason / ask\n *   tools/result           只读最终结果 (exec, result)，exec 含 name/callId/arguments/agent\n *   session/event          持久会话事件 (subject, event)，event.type 为\n *                          user/message 或 assistant/message，event.seq 为持久序号\n *   agent/request          解析后的请求路由（waterfall，必须原样返回 next() 结果）\n *   agent/assistant-stream frame：start/chunk/end，含 attemptId/turn/step\n *\n * 约定：事件投递绝不改变目标回调返回值；控制客户端失败时按控制模式 fail-closed。\n * 客户端与其配置由安装包提供，可用 ASG_HOOK_CLIENT（JSON 数组）覆盖。\n */\nimport { spawn } from 'node:child_process'\nimport { appendFileSync } from 'node:fs'\nimport { dirname, join } from 'node:path'\nimport { fileURLToPath } from 'node:url'\n\nconst name = 'asg-observer'\nconst inject = []\n\nconst here = dirname(fileURLToPath(import.meta.url))\nconst logPath = process.env.ASG_OBSERVER_LOG || join(here, 'asg-observer.jsonl')\nconst mode = process.env.ASG_HOOK_MODE === 'observe' ? 'observe' : 'control'\nconst maxBytes = Number(process.env.ASG_HOOK_MAX_CONTENT || 32768)\n\n// 控制客户端：优先环境变量，其次安装包提供的 client_command（来自 supervisor 控制契约）。\nconst clientCommand = (() => {\n  const raw = process.env.ASG_HOOK_CLIENT\n  if (raw) {\n    try { return JSON.parse(raw) } catch { /* 回退到内置命令 */ }\n  }\n  return [\n    '/Library/Developer/CommandLineTools/usr/bin/python3',\n    '/Users/mac/个人项目/asg-os-sensor-advisor-20260911/runtime/hook_control_client.py',\n    '/Users/mac/个人项目/asg-os-sensor-advisor-20260911/artifacts/stage1/dashboard/hook-control-client.json',\n  ]\n})()\n\nconst pid = process.pid\nlet sequence = 0\nconst clock = () => new Date().toISOString()\nconst NL = String.fromCharCode(10)\n\nconst write = (record) => {\n  try { appendFileSync(logPath, JSON.stringify(record) + NL) } catch { /* 观测不得影响宿主 */ }\n}\n\nconst bounded = (value) => {\n  if (value === undefined || value === null) return { content: null, complete: true }\n  let text\n  try { text = typeof value === 'string' ? value : JSON.stringify(value) } catch { text = String(value) }\n  if (text.length <= maxBytes) return { content: value, complete: true }\n  return { content: text.slice(0, maxBytes), complete: false }\n}\n\nconst client = (action, payload) => new Promise((resolve) => {\n  let child\n  try {\n    child = spawn(clientCommand[0], [...clientCommand.slice(1), action], { stdio: ['pipe', 'pipe', 'pipe'] })\n  } catch (error) { resolve({ ok: false, code: null, stdout: '', stderr: String(error) }); return }\n  let stdout = ''\n  let stderr = ''\n  const fail = (error) => { stderr += String((error && error.message) || error) }\n  child.stdout.on('data', (d) => { stdout += d })\n  child.stderr.on('data', (d) => { stderr += d })\n  child.on('error', fail)\n  child.on('close', (code) => resolve({ ok: code === 0 && !child.killed, code, stdout, stderr }))\n  try {\n    child.stdin.end(JSON.stringify(payload))\n  } catch (error) {\n    fail(error)\n    try { child.kill() } catch { /* 已退出 */ }\n    resolve({ ok: false, code: null, stdout, stderr })\n  }\n})\n\nconst parse = (stdout) => {\n  try { const value = JSON.parse(stdout); return value && typeof value === 'object' ? value : {} } catch { return {} }\n}\n\n// 归一化事件：写本地证据日志，并以 action=event 交给通用控制客户端（不改变回调返回值）。\nconst publish = (partial) => {\n  const record = {\n    source: 'asg-observer',\n    event: partial.event,\n    pid,\n    timestamp: clock(),\n    session_id: partial.session_id ?? null,\n    turn_id: partial.turn_id ?? null,\n    step: partial.step ?? null,\n    event_id: partial.event_id ?? (partial.event + ':' + pid + ':' + (sequence + 1)),\n    sequence: ++sequence,\n    tool: partial.tool ?? null,\n    call_id: partial.call_id ?? null,\n    content: partial.content ?? null,\n    content_complete: partial.content_complete ?? true,\n  }\n  write(record)\n  client('event', record).then((res) => {\n    if (!res.ok) {\n      write({ source: 'asg-observer', event: 'hook.delivery.error', pid, timestamp: clock(), action: 'event',\n        exit_code: res.code, stderr: String(res.stderr).slice(0, 2000), content_complete: true })\n    }\n  }).catch(() => { /* 投递失败不得影响宿主 */ })\n  return record\n}\n\nconst idOf = (value) => (value && (value.id || value.sessionId)) || null\n\nfunction apply (ctx) {\n  // ── 1. 持久会话事件：user.input / model.response / assistant.output ──\n  ctx.on('session/event', (subject, event) => {\n    const type = event && event.type\n    if (type !== 'user/message' && type !== 'assistant/message') return\n    try {\n      const data = (event && event.data) || {}\n      const message = data.message || data\n      const sessionId = idOf(subject)\n      const turn = data.turn ?? message.turn ?? null\n      const step = data.step ?? message.step ?? null\n      const body = bounded(message.content ?? null)\n      const base = {\n        session_id: sessionId,\n        turn_id: turn,\n        step,\n        event_id: (sessionId ?? 'unknown') + ':' + (event.seq ?? 'noseq') + ':' + type,\n        call_id: message.id ?? null,\n        content: body.content,\n        content_complete: body.complete,\n      }\n      publish({ ...base, event: type === 'user/message' ? 'user.input' : 'model.response' })\n      if (type === 'assistant/message') {\n        const blocks = Array.isArray(message.content) ? message.content : []\n        const texts = blocks.filter((block) => block && block.type === 'text').map((block) => block.text)\n        if (texts.length > 0) {\n          const out = bounded(texts.join(NL))\n          publish({ ...base, event: 'assistant.output', content: out.content, content_complete: out.complete })\n        }\n      }\n    } catch { /* 观测不得影响会话 */ }\n  })\n\n  // ── 2. 模型请求路由（waterfall：必须原样返回 next() 结果）──\n  ctx.on('agent/request', async (payload, next) => {\n    const resolved = await next()\n    try {\n      publish({\n        event: 'model.request',\n        session_id: idOf((payload && payload.agent && payload.agent.session) || (payload && payload.session)),\n        turn_id: (payload && payload.turn) ?? null,\n        step: (payload && payload.step) ?? null,\n        content: {\n          provider: (resolved && resolved.provider) ?? null,\n          model: (resolved && resolved.model) ?? null,\n          reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,\n        },\n        content_complete: true,\n      })\n    } catch { /* 观测不得影响路由 */ }\n    return resolved\n  })\n\n  // ── 3. 工具执行前：同步 decision 门控 ──\n  ctx.on('tools/pre-execute', async (exec, next) => {\n    // 先让目标自身策略（sandbox / approval / 其它 guard）决定，绝不放宽上游拒绝。\n    const inner = await next()\n    const callId = exec && exec.callId !== undefined ? String(exec.callId) : null\n    const sessionId = idOf(exec && exec.agent && exec.agent.session)\n    const args = bounded(exec ? exec.arguments : null)\n    const toolName = (exec && exec.name) || 'tool'\n    const base = {\n      event: 'tool.execute.before',\n      tool: (exec && exec.name) || null,\n      call_id: callId,\n      session_id: sessionId,\n      event_id: (sessionId ?? 'unknown') + ':' + (callId ?? 'nocall') + ':tool.execute.before',\n    }\n    if (inner && inner.kind === 'deny') {\n      publish({ ...base, content: { decision: 'denied-upstream', reason: inner.reason ?? null, arguments: args.content }, content_complete: args.complete })\n      return inner\n    }\n    if (mode === 'observe') {\n      publish({ ...base, content: { decision: 'observe-only', inner: inner ? inner.kind : null, arguments: args.content }, content_complete: args.complete })\n      return inner\n    }\n    let res = { ok: false, code: null, stdout: '', stderr: 'decision not attempted' }\n    try {\n      res = await client('decision', { pid, call_id: callId ?? '', tool: (exec && exec.name) ?? '', input: (exec && exec.arguments) ?? {} })\n    } catch (error) {\n      res = { ok: false, code: null, stdout: '', stderr: String((error && error.message) || error) }\n    }\n    const parsed = parse(res.stdout)\n    const decision = res.ok ? String(parsed.decision ?? 'deny') : 'deny'\n    if (decision !== 'allow') {\n      const detail = res.ok ? ('returned ' + JSON.stringify(decision)) : 'unavailable'\n      const reason = 'ASG control ' + detail + '; blocked ' + toolName\n      const denyAck = parsed.request_id\n        ? await client('ack', { request_id: parsed.request_id, applied: true, outcome: 'blocked' })\n        : { ok: false, code: null, stderr: 'no request_id' }\n      publish({ ...base, content: { decision, reason, request_id: parsed.request_id ?? null,\n        control_exit_code: res.code, control_stderr: String(res.stderr).slice(0, 2000),\n        enforcement_applied: true, enforcement_outcome: 'blocked', deny_ack_ok: !!denyAck.ok,\n        arguments: args.content }, content_complete: true })\n      // 同步阻断：先确认阻断回执，再返回 deny；目标管线不会 dispatch 该工具体。\n      return { kind: 'deny', reason }\n    }\n    if (parsed.request_id) {\n      client('ack', { request_id: parsed.request_id, applied: true, outcome: 'allowed' }).catch(() => {})\n    }\n    publish({ ...base, content: { decision: 'allow', request_id: parsed.request_id ?? null, arguments: args.content }, content_complete: args.complete })\n    return inner\n  })\n\n  // ── 4. 工具执行后：只读最终结果 ──\n  ctx.on('tools/result', (exec, result) => {\n    try {\n      const body = bounded(result ? result.content : null)\n      const sessionId = idOf(exec && exec.agent && exec.agent.session)\n      const callId = exec && exec.callId !== undefined ? String(exec.callId) : null\n      publish({\n        event: 'tool.execute.after',\n        tool: (exec && exec.name) || null,\n        call_id: callId,\n        session_id: sessionId,\n        event_id: (sessionId ?? 'unknown') + ':' + (callId ?? 'nocall') + ':tool.execute.after',\n        content: { isError: !!(result && result.isError), error: (result && result.error && result.error.message) || null, result: body.content },\n        content_complete: body.complete,\n      })\n    } catch { /* 观测不得影响结果 */ }\n  })\n\n  // ── 5. 流式尝试的 turn/step 关联（仅索引，不重放内容）──\n  const attempts = new Map()\n  ctx.on('agent/assistant-stream', (payload) => {\n    const frame = payload && payload.frame\n    if (!frame || typeof frame.attemptId !== 'string') return\n    if (frame.type === 'start') {\n      if (attempts.size > 512) attempts.clear()\n      attempts.set(frame.attemptId, { turn: frame.turn ?? null, step: frame.step ?? null })\n    } else if (frame.type === 'end') {\n      attempts.delete(frame.attemptId)\n    }\n  })\n\n  write({ source: 'asg-observer', event: 'hook.loaded', pid, timestamp: clock(), mode, log_path: logPath, content_complete: true })\n}\n\nexport { apply, inject, name }\n",
+         "expected_sha256": null,
+         "path": "plugins/asg-observer.mjs"
+        },
+        {
+         "content": "# ASG learned Hook patch layer. The target loader requires one YAML list.\n- insert:\n    - id: asg-observer\n      name: './plugins/asg-observer.mjs'\n",
+         "expected_sha256": "ef189a8c27db6d63930aa3046a3040482e952eafcb7487c644d508e8d461f027",
+         "path": "cordis.patch.yml"
+        }
+       ],
+       "version": 1
+      },
+      "integration": {
+       "evidence_refs": [
+        "ev-1789966965992455000-5f016eef17",
+        "ev-1789966971529182000-b39ca07619",
+        "ev-1789967031590753000-3e499d6a4a",
+        "ev-1789966952260488000-717e7177a5",
+        "ev-1789967122013540000-dd34f762f5",
+        "ev-1789967036540697000-1272f99f77"
+       ],
+       "fallback_reason": "command_hooks 不适用：dsh 自身的 hooks-* 包是给被委派的外部 Agent（Claude Code / Codex）装钩子的 provider bundle，且本 profile 的 standard preset 中 tool-subagent-codex 与 tool-subagent-claude-code 两行均为 disabled，本进程不存在可写的产品级 command hook 配置。ACP 不适用：dsh-acp 是 stdio JSON-RPC 服务端 profile，本实例以 web 表层启动（--port 43124，仅 LISTEN 43124），inspect_integration_protocols 对本实例配置/握手证据返回 not_detected_in_scope，接入 ACP 需另起客户端进程而非在本进程内挂钩。故使用目标自身已证实的文件型扩展点：profile cordis.patch.yml 补丁层 + loader 以 profile 目录为 baseUrl 解析 ./ 相对模块，且 patchReload: live 支持热挂接。",
+       "family": "plugin",
+       "missing_capabilities": [
+        "完整重组后的 model.response 文本（仅取持久 assistant/message 的 content 块，不重放流式增量）",
+        "assistant.output 与 model.response 未做语义区分，仅按是否含 text 块额外发出",
+        "io_capture_contract 的 turn.end checkpoint 与 expected_counts 计数器未实现（无生产者侧计数证据，不伪造）",
+        "turn_id 仅来自持久事件自带的 turn 字段，缺失时为 null",
+        "子代理与工作器的跨进程事件（initiator scope 为进程本地）"
+       ]
+      },
+      "investigation": {
+       "assets": {
+        "mcp": {
+         "sources": [
+          "ev-1789966952239933000-3ad4827073",
+          "ev-1789966988109933000-61bf5810e6",
+          "ev-1789967000291068000-54e510f4cf",
+          "ev-1789967122013540000-dd34f762f5",
+          "ev-1789967179980185000-072a0d53b3"
+         ],
+         "status": "empty",
+         "summary": "已完整读取的配置面均无 MCP：~/.dsh/settings.yaml 无 mcp 段；dsh-base、dsh-web-app 与 standard preset 三层补丁都未挂载 @deepseek-ai/dsh-mcp-client 行；~/.dsh 下 *mcp* 文件检索为空。dsh-mcp-client 仅作为 CLI 包依赖存在（存在≠启用）。",
+         "uncertainty": [
+          "隐藏目录 $DSH_HOME/.agent-presets 未能枚举，自定义 preset 理论上可挂 MCP 行",
+          "结论限于本 profile 组合，不代表同机其它 dsh profile"
+         ]
+        },
+        "model_gateway": {
+         "sources": [
+          "ev-1789966952239933000-3ad4827073",
+          "ev-1789966988109933000-61bf5810e6",
+          "ev-1789966966025163000-ae51f06d29"
+         ],
+         "status": "collected",
+         "summary": "模型接入由 dsh-base 的 llm / llm-pi-ai / llm-deepseek 行提供，实际端点来自热重载的 ~/.dsh/settings.yaml：provider copilot，api=openai-completions，baseURL=http://127.0.0.1:7777/v1，模型 gemini-3.8-flash 与 gpt-5.6-luna（contextWindow 1000000），agent-default-model = copilot/gpt-5.6-luna，密钥以 apiKeyEnv=COPILOT_API_KEY 引用（未读取密钥值）。该网关是目标调用的外部服务，不是本进程角色。",
+         "uncertainty": [
+          "未观测到 ESTABLISHED 连接，端点可达性未验证",
+          "base 层 deepseek-official 默认路由被 settings 的 llm-pi-ai 段覆盖，实际生效路由需运行时确认"
+         ]
+        },
+        "rules": {
+         "sources": [
+          "ev-1789967122013540000-dd34f762f5",
+          "ev-1789967000291068000-54e510f4cf",
+          "ev-1789966988109933000-61bf5810e6",
+          "ev-1789967227443369000-536f7f5924",
+          "ev-1789967227641209000-17b3a4c633"
+         ],
+         "status": "collected",
+         "summary": "规则/指令机制：standard preset 挂载 @deepseek-ai/dsh-agent-instructions（maxBytes 65536，加载 AGENTS.md/CLAUDE.md 工作区指令）；部署人格由 dsh-persona 提供（前缀 You are a coding agent powered by the {{model}} model.，后缀 Your working directory is {{cwd}}.）；另有 plan-mode 提示段。实际规则文件：在 ~/.dsh 与 /private/tmp（cwd，无 .git 时即项目根）检索 AGENTS.md 均为空，即当前工作区无项目级 AGENTS.md。",
+         "uncertainty": [
+          "隐藏目录未穷尽，用户级 AGENTS.md（如 ~/.agents/AGENTS.md）未能枚举确认",
+          "agent-instructions 已装载但未证明本实例已解析到任何指令文件"
+         ]
+        },
+        "skills": {
+         "sources": [
+          "ev-1789967010756597000-33dd2040b7",
+          "ev-1789967036648922000-2c26494d17",
+          "ev-1789967155208320000-32011dd59d",
+          "ev-1789967021840810000-6fc997ea15",
+          "ev-1789967122013540000-dd34f762f5"
+         ],
+         "status": "collected",
+         "summary": "发现机制为 @deepseek-ai/dsh-skill-filesystem（5 类默认根 + customSkillDirs，chokidar 热更新；条目格式 <root>/<name>/SKILL.md 或 <root>/<name>.md，仅一层深度）。web 层禁用 host 的 skill-filesystem 行，改由 standard preset 按默认根装载。实际条目根为 ~/.agents/skills（user-agents, rank500），共 37 条（lark-* 飞书系列 26 条、hyperframes/视频动效 9 条、media-use、general-video），已完整分页并读取 frontmatter；~/.dsh/skills 无条目。全部条目 availability=discovered；coverage.complete=false（待查：$DSH_HOME/.agent-presets、$DSH_BUNDLED_SKILL_DIR、隐藏项目根）。",
+         "uncertainty": [
+          "全部条目 availability=discovered，未证明注册/注入/调用",
+          "$DSH_HOME/.agent-presets、$DSH_BUNDLED_SKILL_DIR 与隐藏项目根未穷尽"
+         ]
+        }
+       },
+       "identity_evidence": {
+        "sources": [
+         "ev-1789966937551979000-75e701808f",
+         "ev-1789966943214048000-cd489c7ca7",
+         "ev-1789966952246994000-8be90511c2",
+         "ev-1789966971529182000-b39ca07619",
+         "ev-1789966988109933000-61bf5810e6",
+         "ev-1789967000291068000-54e510f4cf",
+         "ev-1789967010780427000-2a961949bf",
+         "ev-1789967036540697000-1272f99f77",
+         "ev-1789967086211557000-a184b8653e"
+        ],
+        "summary": "PID 62897 = dsh（DeepSeek Harness）@deepseek-ai/dsh 0.1.5-rc.1 的 web 表层实例：node v24.16.0 执行 npx 缓存内 lib/bin.js，参数 --profile asg-e2e-clean-web-20260921 --port 43124。启动器把 bundle 补丁层组合成 Cordis 插件树并 boot；dsh-base 在本进程内挂载 agent 注册表、agent-loop 回合/步骤驱动、tools 注册表与执行管线、llm 适配器、持久 session、sandbox/permission/approval、subagent 与 skill。因此它自行接收任务、决定后续动作并执行工具（roles: agent），同时按会话组合 agent preset 并对外提供 Web 宿主面（roles: host）。父进程 ChatGPT.app 内 codex app-server 仅为启动器，不作身份依据。",
+        "uncertainty": [
+         "stream line_count=0：装载≠运行证明，当前无活跃会话/回合的运行时证据",
+         "网络快照仅见 LISTEN 43124，模型端点 127.0.0.1:7777 的实时连接未观测到",
+         "web 会话实际选用的 preset 未由运行时事件确认（默认为 standard）"
+        ]
+       }
+      },
+      "match_features": {
+       "runtime": "node v24.16.0 ESM + Cordis 插件框架；@deepseek-ai/cordis-plugin-loader 以 profile 目录为 baseUrl；dsh-base + dsh-web-app 补丁层组合；profile package.json 的 dsh.profile.patchReload=live"
+      },
+      "observation": "目标为 dsh web 表层实例（PID 62897，node v24.16.0，cwd=/private/tmp，仅 LISTEN 43124，无子进程）。其 profile 工作区 ~/.dsh/profiles/asg-e2e-clean-web-20260921 是 Cordis 插件工作区：package.json 声明 bundles=[dsh-base, dsh-web-app] 与 patchReload=live；启动器按 bundle 层→profile cordis.patch.yml→home 层→--patch 叠加组合插件树，并把 cordis.yml 作为 include 根以锚定 loader baseUrl。cordis.patch.yml 当前为空数组且被 watchUserPatches 热监视。dsh-base 在本进程内装载 agent/agent-loop/tools/llm/session/sandbox/approval/skill 等行，工具管线为 tools/pre-execute（可 await 的 allow/deny/ask 瀑布）→guard→tools/execute→tools/post-execute→tools/result，均为已读到的第一方实现。supervisor stream line_count=0，未观测到任何运行时事件。",
+      "observation_source": {
+       "event_names": {
+        "assistant.output": "assistant.output",
+        "model.request": "model.request",
+        "model.response": "model.response",
+        "tool.execute.after": "tool.execute.after",
+        "tool.execute.before": "tool.execute.before",
+        "user.input": "user.input"
+       },
+       "fields": {
+        "call_id": "call_id",
+        "event": "event",
+        "pid": "pid",
+        "timestamp": "timestamp",
+        "tool": "tool"
+       },
+       "log_path": "plugins/asg-observer.jsonl"
+      }
+     },
+     "validated_at_ns": 1789967566546980000,
+     "compatibility": {
+      "executable": "1ee75375e33b94fc34b3b19aede049e11dae90efb63b374dc96d6bdace70c4b8",
+      "entry": "0ff7f1d72c4e0cbe14001709c81e20a04b70464118a7f78568952988e28f2ac5",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "node",
+      "launch": "4b324aea33e8aaff92dd2c095536197b662a9d7830946359073e585e1a12ac53",
+      "entry_path": "/Users/mac/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh/lib/bin.js"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789966937551979000-75e701808f",
+       "tool": "inspect_entry_surface"
+      },
+      {
+       "evidence_id": "ev-1789966943214048000-cd489c7ca7",
+       "tool": "observe_runtime_surface"
+      },
+      {
+       "evidence_id": "ev-1789966952246994000-8be90511c2",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789966952260488000-717e7177a5",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789966952239933000-3ad4827073",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789966965992455000-5f016eef17",
+       "tool": "inspect_integration_protocols"
+      },
+      {
+       "evidence_id": "ev-1789966966025163000-ae51f06d29",
+       "tool": "inspect_network_peers"
+      },
+      {
+       "evidence_id": "ev-1789966971529182000-b39ca07619",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789966971625573000-fb211a4b40",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789966988109933000-61bf5810e6",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967000291068000-54e510f4cf",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967010780427000-2a961949bf",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967031590753000-3e499d6a4a",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967036540697000-1272f99f77",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967044888438000-002a34d44c",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967051440693000-94cf46a60e",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967051449895000-4b4d8e7da5",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967086211557000-a184b8653e",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967105199708000-7bf42d63a9",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967117491546000-8ce28f7c4b",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967122013540000-dd34f762f5",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789967179988709000-3c3913045f",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789966943198902000-96811fbde7",
+       "tool": "get_control_contract"
+      },
+      {
+       "evidence_id": "ev-1789967036648922000-2c26494d17",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789967155208320000-32011dd59d",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789967021840810000-6fc997ea15",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789967179980185000-072a0d53b3",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789967227443369000-536f7f5924",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789967227641209000-17b3a4c633",
+       "tool": "find_related_files"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 1,
+   "name": "dsh (DeepSeek Harness) web surface — @deepseek-ai/dsh 0.1.5-rc.1",
+   "hook_recipe": {
+    "agent_identity_name": "dsh (DeepSeek Harness) web surface — @deepseek-ai/dsh 0.1.5-rc.1",
+    "confidence": 0.72,
+    "evidence_refs": [
+     "ev-1789966937551979000-75e701808f",
+     "ev-1789966943214048000-cd489c7ca7",
+     "ev-1789966952246994000-8be90511c2",
+     "ev-1789966952260488000-717e7177a5",
+     "ev-1789966952239933000-3ad4827073",
+     "ev-1789966965992455000-5f016eef17",
+     "ev-1789966966025163000-ae51f06d29",
+     "ev-1789966971529182000-b39ca07619",
+     "ev-1789966971625573000-fb211a4b40",
+     "ev-1789966988109933000-61bf5810e6",
+     "ev-1789967000291068000-54e510f4cf",
+     "ev-1789967010780427000-2a961949bf",
+     "ev-1789967031590753000-3e499d6a4a",
+     "ev-1789967036540697000-1272f99f77",
+     "ev-1789967044888438000-002a34d44c",
+     "ev-1789967051440693000-94cf46a60e",
+     "ev-1789967051449895000-4b4d8e7da5",
+     "ev-1789967086211557000-a184b8653e",
+     "ev-1789967105199708000-7bf42d63a9",
+     "ev-1789967117491546000-8ce28f7c4b",
+     "ev-1789967122013540000-dd34f762f5",
+     "ev-1789967179988709000-3c3913045f",
+     "ev-1789966943198902000-96811fbde7",
+     "ev-1789967036648922000-2c26494d17",
+     "ev-1789967155208320000-32011dd59d",
+     "ev-1789967021840810000-6fc997ea15",
+     "ev-1789967179980185000-072a0d53b3",
+     "ev-1789967227443369000-536f7f5924",
+     "ev-1789967227641209000-17b3a4c633"
+    ],
+    "fallback": "若 supervisor 校验发现 (a) loader 未按 ./ 相对名从 profile 目录解析模块，改用 dsh plugin --profile asg-e2e-clean-web-20260921 add <pkg> 安装为包依赖后以裸包名挂载；(b) session/event 或 agent/request 在宿主平面收不到事件（属 agent 作用域派发），退化为只保留 tools/pre-execute 与 tools/result 两个已证实的宿主平面门控点，其余事件记为未覆盖；(c) patchReload: live 未生效（watchUserPatches 未挂载或 fiber 未就绪），则重启该 profile 进程加载，restart_required 转为 true。任何情况下都不使用二进制补丁、IPC 或网络中间人等 supervisor 未实现的机制。",
+    "hook": {
+     "capabilities": [
+      "工具执行前同步门控：在 tools/pre-execute 瀑布上 await 控制客户端 decision，非 allow 即返回 deny，工具不进入 dispatch",
+      "工具执行后观测：tools/result(exec, result) 只读最终结果",
+      "持久用户输入捕获：session/event type=user/message",
+      "模型请求路由捕获：agent/request 解析后的 provider/model（原样返回，不改路由）",
+      "模型响应与助手输出捕获：session/event type=assistant/message（含 turn/step/seq）",
+      "本地 JSONL 证据日志，且每个归一化事件以 action=event 送通用控制客户端",
+      "保留目标既有策略：先调用 next() 取内层决定，上游 deny/ask 不被覆盖"
+     ],
+     "limitations": [
+      "门控只覆盖经 dsh-tools 注册表派发的工具调用；不经该管线的副作用（宿主 webserver RPC、子进程内部行为）不在范围内",
+      "tools/pre-execute 设计上不能改写 exec.arguments，故只能允许或拒绝，不能净化入参",
+      "控制客户端不可用时按控制契约 fail-closed（拒绝），会中断该会话工具使用；ASG_HOOK_MODE=observe 可切为只观测",
+      "每个归一化事件 fork 一次客户端进程，高频事件下有性能开销",
+      "宿主平面 ctx.on 对 agent 作用域派发（session/event、agent/request）的可见性由第一方 host 行（timeout-policy 在 host 平面拦截 agent 工具调用）类比推得，尚未在本实例运行时验证",
+      "未安装、未激活：本 recipe 仅为候选，文件写入与执行需 supervisor 单独批准"
+     ],
+     "method": "file_plan",
+     "restart_required": false,
+     "rollback": "把 cordis.patch.yml 恢复为写入前内容（sha256 ef189a8c27db6d63930aa3046a3040482e952eafcb7487c644d508e8d461f027，即仅含注释与空数组 []）；patchReload: live 会重新组合并 dispose asg-observer fiber。随后删除 plugins/asg-observer.mjs 与 plugins/asg-observer.jsonl。回滚后确认日志不再增长且插件清单中该行消失。",
+     "verification": "1) 写入两文件后，用 dsh --profile asg-e2e-clean-web-20260921 --dump-config 或在 Web 插件清单页（dsh-host-plugin-inventory）确认出现 id=asg-observer 行；2) 在 43124 的 Web 会话发起一次会调用工具的请求，确认 plugins/asg-observer.jsonl 依次出现 hook.loaded、tool.execute.before（含 request_id）、tool.execute.after；3) 由 supervisor 将某次 decision 置为 deny，随后独立核验实际效果未发生（例：被拒的 bash touch /tmp/<唯一名> 之后该文件不存在），并确认模型侧收到以 Error: 开头的拒绝结果；4) 比对控制端收到的 event 条数与本地 JSONL 行数；5) 删除 cordis.patch.yml 中的 insert 条目，确认 fiber 被 dispose（日志不再增长），证明可热卸载。任一步失败即视为未验证，不得声称 Hook 已生效。",
+     "workspace": "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921"
+    },
+    "install_plan": {
+     "files": [
+      {
+       "content": "/**\n * asg-observer — ASG 观测与工具门控 Hook（Cordis 插件，dsh profile 局部）\n *\n * 挂接方式：本 profile 的 cordis.patch.yml 追加一条 insert 项\n *   id: asg-observer, name: ./plugins/asg-observer.mjs\n * 启动器在 patchReload: live 下监视 cordis.patch.yml，写入即热挂接；\n * loader 的 import() 以 profile 目录为 baseUrl 解析 ./ 相对名\n * （见 @deepseek-ai/cordis-plugin-loader 的 EntryTree.import）。\n *\n * 事件名与载荷形状取自本安装内第一方实现：\n *   tools/pre-execute      ctx.waterfall 门控，监听器 (exec, next)，返回\n *                          allow / deny+reason / ask\n *   tools/result           只读最终结果 (exec, result)，exec 含 name/callId/arguments/agent\n *   session/event          持久会话事件 (subject, event)，event.type 为\n *                          user/message 或 assistant/message，event.seq 为持久序号\n *   agent/request          解析后的请求路由（waterfall，必须原样返回 next() 结果）\n *   agent/assistant-stream frame：start/chunk/end，含 attemptId/turn/step\n *\n * 约定：事件投递绝不改变目标回调返回值；控制客户端失败时按控制模式 fail-closed。\n * 客户端与其配置由安装包提供，可用 ASG_HOOK_CLIENT（JSON 数组）覆盖。\n */\nimport { spawn } from 'node:child_process'\nimport { appendFileSync } from 'node:fs'\nimport { dirname, join } from 'node:path'\nimport { fileURLToPath } from 'node:url'\n\nconst name = 'asg-observer'\nconst inject = []\n\nconst here = dirname(fileURLToPath(import.meta.url))\nconst logPath = process.env.ASG_OBSERVER_LOG || join(here, 'asg-observer.jsonl')\nconst mode = process.env.ASG_HOOK_MODE === 'observe' ? 'observe' : 'control'\nconst maxBytes = Number(process.env.ASG_HOOK_MAX_CONTENT || 32768)\n\n// 控制客户端：优先环境变量，其次安装包提供的 client_command（来自 supervisor 控制契约）。\nconst clientCommand = (() => {\n  const raw = process.env.ASG_HOOK_CLIENT\n  if (raw) {\n    try { return JSON.parse(raw) } catch { /* 回退到内置命令 */ }\n  }\n  return [\n    '/Library/Developer/CommandLineTools/usr/bin/python3',\n    '/Users/mac/个人项目/asg-os-sensor-advisor-20260911/runtime/hook_control_client.py',\n    '/Users/mac/个人项目/asg-os-sensor-advisor-20260911/artifacts/stage1/dashboard/hook-control-client.json',\n  ]\n})()\n\nconst pid = process.pid\nlet sequence = 0\nconst clock = () => new Date().toISOString()\nconst NL = String.fromCharCode(10)\n\nconst write = (record) => {\n  try { appendFileSync(logPath, JSON.stringify(record) + NL) } catch { /* 观测不得影响宿主 */ }\n}\n\nconst bounded = (value) => {\n  if (value === undefined || value === null) return { content: null, complete: true }\n  let text\n  try { text = typeof value === 'string' ? value : JSON.stringify(value) } catch { text = String(value) }\n  if (text.length <= maxBytes) return { content: value, complete: true }\n  return { content: text.slice(0, maxBytes), complete: false }\n}\n\nconst client = (action, payload) => new Promise((resolve) => {\n  let child\n  try {\n    child = spawn(clientCommand[0], [...clientCommand.slice(1), action], { stdio: ['pipe', 'pipe', 'pipe'] })\n  } catch (error) { resolve({ ok: false, code: null, stdout: '', stderr: String(error) }); return }\n  let stdout = ''\n  let stderr = ''\n  const fail = (error) => { stderr += String((error && error.message) || error) }\n  child.stdout.on('data', (d) => { stdout += d })\n  child.stderr.on('data', (d) => { stderr += d })\n  child.on('error', fail)\n  child.on('close', (code) => resolve({ ok: code === 0 && !child.killed, code, stdout, stderr }))\n  try {\n    child.stdin.end(JSON.stringify(payload))\n  } catch (error) {\n    fail(error)\n    try { child.kill() } catch { /* 已退出 */ }\n    resolve({ ok: false, code: null, stdout, stderr })\n  }\n})\n\nconst parse = (stdout) => {\n  try { const value = JSON.parse(stdout); return value && typeof value === 'object' ? value : {} } catch { return {} }\n}\n\n// 归一化事件：写本地证据日志，并以 action=event 交给通用控制客户端（不改变回调返回值）。\nconst publish = (partial) => {\n  const record = {\n    source: 'asg-observer',\n    event: partial.event,\n    pid,\n    timestamp: clock(),\n    session_id: partial.session_id ?? null,\n    turn_id: partial.turn_id ?? null,\n    step: partial.step ?? null,\n    event_id: partial.event_id ?? (partial.event + ':' + pid + ':' + (sequence + 1)),\n    sequence: ++sequence,\n    tool: partial.tool ?? null,\n    call_id: partial.call_id ?? null,\n    content: partial.content ?? null,\n    content_complete: partial.content_complete ?? true,\n  }\n  write(record)\n  client('event', record).then((res) => {\n    if (!res.ok) {\n      write({ source: 'asg-observer', event: 'hook.delivery.error', pid, timestamp: clock(), action: 'event',\n        exit_code: res.code, stderr: String(res.stderr).slice(0, 2000), content_complete: true })\n    }\n  }).catch(() => { /* 投递失败不得影响宿主 */ })\n  return record\n}\n\nconst idOf = (value) => (value && (value.id || value.sessionId)) || null\n\nfunction apply (ctx) {\n  // ── 1. 持久会话事件：user.input / model.response / assistant.output ──\n  ctx.on('session/event', (subject, event) => {\n    const type = event && event.type\n    if (type !== 'user/message' && type !== 'assistant/message') return\n    try {\n      const data = (event && event.data) || {}\n      const message = data.message || data\n      const sessionId = idOf(subject)\n      const turn = data.turn ?? message.turn ?? null\n      const step = data.step ?? message.step ?? null\n      const body = bounded(message.content ?? null)\n      const base = {\n        session_id: sessionId,\n        turn_id: turn,\n        step,\n        event_id: (sessionId ?? 'unknown') + ':' + (event.seq ?? 'noseq') + ':' + type,\n        call_id: message.id ?? null,\n        content: body.content,\n        content_complete: body.complete,\n      }\n      publish({ ...base, event: type === 'user/message' ? 'user.input' : 'model.response' })\n      if (type === 'assistant/message') {\n        const blocks = Array.isArray(message.content) ? message.content : []\n        const texts = blocks.filter((block) => block && block.type === 'text').map((block) => block.text)\n        if (texts.length > 0) {\n          const out = bounded(texts.join(NL))\n          publish({ ...base, event: 'assistant.output', content: out.content, content_complete: out.complete })\n        }\n      }\n    } catch { /* 观测不得影响会话 */ }\n  })\n\n  // ── 2. 模型请求路由（waterfall：必须原样返回 next() 结果）──\n  ctx.on('agent/request', async (payload, next) => {\n    const resolved = await next()\n    try {\n      publish({\n        event: 'model.request',\n        session_id: idOf((payload && payload.agent && payload.agent.session) || (payload && payload.session)),\n        turn_id: (payload && payload.turn) ?? null,\n        step: (payload && payload.step) ?? null,\n        content: {\n          provider: (resolved && resolved.provider) ?? null,\n          model: (resolved && resolved.model) ?? null,\n          reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,\n        },\n        content_complete: true,\n      })\n    } catch { /* 观测不得影响路由 */ }\n    return resolved\n  })\n\n  // ── 3. 工具执行前：同步 decision 门控 ──\n  ctx.on('tools/pre-execute', async (exec, next) => {\n    // 先让目标自身策略（sandbox / approval / 其它 guard）决定，绝不放宽上游拒绝。\n    const inner = await next()\n    const callId = exec && exec.callId !== undefined ? String(exec.callId) : null\n    const sessionId = idOf(exec && exec.agent && exec.agent.session)\n    const args = bounded(exec ? exec.arguments : null)\n    const toolName = (exec && exec.name) || 'tool'\n    const base = {\n      event: 'tool.execute.before',\n      tool: (exec && exec.name) || null,\n      call_id: callId,\n      session_id: sessionId,\n      event_id: (sessionId ?? 'unknown') + ':' + (callId ?? 'nocall') + ':tool.execute.before',\n    }\n    if (inner && inner.kind === 'deny') {\n      publish({ ...base, content: { decision: 'denied-upstream', reason: inner.reason ?? null, arguments: args.content }, content_complete: args.complete })\n      return inner\n    }\n    if (mode === 'observe') {\n      publish({ ...base, content: { decision: 'observe-only', inner: inner ? inner.kind : null, arguments: args.content }, content_complete: args.complete })\n      return inner\n    }\n    let res = { ok: false, code: null, stdout: '', stderr: 'decision not attempted' }\n    try {\n      res = await client('decision', { pid, call_id: callId ?? '', tool: (exec && exec.name) ?? '', input: (exec && exec.arguments) ?? {} })\n    } catch (error) {\n      res = { ok: false, code: null, stdout: '', stderr: String((error && error.message) || error) }\n    }\n    const parsed = parse(res.stdout)\n    const decision = res.ok ? String(parsed.decision ?? 'deny') : 'deny'\n    if (decision !== 'allow') {\n      const detail = res.ok ? ('returned ' + JSON.stringify(decision)) : 'unavailable'\n      const reason = 'ASG control ' + detail + '; blocked ' + toolName\n      const denyAck = parsed.request_id\n        ? await client('ack', { request_id: parsed.request_id, applied: true, outcome: 'blocked' })\n        : { ok: false, code: null, stderr: 'no request_id' }\n      publish({ ...base, content: { decision, reason, request_id: parsed.request_id ?? null,\n        control_exit_code: res.code, control_stderr: String(res.stderr).slice(0, 2000),\n        enforcement_applied: true, enforcement_outcome: 'blocked', deny_ack_ok: !!denyAck.ok,\n        arguments: args.content }, content_complete: true })\n      // 同步阻断：先确认阻断回执，再返回 deny；目标管线不会 dispatch 该工具体。\n      return { kind: 'deny', reason }\n    }\n    if (parsed.request_id) {\n      client('ack', { request_id: parsed.request_id, applied: true, outcome: 'allowed' }).catch(() => {})\n    }\n    publish({ ...base, content: { decision: 'allow', request_id: parsed.request_id ?? null, arguments: args.content }, content_complete: args.complete })\n    return inner\n  })\n\n  // ── 4. 工具执行后：只读最终结果 ──\n  ctx.on('tools/result', (exec, result) => {\n    try {\n      const body = bounded(result ? result.content : null)\n      const sessionId = idOf(exec && exec.agent && exec.agent.session)\n      const callId = exec && exec.callId !== undefined ? String(exec.callId) : null\n      publish({\n        event: 'tool.execute.after',\n        tool: (exec && exec.name) || null,\n        call_id: callId,\n        session_id: sessionId,\n        event_id: (sessionId ?? 'unknown') + ':' + (callId ?? 'nocall') + ':tool.execute.after',\n        content: { isError: !!(result && result.isError), error: (result && result.error && result.error.message) || null, result: body.content },\n        content_complete: body.complete,\n      })\n    } catch { /* 观测不得影响结果 */ }\n  })\n\n  // ── 5. 流式尝试的 turn/step 关联（仅索引，不重放内容）──\n  const attempts = new Map()\n  ctx.on('agent/assistant-stream', (payload) => {\n    const frame = payload && payload.frame\n    if (!frame || typeof frame.attemptId !== 'string') return\n    if (frame.type === 'start') {\n      if (attempts.size > 512) attempts.clear()\n      attempts.set(frame.attemptId, { turn: frame.turn ?? null, step: frame.step ?? null })\n    } else if (frame.type === 'end') {\n      attempts.delete(frame.attemptId)\n    }\n  })\n\n  write({ source: 'asg-observer', event: 'hook.loaded', pid, timestamp: clock(), mode, log_path: logPath, content_complete: true })\n}\n\nexport { apply, inject, name }\n",
+       "expected_sha256": null,
+       "path": "plugins/asg-observer.mjs"
+      },
+      {
+       "content": "# ASG learned Hook patch layer. The target loader requires one YAML list.\n- insert:\n    - id: asg-observer\n      name: './plugins/asg-observer.mjs'\n",
+       "expected_sha256": "ef189a8c27db6d63930aa3046a3040482e952eafcb7487c644d508e8d461f027",
+       "path": "cordis.patch.yml"
+      }
+     ],
+     "version": 1
+    },
+    "integration": {
+     "evidence_refs": [
+      "ev-1789966965992455000-5f016eef17",
+      "ev-1789966971529182000-b39ca07619",
+      "ev-1789967031590753000-3e499d6a4a",
+      "ev-1789966952260488000-717e7177a5",
+      "ev-1789967122013540000-dd34f762f5",
+      "ev-1789967036540697000-1272f99f77"
+     ],
+     "fallback_reason": "command_hooks 不适用：dsh 自身的 hooks-* 包是给被委派的外部 Agent（Claude Code / Codex）装钩子的 provider bundle，且本 profile 的 standard preset 中 tool-subagent-codex 与 tool-subagent-claude-code 两行均为 disabled，本进程不存在可写的产品级 command hook 配置。ACP 不适用：dsh-acp 是 stdio JSON-RPC 服务端 profile，本实例以 web 表层启动（--port 43124，仅 LISTEN 43124），inspect_integration_protocols 对本实例配置/握手证据返回 not_detected_in_scope，接入 ACP 需另起客户端进程而非在本进程内挂钩。故使用目标自身已证实的文件型扩展点：profile cordis.patch.yml 补丁层 + loader 以 profile 目录为 baseUrl 解析 ./ 相对模块，且 patchReload: live 支持热挂接。",
+     "family": "plugin",
+     "missing_capabilities": [
+      "完整重组后的 model.response 文本（仅取持久 assistant/message 的 content 块，不重放流式增量）",
+      "assistant.output 与 model.response 未做语义区分，仅按是否含 text 块额外发出",
+      "io_capture_contract 的 turn.end checkpoint 与 expected_counts 计数器未实现（无生产者侧计数证据，不伪造）",
+      "turn_id 仅来自持久事件自带的 turn 字段，缺失时为 null",
+      "子代理与工作器的跨进程事件（initiator scope 为进程本地）"
+     ]
+    },
+    "investigation": {
+     "assets": {
+      "mcp": {
+       "sources": [
+        "ev-1789966952239933000-3ad4827073",
+        "ev-1789966988109933000-61bf5810e6",
+        "ev-1789967000291068000-54e510f4cf",
+        "ev-1789967122013540000-dd34f762f5",
+        "ev-1789967179980185000-072a0d53b3"
+       ],
+       "status": "empty",
+       "summary": "已完整读取的配置面均无 MCP：~/.dsh/settings.yaml 无 mcp 段；dsh-base、dsh-web-app 与 standard preset 三层补丁都未挂载 @deepseek-ai/dsh-mcp-client 行；~/.dsh 下 *mcp* 文件检索为空。dsh-mcp-client 仅作为 CLI 包依赖存在（存在≠启用）。",
+       "uncertainty": [
+        "隐藏目录 $DSH_HOME/.agent-presets 未能枚举，自定义 preset 理论上可挂 MCP 行",
+        "结论限于本 profile 组合，不代表同机其它 dsh profile"
+       ]
+      },
+      "model_gateway": {
+       "sources": [
+        "ev-1789966952239933000-3ad4827073",
+        "ev-1789966988109933000-61bf5810e6",
+        "ev-1789966966025163000-ae51f06d29"
+       ],
+       "status": "collected",
+       "summary": "模型接入由 dsh-base 的 llm / llm-pi-ai / llm-deepseek 行提供，实际端点来自热重载的 ~/.dsh/settings.yaml：provider copilot，api=openai-completions，baseURL=http://127.0.0.1:7777/v1，模型 gemini-3.8-flash 与 gpt-5.6-luna（contextWindow 1000000），agent-default-model = copilot/gpt-5.6-luna，密钥以 apiKeyEnv=COPILOT_API_KEY 引用（未读取密钥值）。该网关是目标调用的外部服务，不是本进程角色。",
+       "uncertainty": [
+        "未观测到 ESTABLISHED 连接，端点可达性未验证",
+        "base 层 deepseek-official 默认路由被 settings 的 llm-pi-ai 段覆盖，实际生效路由需运行时确认"
+       ]
+      },
+      "rules": {
+       "sources": [
+        "ev-1789967122013540000-dd34f762f5",
+        "ev-1789967000291068000-54e510f4cf",
+        "ev-1789966988109933000-61bf5810e6",
+        "ev-1789967227443369000-536f7f5924",
+        "ev-1789967227641209000-17b3a4c633"
+       ],
+       "status": "collected",
+       "summary": "规则/指令机制：standard preset 挂载 @deepseek-ai/dsh-agent-instructions（maxBytes 65536，加载 AGENTS.md/CLAUDE.md 工作区指令）；部署人格由 dsh-persona 提供（前缀 You are a coding agent powered by the {{model}} model.，后缀 Your working directory is {{cwd}}.）；另有 plan-mode 提示段。实际规则文件：在 ~/.dsh 与 /private/tmp（cwd，无 .git 时即项目根）检索 AGENTS.md 均为空，即当前工作区无项目级 AGENTS.md。",
+       "uncertainty": [
+        "隐藏目录未穷尽，用户级 AGENTS.md（如 ~/.agents/AGENTS.md）未能枚举确认",
+        "agent-instructions 已装载但未证明本实例已解析到任何指令文件"
+       ]
+      },
+      "skills": {
+       "sources": [
+        "ev-1789967010756597000-33dd2040b7",
+        "ev-1789967036648922000-2c26494d17",
+        "ev-1789967155208320000-32011dd59d",
+        "ev-1789967021840810000-6fc997ea15",
+        "ev-1789967122013540000-dd34f762f5"
+       ],
+       "status": "collected",
+       "summary": "发现机制为 @deepseek-ai/dsh-skill-filesystem（5 类默认根 + customSkillDirs，chokidar 热更新；条目格式 <root>/<name>/SKILL.md 或 <root>/<name>.md，仅一层深度）。web 层禁用 host 的 skill-filesystem 行，改由 standard preset 按默认根装载。实际条目根为 ~/.agents/skills（user-agents, rank500），共 37 条（lark-* 飞书系列 26 条、hyperframes/视频动效 9 条、media-use、general-video），已完整分页并读取 frontmatter；~/.dsh/skills 无条目。全部条目 availability=discovered；coverage.complete=false（待查：$DSH_HOME/.agent-presets、$DSH_BUNDLED_SKILL_DIR、隐藏项目根）。",
+       "uncertainty": [
+        "全部条目 availability=discovered，未证明注册/注入/调用",
+        "$DSH_HOME/.agent-presets、$DSH_BUNDLED_SKILL_DIR 与隐藏项目根未穷尽"
+       ]
+      }
+     },
+     "identity_evidence": {
+      "sources": [
+       "ev-1789966937551979000-75e701808f",
+       "ev-1789966943214048000-cd489c7ca7",
+       "ev-1789966952246994000-8be90511c2",
+       "ev-1789966971529182000-b39ca07619",
+       "ev-1789966988109933000-61bf5810e6",
+       "ev-1789967000291068000-54e510f4cf",
+       "ev-1789967010780427000-2a961949bf",
+       "ev-1789967036540697000-1272f99f77",
+       "ev-1789967086211557000-a184b8653e"
+      ],
+      "summary": "PID 62897 = dsh（DeepSeek Harness）@deepseek-ai/dsh 0.1.5-rc.1 的 web 表层实例：node v24.16.0 执行 npx 缓存内 lib/bin.js，参数 --profile asg-e2e-clean-web-20260921 --port 43124。启动器把 bundle 补丁层组合成 Cordis 插件树并 boot；dsh-base 在本进程内挂载 agent 注册表、agent-loop 回合/步骤驱动、tools 注册表与执行管线、llm 适配器、持久 session、sandbox/permission/approval、subagent 与 skill。因此它自行接收任务、决定后续动作并执行工具（roles: agent），同时按会话组合 agent preset 并对外提供 Web 宿主面（roles: host）。父进程 ChatGPT.app 内 codex app-server 仅为启动器，不作身份依据。",
+      "uncertainty": [
+       "stream line_count=0：装载≠运行证明，当前无活跃会话/回合的运行时证据",
+       "网络快照仅见 LISTEN 43124，模型端点 127.0.0.1:7777 的实时连接未观测到",
+       "web 会话实际选用的 preset 未由运行时事件确认（默认为 standard）"
+      ]
+     }
+    },
+    "match_features": {
+     "runtime": "node v24.16.0 ESM + Cordis 插件框架；@deepseek-ai/cordis-plugin-loader 以 profile 目录为 baseUrl；dsh-base + dsh-web-app 补丁层组合；profile package.json 的 dsh.profile.patchReload=live"
+    },
+    "observation": "目标为 dsh web 表层实例（PID 62897，node v24.16.0，cwd=/private/tmp，仅 LISTEN 43124，无子进程）。其 profile 工作区 ~/.dsh/profiles/asg-e2e-clean-web-20260921 是 Cordis 插件工作区：package.json 声明 bundles=[dsh-base, dsh-web-app] 与 patchReload=live；启动器按 bundle 层→profile cordis.patch.yml→home 层→--patch 叠加组合插件树，并把 cordis.yml 作为 include 根以锚定 loader baseUrl。cordis.patch.yml 当前为空数组且被 watchUserPatches 热监视。dsh-base 在本进程内装载 agent/agent-loop/tools/llm/session/sandbox/approval/skill 等行，工具管线为 tools/pre-execute（可 await 的 allow/deny/ask 瀑布）→guard→tools/execute→tools/post-execute→tools/result，均为已读到的第一方实现。supervisor stream line_count=0，未观测到任何运行时事件。",
+    "observation_source": {
+     "event_names": {
+      "assistant.output": "assistant.output",
+      "model.request": "model.request",
+      "model.response": "model.response",
+      "tool.execute.after": "tool.execute.after",
+      "tool.execute.before": "tool.execute.before",
+      "user.input": "user.input"
+     },
+     "fields": {
+      "call_id": "call_id",
+      "event": "event",
+      "pid": "pid",
+      "timestamp": "timestamp",
+      "tool": "tool"
+     },
+     "log_path": "plugins/asg-observer.jsonl"
+    }
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 633412,
+   "recipe_source": "goose",
+   "last_seen": "2026-09-21T14:02:18"
+  },
+  {
+   "id": "harness-c2b044ce244d",
+   "features": {
+    "exe": "node",
+    "runtime": "node",
+    "entry_token": "bin.js",
+    "flags": [
+     "--no-open",
+     "--port",
+     "--profile"
+    ],
+    "config_dirs": [
+     ".."
+    ]
+   },
+   "first_seen": "2026-09-21T14:58:12",
+   "revisions": [
+    {
+     "revision": 1,
+     "recipe": {
+      "agent_identity_name": "dsh",
+      "confidence": 0.86,
+      "evidence_refs": [
+       "ev-1789973402415824000-130679ee5a",
+       "ev-1789973413207945000-0c5121806e",
+       "ev-1789973414668349000-89b3caa1e2",
+       "ev-1789973422096518000-3ad4827073",
+       "ev-1789973422023076000-23f56732f7",
+       "ev-1789973422231211000-8be90511c2",
+       "ev-1789973427866856000-17772a2428",
+       "ev-1789973431883350000-9de02619e9",
+       "ev-1789973438547394000-c6236ca232",
+       "ev-1789973454373151000-c063df1559",
+       "ev-1789973454427619000-a09d0cf9f7",
+       "ev-1789973453324337000-779cba4dc1",
+       "ev-1789973551300453000-072a0d53b3",
+       "ev-1789973547938021000-00e1a8c3e0"
+      ],
+      "fallback": "若目标 dsh 构建缺少 cordis-plugin-loader/patch 层（无 cordis.patch.yml 或 patchReload 不生效），降级为 ASG_HOOK_MODE=observe 的纯观测验证；仍不可用则报告 method=unsupported 并保留发现，不尝试进程内存补丁、网络中间人或二进制修改（监督者不支持此类机制）。",
+      "hook": {
+       "capabilities": [
+        "user.input / model.request / model.response / assistant.output 归一化事件",
+        "tool.execute.before 同步门控：spawn hook_control_client.py decision → allow/deny/ask，deny 时返回 {kind:'deny'} 阻断工具体 dispatch，并 ack 回执",
+        "tool.execute.after 只读结果事件",
+        "事件双写：本地 JSONL 证据日志 + 控制客户端 action=event，绝不改变目标回调返回值",
+        "控制客户端失败/非零退出/响应异常时 fail-closed（deny）",
+        "保留并优先服从目标上游策略（sandbox/approval）的 deny"
+       ],
+       "limitations": [
+        "ask 决策路径在运行日志中未观察到实际执行，仅代码路径存在",
+        "io_capture 契约未完全满足：tool.execute.* 事件 turn_id/step 为 null，六类事件计数器未在 ingress 侧建立，checkpoint 需生产端计数",
+        "model.request 仅含 provider/model/reasoningEffort 路由元数据，非完整模型载荷",
+        "本提案未附 install_plan：激活需修改已存在的 cordis.patch.yml，其 expected_sha256 必须为当前内容摘要，而本调查环境无法执行代码计算摘要，拒绝伪造；监督者验证时应从文件本身派生摘要（当前 cordis.patch.yml sha256=ff8978dda1d577fc6148ae7ed35c5380fb5f5dabb594853c1f47b97944d9081a，插件 sha256=572898250271ea6d3e371a43d398bb697ea8b51835193b4c58134c8d84a71015）",
+        "观测接收器 ASG_OBSERVE_URL 未配置，事件远端投递经控制客户端 outbox 而非观察器"
+       ],
+       "method": "cordis_patch_plugin",
+       "restart_required": false,
+       "rollback": "从 cordis.patch.yml 的 insert 列表移除 id=asg-observer 条目（live 热卸载，无需重启）；随后删除 plugins/asg-observer.mjs 与日志文件即完全回退。",
+       "verification": "机制级独立验证（已在本实例成立）：(1) plugins/asg-observer.jsonl 中 hook.loaded 记录 pid=85557（与绑定 PID+create_time 一致，两次热重载）；(2) 同 PID 的 model.request/assistant.output 事件随 turn/step 递进；(3) tool.execute.before 携带 decision=allow+request_id 且随后出现配对 tool.execute.after；(4) 先前实例（pid 79350）存在 decision=deny、enforcement_applied=true 的阻断记录，deny 标记文件未生成（独立效果核查）。监督者复用时应重复 1-3 并做一次新的 allow/deny 效果核查。"
+      },
+      "integration": {
+       "evidence_refs": [
+        "ev-1789973454427619000-a09d0cf9f7",
+        "ev-1789973422023076000-23f56732f7",
+        "ev-1789973422231211000-8be90511c2",
+        "ev-1789973431883350000-9de02619e9"
+       ],
+       "family": "plugin",
+       "fallback_reason": "command_hooks 与 ACP 在已检查范围内均无本实例激活证据（协议检查未检出、无握手/会话痕迹、dsh-hooks-* 依赖面向宿主他方 agent），而 plugin 通道已实际提供全部所需能力：六类归一化事件 + 执行前同步门控，且已在本绑定 PID 上运行验证，故无需更早通道补足缺口",
+       "missing_capabilities": [
+        "已检查范围内未检出 command_hooks 结构（无 Claude Code/Codex 风格 hooks 配置；dsh-hooks-claude-code/dsh-hooks-codex 为 dsh 面向其他 agent 的适配器依赖，非本实例入口）",
+        "无活动 ACP 客户端会话或握手证据（dsh-acp-app 为依赖声明；本实例经 web UI 端口 43124 驱动）",
+        "监督者协议检查器对 cordis patch/插件证据返回 not_detected_in_scope，cordis 插件结构未被识别为 Hook/ACP 协议"
+       ]
+      },
+      "investigation": {
+       "assets": {
+        "mcp": {
+         "sources": [
+          "/Users/mac/.dsh（*mcp* 枚举 0 命中）",
+          "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921（全枚举）",
+          "asg-observer 事件日志"
+         ],
+         "status": "empty",
+         "summary": "已检查范围内无激活的 MCP 配置或 MCP 工具事件；dsh-mcp-client 仅为依赖声明。",
+         "uncertainty": [
+          "empty 仅指已检查范围；MCP 存放约定未从 loader 源码证实"
+         ]
+        },
+        "model_gateway": {
+         "sources": [
+          "/Users/mac/.dsh/settings.yaml",
+          "asg-observer model.request 事件"
+         ],
+         "status": "collected",
+         "summary": "OpenAI 兼容本机代理 http://127.0.0.1:7777/v1（provider copilot，默认 gpt-5.6-luna，apiKeyEnv=COPILOT_API_KEY）；配置 + 运行期 agent/request 路由双重证实；上游后端未检查。",
+         "uncertainty": [
+          "代理进程身份与真实模型后端未知"
+         ]
+        },
+        "rules": {
+         "sources": [
+          "/Users/mac/个人项目/asg-os-sensor-advisor-20260911/AGENTS.md"
+         ],
+         "status": "collected",
+         "summary": "工作区 AGENTS.md（ASG 协作约定，sha256 532b3a13…）被 dsh agent-instructions 机制采集为系统提示规则；内容已读取。",
+         "uncertainty": [
+          "persona/全局指令层未逐一检查"
+         ]
+        },
+        "skills": {
+         "sources": [
+          "/Users/mac/.agents/skills（10 项）",
+          "/Users/mac/个人项目/.agents/skills（27 项）"
+         ],
+         "status": "collected",
+         "summary": "37 个 SKILL.md 条目已枚举并读取 frontmatter：10 个用户级 HyperFrames 视频/动效技能 + 27 个工作区级 lark 飞书办公技能；全部 availability=opened；父根完整枚举不可达，coverage.complete=false，明细见已保存的 skills 发现。",
+         "uncertainty": [
+          "opened≠注册/注入/调用",
+          "父根下未打开条目未知"
+         ]
+        }
+       },
+       "identity_evidence": {
+        "sources": [
+         "ev-1789973402415824000-130679ee5a 启动面：argv/package.json/打开文件/进程树",
+         "ev-1789973413207945000-0c5121806e 运行时面：包身份与协议依赖",
+         "ev-1789973438547394000-c6236ca232 与 ev-1789973454373151000-c063df1559 运行事件：模型路由/会话/工具闭环",
+         "ev-1789973422231211000-8be90511c2 profile 装配（dsh-base+dsh-web-app）"
+        ],
+        "summary": "PID 85557 = dsh（@deepseek-ai/dsh v0.1.5-rc.1）agent 宿主：Node 24 + cordis 插件框架，profile asg-e2e-clean-web-20260921 装配 dsh-base+dsh-web-app，web UI 43124；自主编排由会话锁、agent/request 模型路由、tools/pre-execute→执行→tools/result 闭环与 37 个 SKILL.md 打开共同确立。",
+        "uncertainty": [
+         "npx 缓存安装版本可能漂移",
+         "父进程 codex 为 ASG E2E 启动器，非身份组成",
+         "web 通道协议细节未验证",
+         "prior recipe 历史不可用（519KB 响应无法解析读取；prior experience 仅返回空生命周期摘要，matched_by=none），本配方按新家族提交，未复用任何先前 harness id"
+        ]
+       }
+      },
+      "match_features": {
+       "runtime": "node>=20 ESM + @deepseek-ai/dsh(npx 缓存安装, 0.1.5-rc.1) + @deepseek-ai/cordis 插件宿主；profile 目录含 package.json(dsh.profile.bundles) + cordis.yml + cordis.patch.yml，patchReload=live；cordis-plugin-loader 以 profile 目录为 baseUrl import() './' 相对插件名"
+      },
+      "observation": "dsh 以 profile asg-e2e-clean-web-20260921 运行（web UI 43124，会话 b1c311e1）。cordis.patch.yml 已含 ASG 学习层 insert 条目 {id: asg-observer, name: './plugins/asg-observer.mjs'}；该 ESM 插件在绑定 PID 85557 上实际加载（hook.loaded x2，patchReload=live 热挂接），产出六类归一化事件并含同步工具门控：allow 路径有 request_id+ack+配对 tool.execute.after，deny 路径（先前 PID 79350）有 enforcement_applied=true 且标记文件未生成。控制面为 hook_control_client.py → http://127.0.0.1:8081/api/hook-control，fail-closed。",
+      "observation_source": {
+       "event_names": {
+        "assistant.output": "assistant.output",
+        "model.request": "model.request",
+        "model.response": "model.response",
+        "tool.execute.after": "tool.execute.after",
+        "tool.execute.before": "tool.execute.before",
+        "user.input": "user.input"
+       },
+       "fields": {
+        "call_id": "call_id",
+        "event": "event",
+        "pid": "pid",
+        "timestamp": "timestamp",
+        "tool": "tool"
+       },
+       "log_path": "plugins/asg-observer.jsonl"
+      }
+     },
+     "validated_at_ns": 1789973892762896000,
+     "compatibility": {
+      "executable": "1ee75375e33b94fc34b3b19aede049e11dae90efb63b374dc96d6bdace70c4b8",
+      "entry": "0ff7f1d72c4e0cbe14001709c81e20a04b70464118a7f78568952988e28f2ac5",
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "runtime": "node",
+      "launch": "b95b7bcdb9b408d7eb828db06080c6b30b9de59212fe29f523021738dd415618",
+      "entry_path": "/Users/mac/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh/lib/bin.js"
+     },
+     "evidence": [
+      {
+       "evidence_id": "ev-1789973402415824000-130679ee5a",
+       "tool": "inspect_entry_surface"
+      },
+      {
+       "evidence_id": "ev-1789973413207945000-0c5121806e",
+       "tool": "observe_runtime_surface"
+      },
+      {
+       "evidence_id": "ev-1789973414668349000-89b3caa1e2",
+       "tool": "get_control_contract"
+      },
+      {
+       "evidence_id": "ev-1789973422096518000-3ad4827073",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789973422023076000-23f56732f7",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789973422231211000-8be90511c2",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789973427866856000-17772a2428",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789973431883350000-9de02619e9",
+       "tool": "read_related_file"
+      },
+      {
+       "evidence_id": "ev-1789973438547394000-c6236ca232",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789973454373151000-c063df1559",
+       "tool": "search_related_file"
+      },
+      {
+       "evidence_id": "ev-1789973454427619000-a09d0cf9f7",
+       "tool": "inspect_integration_protocols"
+      },
+      {
+       "evidence_id": "ev-1789973453324337000-779cba4dc1",
+       "tool": "inspect_network_peers"
+      },
+      {
+       "evidence_id": "ev-1789973551300453000-072a0d53b3",
+       "tool": "find_related_files"
+      },
+      {
+       "evidence_id": "ev-1789973547938021000-00e1a8c3e0",
+       "tool": "read_related_file"
+      }
+     ],
+     "status": "recipe_validated_hook_unverified",
+     "source": "goose"
+    }
+   ],
+   "match_count": 0,
+   "name": "dsh",
+   "hook_recipe": {
+    "agent_identity_name": "dsh",
+    "confidence": 0.86,
+    "evidence_refs": [
+     "ev-1789973402415824000-130679ee5a",
+     "ev-1789973413207945000-0c5121806e",
+     "ev-1789973414668349000-89b3caa1e2",
+     "ev-1789973422096518000-3ad4827073",
+     "ev-1789973422023076000-23f56732f7",
+     "ev-1789973422231211000-8be90511c2",
+     "ev-1789973427866856000-17772a2428",
+     "ev-1789973431883350000-9de02619e9",
+     "ev-1789973438547394000-c6236ca232",
+     "ev-1789973454373151000-c063df1559",
+     "ev-1789973454427619000-a09d0cf9f7",
+     "ev-1789973453324337000-779cba4dc1",
+     "ev-1789973551300453000-072a0d53b3",
+     "ev-1789973547938021000-00e1a8c3e0"
+    ],
+    "fallback": "若目标 dsh 构建缺少 cordis-plugin-loader/patch 层（无 cordis.patch.yml 或 patchReload 不生效），降级为 ASG_HOOK_MODE=observe 的纯观测验证；仍不可用则报告 method=unsupported 并保留发现，不尝试进程内存补丁、网络中间人或二进制修改（监督者不支持此类机制）。",
+    "hook": {
+     "capabilities": [
+      "user.input / model.request / model.response / assistant.output 归一化事件",
+      "tool.execute.before 同步门控：spawn hook_control_client.py decision → allow/deny/ask，deny 时返回 {kind:'deny'} 阻断工具体 dispatch，并 ack 回执",
+      "tool.execute.after 只读结果事件",
+      "事件双写：本地 JSONL 证据日志 + 控制客户端 action=event，绝不改变目标回调返回值",
+      "控制客户端失败/非零退出/响应异常时 fail-closed（deny）",
+      "保留并优先服从目标上游策略（sandbox/approval）的 deny"
+     ],
+     "limitations": [
+      "ask 决策路径在运行日志中未观察到实际执行，仅代码路径存在",
+      "io_capture 契约未完全满足：tool.execute.* 事件 turn_id/step 为 null，六类事件计数器未在 ingress 侧建立，checkpoint 需生产端计数",
+      "model.request 仅含 provider/model/reasoningEffort 路由元数据，非完整模型载荷",
+      "本提案未附 install_plan：激活需修改已存在的 cordis.patch.yml，其 expected_sha256 必须为当前内容摘要，而本调查环境无法执行代码计算摘要，拒绝伪造；监督者验证时应从文件本身派生摘要（当前 cordis.patch.yml sha256=ff8978dda1d577fc6148ae7ed35c5380fb5f5dabb594853c1f47b97944d9081a，插件 sha256=572898250271ea6d3e371a43d398bb697ea8b51835193b4c58134c8d84a71015）",
+      "观测接收器 ASG_OBSERVE_URL 未配置，事件远端投递经控制客户端 outbox 而非观察器"
+     ],
+     "method": "cordis_patch_plugin",
+     "restart_required": false,
+     "rollback": "从 cordis.patch.yml 的 insert 列表移除 id=asg-observer 条目（live 热卸载，无需重启）；随后删除 plugins/asg-observer.mjs 与日志文件即完全回退。",
+     "verification": "机制级独立验证（已在本实例成立）：(1) plugins/asg-observer.jsonl 中 hook.loaded 记录 pid=85557（与绑定 PID+create_time 一致，两次热重载）；(2) 同 PID 的 model.request/assistant.output 事件随 turn/step 递进；(3) tool.execute.before 携带 decision=allow+request_id 且随后出现配对 tool.execute.after；(4) 先前实例（pid 79350）存在 decision=deny、enforcement_applied=true 的阻断记录，deny 标记文件未生成（独立效果核查）。监督者复用时应重复 1-3 并做一次新的 allow/deny 效果核查。"
+    },
+    "integration": {
+     "evidence_refs": [
+      "ev-1789973454427619000-a09d0cf9f7",
+      "ev-1789973422023076000-23f56732f7",
+      "ev-1789973422231211000-8be90511c2",
+      "ev-1789973431883350000-9de02619e9"
+     ],
+     "family": "plugin",
+     "fallback_reason": "command_hooks 与 ACP 在已检查范围内均无本实例激活证据（协议检查未检出、无握手/会话痕迹、dsh-hooks-* 依赖面向宿主他方 agent），而 plugin 通道已实际提供全部所需能力：六类归一化事件 + 执行前同步门控，且已在本绑定 PID 上运行验证，故无需更早通道补足缺口",
+     "missing_capabilities": [
+      "已检查范围内未检出 command_hooks 结构（无 Claude Code/Codex 风格 hooks 配置；dsh-hooks-claude-code/dsh-hooks-codex 为 dsh 面向其他 agent 的适配器依赖，非本实例入口）",
+      "无活动 ACP 客户端会话或握手证据（dsh-acp-app 为依赖声明；本实例经 web UI 端口 43124 驱动）",
+      "监督者协议检查器对 cordis patch/插件证据返回 not_detected_in_scope，cordis 插件结构未被识别为 Hook/ACP 协议"
+     ]
+    },
+    "investigation": {
+     "assets": {
+      "mcp": {
+       "sources": [
+        "/Users/mac/.dsh（*mcp* 枚举 0 命中）",
+        "/Users/mac/.dsh/profiles/asg-e2e-clean-web-20260921（全枚举）",
+        "asg-observer 事件日志"
+       ],
+       "status": "empty",
+       "summary": "已检查范围内无激活的 MCP 配置或 MCP 工具事件；dsh-mcp-client 仅为依赖声明。",
+       "uncertainty": [
+        "empty 仅指已检查范围；MCP 存放约定未从 loader 源码证实"
+       ]
+      },
+      "model_gateway": {
+       "sources": [
+        "/Users/mac/.dsh/settings.yaml",
+        "asg-observer model.request 事件"
+       ],
+       "status": "collected",
+       "summary": "OpenAI 兼容本机代理 http://127.0.0.1:7777/v1（provider copilot，默认 gpt-5.6-luna，apiKeyEnv=COPILOT_API_KEY）；配置 + 运行期 agent/request 路由双重证实；上游后端未检查。",
+       "uncertainty": [
+        "代理进程身份与真实模型后端未知"
+       ]
+      },
+      "rules": {
+       "sources": [
+        "/Users/mac/个人项目/asg-os-sensor-advisor-20260911/AGENTS.md"
+       ],
+       "status": "collected",
+       "summary": "工作区 AGENTS.md（ASG 协作约定，sha256 532b3a13…）被 dsh agent-instructions 机制采集为系统提示规则；内容已读取。",
+       "uncertainty": [
+        "persona/全局指令层未逐一检查"
+       ]
+      },
+      "skills": {
+       "sources": [
+        "/Users/mac/.agents/skills（10 项）",
+        "/Users/mac/个人项目/.agents/skills（27 项）"
+       ],
+       "status": "collected",
+       "summary": "37 个 SKILL.md 条目已枚举并读取 frontmatter：10 个用户级 HyperFrames 视频/动效技能 + 27 个工作区级 lark 飞书办公技能；全部 availability=opened；父根完整枚举不可达，coverage.complete=false，明细见已保存的 skills 发现。",
+       "uncertainty": [
+        "opened≠注册/注入/调用",
+        "父根下未打开条目未知"
+       ]
+      }
+     },
+     "identity_evidence": {
+      "sources": [
+       "ev-1789973402415824000-130679ee5a 启动面：argv/package.json/打开文件/进程树",
+       "ev-1789973413207945000-0c5121806e 运行时面：包身份与协议依赖",
+       "ev-1789973438547394000-c6236ca232 与 ev-1789973454373151000-c063df1559 运行事件：模型路由/会话/工具闭环",
+       "ev-1789973422231211000-8be90511c2 profile 装配（dsh-base+dsh-web-app）"
+      ],
+      "summary": "PID 85557 = dsh（@deepseek-ai/dsh v0.1.5-rc.1）agent 宿主：Node 24 + cordis 插件框架，profile asg-e2e-clean-web-20260921 装配 dsh-base+dsh-web-app，web UI 43124；自主编排由会话锁、agent/request 模型路由、tools/pre-execute→执行→tools/result 闭环与 37 个 SKILL.md 打开共同确立。",
+      "uncertainty": [
+       "npx 缓存安装版本可能漂移",
+       "父进程 codex 为 ASG E2E 启动器，非身份组成",
+       "web 通道协议细节未验证",
+       "prior recipe 历史不可用（519KB 响应无法解析读取；prior experience 仅返回空生命周期摘要，matched_by=none），本配方按新家族提交，未复用任何先前 harness id"
+      ]
+     }
+    },
+    "match_features": {
+     "runtime": "node>=20 ESM + @deepseek-ai/dsh(npx 缓存安装, 0.1.5-rc.1) + @deepseek-ai/cordis 插件宿主；profile 目录含 package.json(dsh.profile.bundles) + cordis.yml + cordis.patch.yml，patchReload=live；cordis-plugin-loader 以 profile 目录为 baseUrl import() './' 相对插件名"
+    },
+    "observation": "dsh 以 profile asg-e2e-clean-web-20260921 运行（web UI 43124，会话 b1c311e1）。cordis.patch.yml 已含 ASG 学习层 insert 条目 {id: asg-observer, name: './plugins/asg-observer.mjs'}；该 ESM 插件在绑定 PID 85557 上实际加载（hook.loaded x2，patchReload=live 热挂接），产出六类归一化事件并含同步工具门控：allow 路径有 request_id+ack+配对 tool.execute.after，deny 路径（先前 PID 79350）有 enforcement_applied=true 且标记文件未生成。控制面为 hook_control_client.py → http://127.0.0.1:8081/api/hook-control，fail-closed。",
+    "observation_source": {
+     "event_names": {
+      "assistant.output": "assistant.output",
+      "model.request": "model.request",
+      "model.response": "model.response",
+      "tool.execute.after": "tool.execute.after",
+      "tool.execute.before": "tool.execute.before",
+      "user.input": "user.input"
+     },
+     "fields": {
+      "call_id": "call_id",
+      "event": "event",
+      "pid": "pid",
+      "timestamp": "timestamp",
+      "tool": "tool"
+     },
+     "log_path": "plugins/asg-observer.jsonl"
+    }
+   },
+   "revision": 1,
+   "investigation_verified": true,
+   "hook_verified": false,
+   "mount_ms": 504289,
+   "recipe_source": "goose"
   }
  ],
  "version": 1

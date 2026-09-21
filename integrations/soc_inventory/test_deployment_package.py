@@ -10,9 +10,61 @@ import tempfile
 import unittest
 from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
-from integrations.soc_inventory.package_runtime.install import wire_soc_control_client
+from integrations.soc_inventory.soc_onboarding import integrity
+from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_model_request_capture_includes_available_payload_and_redaction(self):
+        source="""const bounded = (value) => ({ content: value, complete: true })
+function apply (ctx) {
+  // ── 2. 模型请求路由（waterfall：必须原样返回 next() 结果）──
+  ctx.on('agent/request', async (payload, next) => {
+    const resolved = await next()
+    publish({
+        content: {
+          provider: (resolved && resolved.provider) ?? null,
+          model: (resolved && resolved.model) ?? null,
+          reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,
+        },
+        content_complete: true,
+    })
+  })
+}
+"""
+        wired=wire_model_request_payload(source)
+        self.assertIn('request_payload: requestBody.content',wired)
+        self.assertIn("'[REDACTED]'",wired)
+        self.assertEqual(wired,wire_model_request_payload(wired))
+
+    def test_invalid_yaml_recipe_is_rejected_before_publication(self):
+        content="""client('event', record)
+client('decision', request)
+client('ack', { request_id: 'denied', applied: true, outcome: 'blocked' })
+ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
+// hook_control_client.py
+"""
+        bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'bad-yaml'},
+                'recipe':{'install_plan':{'version':1,'files':[
+                    {'path':'hook.mjs','content':content,'expected_sha256':None},
+                    {'path':'cordis.patch.yml','content':'[]\n- insert:\n  - id: hook\n','expected_sha256':None}]}},
+                'constraints':{'compatibility':{}},'verification':{}}
+        bundle['integrity']={'algorithm':'sha256','digest':digest(bundle)}
+        with self.assertRaisesRegex(ValueError,'invalid YAML'):
+            build(bundle)
+
+    def test_integrity_uses_same_profile_target_as_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);cwd=root/'cwd';profile=root/'profile';cwd.mkdir();profile.mkdir()
+            resolved=profile.resolve()
+            state=resolved.parent/('.asg-install-'+hashlib.sha256(str(resolved).encode()).hexdigest()[:16])
+            state.mkdir();installed=profile/'plugins/hook.mjs';installed.parent.mkdir();installed.write_text('verified')
+            plan_digest='a'*64
+            (state/(plan_digest+'.json')).write_text(json.dumps({'status':'installed','changes':[
+                {'path':'plugins/hook.mjs','after_sha256':hashlib.sha256(b'verified').hexdigest()}]}))
+            (state/'package-receipt.json').write_text(json.dumps({'plan_digest':plan_digest}))
+            agent={'workspace':str(cwd),'hook_workspace':str(profile)}
+            self.assertTrue(integrity(None,agent,{'transport':'soc-direct-v1'}))
+
     def test_goose_plugin_is_portable_and_uses_packaged_soc_client(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);workspace=root/'profile';source_root=root/'source'

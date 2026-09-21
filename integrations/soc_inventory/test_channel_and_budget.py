@@ -77,6 +77,23 @@ class BudgetTests(unittest.TestCase):
             self.assertEqual(payload['hook_data']['records_trimmed'],10-len(kept))
             self.assertTrue(any('网关上限' in t for t in payload['hook_data']['coverage']['limitations']))
 
+    def test_soc_install_receipt_is_visible_in_runtime_stage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge, sent = self._bridge(tmp)
+            bridge.endpoint.db.execute('CREATE TABLE soc_onboarding(instance TEXT PRIMARY KEY,result TEXT)')
+            bridge.endpoint.db.execute('INSERT INTO soc_onboarding VALUES(?,?)',('1:9',json.dumps({
+                'status':'activation_verified','artifact_id':'artifact-1','checksum':'abc'})))
+            bridge.endpoint.db.commit()
+            bridge.local = lambda path, body=None: {'records':[]} if path.startswith('/api/hook-data') else {'commands':[]}
+            agent = {'agent_id':'a','asg_instance_id':'1:9','name':'n'}
+            state = {'agents':[{'instance_id':'1:9','pid':1,'adapter':{'onboarding':{}}}],
+                     'scan_interval':None,'native_trust':None}
+            bridge._runtime_cycle(agent,state,{}, {})
+            payload=next(body for path,body in sent if path=='/api/asg/runtime')['payload']
+            onboarding=payload['agent']['adapter']['onboarding']
+            self.assertEqual(onboarding['install']['status'],'installed')
+            self.assertEqual(onboarding['soc_install']['status'],'activation_verified')
+
     def test_one_failing_agent_does_not_strand_the_others(self):
         with tempfile.TemporaryDirectory() as tmp:
             bridge, sent = self._bridge(tmp)

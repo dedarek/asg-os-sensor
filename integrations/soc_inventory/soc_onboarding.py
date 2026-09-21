@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from urllib.request import Request, build_opener, ProxyHandler
 from urllib.parse import urlsplit
 
@@ -146,6 +147,8 @@ def install_target(agent):
     # process cwd (GUI/web launchers commonly run from / or a temp directory).
     # The investigation must provide that root explicitly; never guess it from
     # a product name or install next to an unrelated cwd.
+    if agent.get('hook_fingerprint') and agent.get('hook_workspace_binding') == 'unresolved':
+        return None
     workspace=Path(agent.get('hook_workspace') or agent['workspace']).expanduser().resolve()
     # A GUI process launched from the filesystem root has no meaningful project
     # workspace; return None so the installer applies its own standard-directory
@@ -164,7 +167,12 @@ def integrity(endpoint, agent, prior):
     """
     if prior.get('transport') != 'soc-direct-v1':return True
     import hashlib
-    ws=Path(agent['workspace']).expanduser().resolve()
+    # Installation may target a profile/config root that differs from the
+    # process cwd. Reuse the installer resolver so a healthy profile install
+    # is never reported as drift and installed again in a loop.
+    target=install_target(agent)
+    if target is None:return False
+    ws=Path(target)
     state=ws.parent/('.asg-install-'+hashlib.sha256(str(ws).encode()).hexdigest()[:16])
     receipt=state/'package-receipt.json'
     try:
@@ -258,4 +266,21 @@ def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
     try:body=json.loads(output)
     except json.JSONDecodeError:body={'status':'installed' if result.returncode==0 and execute else 'validated' if result.returncode==0 else 'failed','output':output[-4000:]}
     if result.returncode!=0:raise ValueError('SOC package installer failed: '+str(body.get('error') or body.get('output') or result.returncode))
+    # Learned packages are useful only after the exact live instance executes
+    # their callback. Verify immediately when possible; if hot reload/restart
+    # has not happened yet, keep installation and report a distinct waiting
+    # state. The next discovery pass retries verification without rewriting
+    # unchanged files.
+    if execute and selected['transport']=='soc-direct-v1' and agent.get('asg_instance_id'):
+        pid=int(agent['asg_instance_id'].split(':',1)[0])
+        time.sleep(0.25)
+        verified=subprocess.run(args+['--verify-pid',str(pid)],capture_output=True,text=True,timeout=45)
+        verify_output=(verified.stdout or verified.stderr).strip()
+        try:verification=json.loads(verify_output)
+        except json.JSONDecodeError:verification={'status':'failed','output':verify_output[-2000:]}
+        if verified.returncode==0 and verification.get('status')=='activation_verified':
+            body={'status':'activation_verified','installation':body,'activation':verification}
+        else:
+            body={'status':'installed_waiting_activation','installation':body,
+                  'activation':{'status':'pending','reason':verification.get('error') or verification.get('output') or 'no_fresh_callback'}}
     return {'status':body.get('status','installed' if result.returncode==0 else 'failed'),'artifact_id':selected['id'],'checksum':selected['checksum'],'model_calls':0,'transport':selected['transport'],'result':body}

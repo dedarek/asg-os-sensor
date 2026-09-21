@@ -1,8 +1,11 @@
 import unittest
 from unittest.mock import patch, Mock
-from .discovery import confirmed
+from .discovery import confirmed,platform_id
 
 class DiscoveryTest(unittest.TestCase):
+    def test_package_identity_becomes_portable_platform_id(self):
+        self.assertEqual(platform_id({'id':'package:/Users/a/.npm/node_modules/@deepseek-ai/dsh'}),'deepseek-ai-dsh')
+        self.assertEqual(platform_id({'id':'OpenCode'}),'opencode')
     def target(self,status='confirmed_agent',role='agent'):
         return {'pid':42,'instance_id':'42:123.5','name':'Example','identity':{'id':'unknown-runtime'},'adapter':{'agent_classification':{'status':status,'roles':[role]},'assets':{}}}
     def test_pending_and_confirmed_live_instances_without_infrastructure(self):
