@@ -276,6 +276,13 @@ class Discovery:
             if not self.endpoint.config.get('soc_installation', False):return
             from .soc_onboarding import install
             import psutil
+            completed={'installed','already_installed','installed_waiting_activation','activation_verified'}
+            def merged_result(prior,fresh):
+                # Current lifecycle state must not carry an obsolete failure
+                # reason or a one-shot investigation latch after a package has
+                # installed. Besides confusing the UI, retaining that latch
+                # would suppress a legitimate future drift investigation.
+                return dict(fresh) if fresh.get('status') in completed else {**(prior or {}),**fresh}
             self.endpoint.db.execute('CREATE TABLE IF NOT EXISTS soc_onboarding(instance TEXT PRIMARY KEY,result TEXT)')
             for candidate in current:
                 instance=candidate['asg_instance_id']
@@ -314,7 +321,7 @@ class Discovery:
                                 continue
                             fresh=install(self.endpoint,registered,process.exe(),
                                           execute=True,selected=current_choice)
-                            result.update(fresh)
+                            result=merged_result(prior,fresh)
                             with self.endpoint.db:self.endpoint.db.execute(
                                 'INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',
                                 (instance,json.dumps(result)))
@@ -333,11 +340,11 @@ class Discovery:
                             # Catalog no longer offers a compatible package: keep the
                             # previous install evidence and reopen investigation.
                             fresh={'status':'needs_investigation','route':'protocol_then_goose','reason':'catalog_package_removed_or_incompatible'}
-                        result.update(fresh)
+                        result=merged_result(prior,fresh)
                         with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(result)))
                         continue
                     fresh=install(self.endpoint,registered,process.exe(),execute=True)
-                    result.update(fresh)
+                    result=merged_result(prior,fresh)
                     if fresh.get('status')=='needs_investigation' and request_investigation and not (prior and prior.get('investigation_requested')):
                         # Existing investigation pipeline owns protocol discovery and Goose
                         # fallback. Request once per instance: while a prior request is live,

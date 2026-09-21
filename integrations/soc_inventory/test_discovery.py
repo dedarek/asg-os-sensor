@@ -85,7 +85,8 @@ class DiscoveryTest(unittest.TestCase):
             endpoint.db.execute('INSERT INTO enrolled VALUES(?,?)',
                                 (agent['asg_instance_id'],json.dumps(agent)))
             prior={'status':'installed_waiting_activation','artifact_id':'a1',
-                   'checksum':'c1','transport':'soc-direct-v1'}
+                   'checksum':'c1','transport':'soc-direct-v1',
+                   'reason':'obsolete_failure','investigation_requested':True}
             endpoint.db.execute('INSERT INTO soc_onboarding VALUES(?,?)',
                                 (agent['asg_instance_id'],json.dumps(prior)))
             process=Mock();process.create_time.return_value=123.5
@@ -105,6 +106,8 @@ class DiscoveryTest(unittest.TestCase):
                 'SELECT result FROM soc_onboarding WHERE instance=?',
                 (agent['asg_instance_id'],)).fetchone()[0])
             self.assertEqual(saved['status'],'activation_verified')
+            self.assertNotIn('reason',saved)
+            self.assertNotIn('investigation_requested',saved)
             endpoint.db.close()
 
 if __name__=='__main__':unittest.main()

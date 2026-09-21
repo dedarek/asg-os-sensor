@@ -261,6 +261,16 @@ def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
         # the native bash installer only understands --force (replace a target
         # it already manages). Passing the wrong flag must fail before writes.
         args+=['--upgrade' if selected['transport']=='soc-direct-v1' else '--force']
+    elif execute and selected['transport']=='soc-direct-v1':
+        # A restarted Agent instance receives a fresh SOC identity while its
+        # verified Hook package remains in the same profile. Let the installer
+        # perform a narrowly-scoped identity rebind. It refuses this flag if
+        # either the package digest or installer revision changed, so a real
+        # package replacement still requires the explicit upgrade path above.
+        import hashlib as _hashlib
+        target=Path(install_target(agent))
+        state=target.parent/('.asg-install-'+_hashlib.sha256(str(target).encode()).hexdigest()[:16])
+        if (state/'package-receipt.json').is_file():args+=['--rebind']
     result=subprocess.run(args+([] if execute else ['--dry-run']),capture_output=True,text=True,timeout=45)
     output=(result.stdout or result.stderr).strip()
     try:body=json.loads(output)

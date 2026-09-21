@@ -188,7 +188,19 @@ ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
             self.assertTrue((workspace/'.soc-hook/runtime/hook_control_client.py').is_file())
             args[args.index('--agent-id')+1]='different-agent'
             self.assertNotEqual(run().returncode,0)
-            args[args.index('--agent-id')+1]='unit-agent'
+            rebound=run(['--rebind'])
+            self.assertEqual(rebound.returncode,0,rebound.stderr)
+            self.assertEqual(json.loads(rebound.stdout)['status'],'installed')
+            config=json.loads((workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json').read_text())
+            self.assertEqual(config['agent_id'],'different-agent')
+            # Rebind is deliberately narrower than upgrade: a different
+            # package or installer revision cannot use it to overwrite files.
+            receipt=next(workspace.parent.glob('.asg-install-*/package-receipt.json'))
+            record=json.loads(receipt.read_text());record['installer_revision']='0'*64
+            receipt.write_text(json.dumps(record))
+            self.assertNotEqual(run(['--rebind']).returncode,0)
+            record['installer_revision']=json.loads((pkg/'transport.json').read_text())['installer_revision']
+            receipt.write_text(json.dumps(record))
             file=workspace/'.hooks/callback.js';installed_content=file.read_text();file.write_text('user edit')
             self.assertNotEqual(run().returncode,0)
             self.assertNotEqual(run(['--uninstall']).returncode,0)

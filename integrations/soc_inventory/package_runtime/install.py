@@ -245,6 +245,7 @@ def main():
     p.add_argument('--token-file');p.add_argument('--instance-id',default='')
     p.add_argument('--dry-run',action='store_true')
     p.add_argument('--upgrade',action='store_true')
+    p.add_argument('--rebind',action='store_true')
     p.add_argument('--verify-pid',type=int)
     p.add_argument('--uninstall',action='store_true');p.add_argument('--state-dir')
     a=p.parse_args();workspace=Path(a.target).expanduser().resolve()
@@ -299,11 +300,20 @@ def main():
         for rel,content in [('runtime/hook_control_client.py',(ROOT/'soc_client.py').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
             plan['files'].append({'path':'.soc-hook/'+rel,'content':content,'expected_sha256':None})
         plan=learned_install.validate_plan(plan)
-    plan=merge_structured_patch(plan,workspace)
-    # Full file contents are present: absent files are a clean install, never an overwrite.
-    for item in plan['files']:
-        target=workspace/item['path']
-        if not target.exists():item['expected_sha256']=None
+    # Keep an unmerged copy. An upgrade/rebind first rolls the previous
+    # transaction back; structured files must then be merged against that
+    # restored baseline, not against the just-installed file that existed when
+    # this process started.
+    unmerged_plan=json.loads(json.dumps(plan))
+    def prepare_plan():
+        prepared=merge_structured_patch(json.loads(json.dumps(unmerged_plan)),workspace)
+        # Full file contents are present: absent files are a clean install,
+        # never an overwrite.
+        for item in prepared['files']:
+            target=workspace/item['path']
+            if not target.exists():item['expected_sha256']=None
+        return learned_install.validate_plan(prepared)
+    plan=prepare_plan()
     binding={'transport':'soc-direct-v1' if direct else 'asg-local','backend_url':a.backend_url,'agent_id':a.agent_id}
     receipt=state/'package-receipt.json'
     package_changed=False
@@ -311,19 +321,22 @@ def main():
         previous=json.loads(receipt.read_text())
         prior_binding=previous.get('binding',{'transport':'asg-local','backend_url':None,'agent_id':None})
         binding_changed=prior_binding != binding
-        if binding_changed and not a.upgrade:
+        content_changed=(previous.get('bundle_digest') != bundle['integrity']['digest']
+                         or previous.get('installer_revision') != installer_revision)
+        if a.rebind and content_changed:
+            raise ValueError('identity rebind requires the same verified package and installer revision')
+        if binding_changed and not (a.upgrade or a.rebind):
             raise ValueError('installed transport/identity differs; use explicit upgrade to rebind this verified package')
-        package_changed=(previous.get('bundle_digest') != bundle['integrity']['digest']
-                         or previous.get('installer_revision') != installer_revision
-                         or binding_changed)
+        package_changed=content_changed or binding_changed
         if package_changed:
-            if not a.upgrade:
+            if not (a.upgrade or (a.rebind and binding_changed and not content_changed)):
                 raise ValueError('another package is installed; uninstall it before changing recipes')
             # Explicit upgrade: roll the previous plan back first, then install
             # the newly selected package. Failures restore via the transaction
             # manifest; nothing is silently overwritten in place.
             if not a.dry_run:
                 learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=previous['plan_digest'])
+                plan=prepare_plan()
     if a.verify_pid:
         import psutil
         process=psutil.Process(a.verify_pid)
