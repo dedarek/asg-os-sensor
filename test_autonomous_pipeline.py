@@ -35,15 +35,24 @@ class PipelineTests(unittest.TestCase):
             pipeline.save('55:1','repair','',attempts=2,at=0)
             self.assertIsNone(pipeline.next_phase('55:1', exact=True))
 
-    def test_file_plan_uses_learned_scope_not_process_cwd(self):
-        # Arbitrary names/paths: no target-product branch is involved.
-        recipe = {'hook': {'method': 'file_plan', 'workspace': '/tmp/arbitrary-agent/config'}}
-        plan = onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': '/'},
-                                       'miss', None, recipe, 'goose')
-        self.assertEqual(plan['workspace'], '/tmp/arbitrary-agent/config')
-        recipe['hook'].pop('workspace')
-        self.assertIsNone(onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': '/tmp'},
-                          'miss', None, recipe, 'goose')['workspace'])
+    def test_file_plan_requires_live_evidence_for_learned_scope(self):
+        # Arbitrary names/paths: no target-product branch is involved.  The
+        # historical scope is accepted only when the live process is actually
+        # rooted there; otherwise an old instance cannot redirect installation.
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / 'arbitrary-agent' / 'config'
+            cwd = workspace / 'session'
+            cwd.mkdir(parents=True)
+            recipe = {'hook': {'method': 'file_plan', 'workspace': str(workspace)}}
+            plan = onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': str(cwd)},
+                                           'miss', None, recipe, 'goose')
+            self.assertEqual(plan['workspace'], str(workspace))
+            plan = onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': '/'},
+                                           'miss', None, recipe, 'goose')
+            self.assertIsNone(plan['workspace'])
+            recipe['hook'].pop('workspace')
+            self.assertIsNone(onboarding._common_plan({'pid': 55, 'create_time': 1., 'cwd': '/tmp'},
+                              'miss', None, recipe, 'goose')['workspace'])
 
     def test_infrastructure_does_not_install_agent_hook(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}):
