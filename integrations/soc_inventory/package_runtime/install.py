@@ -244,13 +244,19 @@ def pin_loader_revision(plan):
                 if not isinstance(entry,dict) or entry.get('id')!='asg-observer':continue
                 name=entry.get('name')
                 if not isinstance(name,str):continue
-                module=name[2:] if name.startswith('./') else name
+                bare=name.split('?',1)[0]
+                module=bare[2:] if bare.startswith('./') else bare
                 source=files.get(module)
                 if source is None:continue
                 config=entry.get('config')
                 if config is None:config={};entry['config']=config
                 if not isinstance(config,dict):raise ValueError('asg-observer loader config must be an object')
-                config['asg_package_revision']=hashlib.sha256(source['content'].encode()).hexdigest()
+                revision=hashlib.sha256(source['content'].encode()).hexdigest()
+                config['asg_package_revision']=revision
+                # ESM caches by URL. A config-only reload would execute the old
+                # module object again, so use a content-addressed query string
+                # to make the loader import the bytes this package verified.
+                entry['name']=bare+'?asg_revision='+revision
                 changed=True
         if changed:item['content']=yaml.safe_dump(value,sort_keys=False,allow_unicode=True)
     return plan
@@ -309,7 +315,7 @@ def merge_structured_patch(plan, workspace):
             prior=by_id.get(entry['id'])
             if prior is not None and prior!=entry:
                 if (entry['id']=='asg-observer'
-                        and prior.get('name')==entry.get('name')):
+                        and str(prior.get('name')).split('?',1)[0]==str(entry.get('name')).split('?',1)[0]):
                     prior.clear();prior.update(entry);migrated=True
                 else:
                     raise ValueError('conflicting YAML patch id: '+entry['id'])

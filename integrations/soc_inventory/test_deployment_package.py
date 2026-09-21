@@ -28,7 +28,9 @@ class DeploymentPackageTests(unittest.TestCase):
             entries=[entry for group in yaml.safe_load(patch['content']) for entry in group['insert']]
             by_id={entry['id']:entry for entry in entries}
             self.assertEqual(by_id['keep-me']['name'],'./keep.mjs')
-            self.assertEqual(by_id['asg-observer']['config']['asg_package_revision'],hashlib.sha256(b'new hook').hexdigest())
+            revision=hashlib.sha256(b'new hook').hexdigest()
+            self.assertEqual(by_id['asg-observer']['config']['asg_package_revision'],revision)
+            self.assertEqual(by_id['asg-observer']['name'],'./plugins/asg-observer.mjs?asg_revision='+revision)
             self.assertEqual(patch['expected_sha256'],hashlib.sha256(target.read_bytes()).hexdigest())
 
     def test_existing_profile_chooses_rebind_or_upgrade_from_exact_package(self):
