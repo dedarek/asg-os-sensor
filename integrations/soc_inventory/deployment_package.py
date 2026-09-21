@@ -31,7 +31,7 @@ def supports_direct_events(bundle):
         denied_ack = bool(re.search(r"outcome\s*:\s*['\"]blocked['\"]", content))
         learned_control_client = (client_calls and 'tools/pre-execute' in content
                                   and bool(re.search(r"kind\s*:\s*['\"]deny['\"]", content))
-                                  and 'hook_control_client.py' in content and denied_ack)
+                                  and 'hook_control_client' in content and denied_ack)
         if ('ASG_SOC_DIRECT_PROTOCOL = True' in content
                 or 'runControlClient("event"' in content
                 or learned_control_client
@@ -49,7 +49,7 @@ def build(bundle):
     if portability['machine_paths'] or portability['target_env_paths']:
         raise ValueError('installation package contains unresolved machine paths')
     if not supports_direct_events(bundle):raise ValueError('installation package requires direct normalized event delivery')
-    files={'transport.json':canonical({'transport':'soc-direct-v1','control':'before_tool_call','events':'user_model_tool_session','requires_asg_service':False,'installer_revision':installer_revision()}), 'soc_client.py':(Path(__file__).parent/'package_runtime/soc_client.py').read_bytes(),'recipe-bundle.json':canonical(bundle),'install.py':(Path(__file__).parent/'package_runtime/install.py').read_bytes(),
+    files={'transport.json':canonical({'transport':'soc-direct-v1','control':'before_tool_call','events':'user_model_tool_session','requires_asg_service':False,'installer_revision':installer_revision()}), 'soc_client.mjs':(Path(__file__).parent/'package_runtime/soc_client.mjs').read_bytes(),'recipe-bundle.json':canonical(bundle),'install.py':(Path(__file__).parent/'package_runtime/install.py').read_bytes(),
            'runtime/__init__.py':b'',
            'install/install.sh':b'#!/usr/bin/env sh\nset -eu\nexec python3 "$(dirname "$0")/../install.py" "$@"\n',
            'README.txt':b'ASG learned file-plan installation package. Install: bash install.sh --target WORKSPACE --exe AGENT_EXECUTABLE --platform TYPE --backend-url SOC_URL --agent-id ID --token-file KEY_FILE. The installed control client calls SOC directly and does not need a running ASG service. Use --dry-run to validate and uninstall.sh with the same arguments to roll back. Target-native approval may still be required. Installation is not activation proof.\n',
@@ -66,5 +66,5 @@ def build(bundle):
     return out.getvalue()
 
 def installer_revision():
-    paths=[Path(__file__),Path(__file__).parent/'package_runtime/install.py',Path(__file__).parent/'package_runtime/soc_client.py']+[ROOT/'runtime'/name for name in ('learned_install.py','file_lock.py','recipe_bundle.py')]
+    paths=[Path(__file__),Path(__file__).parent/'package_runtime/install.py',Path(__file__).parent/'package_runtime/soc_client.mjs']+[ROOT/'runtime'/name for name in ('learned_install.py','file_lock.py','recipe_bundle.py')]
     return hashlib.sha256(b''.join(p.read_bytes() for p in paths)).hexdigest()

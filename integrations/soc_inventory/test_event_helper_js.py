@@ -46,6 +46,13 @@ class EventHelperRuntimeTests(unittest.TestCase):
             done = subprocess.run([self.node, "--check", str(script)], capture_output=True, text=True, timeout=30)
             self.assertEqual(done.returncode, 0, done.stderr)
 
+    def test_standalone_control_client_compiles_under_node(self):
+        if not self.node:
+            self.skipTest("node runtime unavailable")
+        source=Path(installer.__file__).with_name('soc_client.mjs')
+        done=subprocess.run([self.node,'--check',str(source)],capture_output=True,text=True,timeout=30)
+        self.assertEqual(done.returncode,0,done.stderr)
+
     def test_outbox_persists_dedupes_and_drains(self):
         if not self.node:
             self.skipTest("node runtime unavailable")

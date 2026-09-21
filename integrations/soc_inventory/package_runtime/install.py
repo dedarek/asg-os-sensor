@@ -127,18 +127,17 @@ def wire_soc_control_client(content, asg_root):
     """Point a learned subprocess client at the package-owned SOC config."""
     calls=all(re.search(r"client\s*\(\s*['\"]"+action+r"['\"]",content)
               for action in ('event','decision','ack'))
-    if not calls or 'hook_control_client.py' not in content:return content
-    python=json.dumps(sys.executable)
-    client=json.dumps(str(Path(asg_root)/'runtime/hook_control_client.py'))
+    if not calls or 'hook_control_client' not in content:return content
+    client=json.dumps(str(Path(asg_root)/'runtime/hook_control_client.mjs'))
     config=json.dumps(str(Path(asg_root)/'artifacts/autonomous-service/hook-control-client.json'))
-    content=re.sub(r'(["\'])[^"\'\n]*hook_control_client\.py\1',client,content)
+    content=re.sub(r'(["\'])[^"\'\n]*hook_control_client\.(?:py|mjs)\1',client,content)
     content=re.sub(r'(["\'])[^"\'\n]*hook-control-client\.json\1',config,content)
     # The common learned client is a three-item argv array. Once both ASG-owned
     # suffixes are present, replace its interpreter too; never retain the
     # learning machine's /Library, venv, or Windows Python path.
     pattern=(r'(\[\s*)["\'][^"\'\n]+["\'](\s*,\s*'
              +re.escape(client)+r'\s*,\s*'+re.escape(config)+r'\s*,?\s*\])')
-    return re.sub(pattern,lambda match:match.group(1)+python+match.group(2),content)
+    return re.sub(pattern,lambda match:match.group(1)+'process.execPath'+match.group(2),content)
 
 def wire_model_request_payload(content):
     """Capture the request object exposed by a learned agent/request hook.
@@ -297,7 +296,7 @@ def main():
             item['content']=wire_soc_control_client(item['content'],asg_root)
             item['content']=wire_model_request_payload(item['content'])
         cfg={'backend_url':a.backend_url,'agent_id':a.agent_id,'agent_name':a.agent_name,'platform':a.platform,'instance_id':a.instance_id or a.agent_id,'token_file':str(asg_root/'agent.key')}
-        for rel,content in [('runtime/hook_control_client.py',(ROOT/'soc_client.py').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
+        for rel,content in [('runtime/hook_control_client.mjs',(ROOT/'soc_client.mjs').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
             plan['files'].append({'path':'.soc-hook/'+rel,'content':content,'expected_sha256':None})
         plan=learned_install.validate_plan(plan)
     # Keep an unmerged copy. An upgrade/rebind first rolls the previous
