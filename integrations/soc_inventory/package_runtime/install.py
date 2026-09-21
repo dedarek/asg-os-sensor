@@ -296,7 +296,13 @@ def main():
             item['content']=wire_soc_control_client(item['content'],asg_root)
             item['content']=wire_model_request_payload(item['content'])
         cfg={'backend_url':a.backend_url,'agent_id':a.agent_id,'agent_name':a.agent_name,'platform':a.platform,'instance_id':a.instance_id or a.agent_id,'token_file':str(asg_root/'agent.key')}
-        for rel,content in [('runtime/hook_control_client.mjs',(ROOT/'soc_client.mjs').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
+        for rel,content in [('runtime/hook_control_client.mjs',(ROOT/'soc_client.mjs').read_text()),
+                            # Preserve the previously managed Python file during
+                            # migration so the transactional upgrader never
+                            # silently drops a file it owns. New Hooks do not
+                            # reference it.
+                            ('runtime/hook_control_client.py',(ROOT/'soc_client.py').read_text()),
+                            ('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
             plan['files'].append({'path':'.soc-hook/'+rel,'content':content,'expected_sha256':None})
         plan=learned_install.validate_plan(plan)
     # Keep an unmerged copy. An upgrade/rebind first rolls the previous
@@ -327,6 +333,7 @@ def main():
     binding={'transport':'soc-direct-v1' if direct else 'asg-local','backend_url':a.backend_url,'agent_id':a.agent_id}
     receipt=state/'package-receipt.json'
     package_changed=False
+    activation_affecting_change=False
     reuse_existing=False
     if receipt.exists() and not a.uninstall:
         previous=json.loads(receipt.read_text())
@@ -355,6 +362,8 @@ def main():
             # newest recipe's original preconditions. The new transaction
             # backs up this exact prior version and remains reversible.
             prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
+            desired_files={item['path']:item['content'] for item in plan['files']}
+            activation_affecting_change=binding_changed or prior_files!=desired_files
             desired_paths={item['path'] for item in plan['files']}
             removed=set(prior_files)-desired_paths
             if removed:
@@ -409,7 +418,18 @@ def main():
             workspace.mkdir(parents=True,exist_ok=True)
             state.mkdir(parents=True,exist_ok=True)
             result=learned_install.install(plan,workspace,state,approved_workspace=workspace,approved_digest=learned_install.plan_digest(plan))
-            installed_at=(time.time() if package_changed else previous.get('installed_at',time.time())) if receipt.exists() else time.time()
+            if receipt.exists() and package_changed and not activation_affecting_change:
+                # Installer-only releases do not require the Agent to reload an
+                # unchanged Hook. A callback from this same process remains
+                # valid; this also repairs receipts written by older releases
+                # that reset installed_at for installer-only changes.
+                try:
+                    process_started=float(str(a.instance_id).split(':',1)[1])
+                except (ValueError,AttributeError,IndexError):
+                    process_started=previous.get('installed_at',time.time())
+                installed_at=min(previous.get('installed_at',time.time()),process_started)
+            else:
+                installed_at=(time.time() if package_changed else previous.get('installed_at',time.time())) if receipt.exists() else time.time()
             chain=(list(previous.get('rollback_chain',[]))+[previous['plan_digest']]
                    if receipt.exists() and package_changed else
                    list(previous.get('rollback_chain',[])) if receipt.exists() else [])
