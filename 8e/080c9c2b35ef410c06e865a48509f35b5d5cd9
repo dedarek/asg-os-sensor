@@ -1,0 +1,24 @@
+runtime/protocol_fastpath.py
+  s_7a5b8096b41d01::t_aa3f186f8bd839 288-304
+  s_7a5b8096b41d01::t_987be37aa9c327 10,23-26,41-49,72-79,101-103,125
+  s_7a5b8096b41d01::t_4f7ecd4ce20515 132-168,170-213
+  s_7a5b8096b41d01::t_f0c72ebb4eb45c 91-98,169
+test_created_hook_install.py
+  s_7a5b8096b41d01::t_cac763e51d1e13 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8e080c9c2b35ef410c06e865a48509f35b5d5cd9",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
