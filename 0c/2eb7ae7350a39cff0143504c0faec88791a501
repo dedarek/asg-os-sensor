@@ -1,0 +1,19 @@
+test_autonomous_pipeline.py
+  s_7a5b8096b41d01::t_d9aa8404ce00cc 38-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0c2eb7ae7350a39cff0143504c0faec88791a501",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
