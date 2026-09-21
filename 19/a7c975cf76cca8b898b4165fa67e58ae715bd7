@@ -1,0 +1,21 @@
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_bc62c0a1f6dbc2 160-182,282-284,289,295
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_bc62c0a1f6dbc2 13,17-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "19a7c975cf76cca8b898b4165fa67e58ae715bd7",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
