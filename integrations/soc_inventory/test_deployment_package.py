@@ -258,4 +258,28 @@ ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
             self.assertNotEqual(bad.returncode,0)
             self.assertIn('entrypoint build mismatch',bad.stderr)
 
+    def test_verified_package_can_upgrade_twice_without_restoring_ancient_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);workspace=root/'workspace';exe=Path(sys.executable).resolve()
+            token=root/'agent.key';token.write_text('test-key')
+            def make_package(marker):
+                pkg=root/('package-'+marker);pkg.mkdir()
+                hook='''import { appendFileSync } from "node:fs";\nconst CONTROL_CONFIG = "placeholder";\nconst LOG_PATH = "events.jsonl";\nfunction appendLine(path, text) { appendFileSync(path, text + "\\n"); }\nfunction redact(value, depth) { return value; }\nfunction record(event, meta) { const row = {event, meta, marker: "MARKER"}; appendLine(LOG_PATH, JSON.stringify(row)); }\n'''.replace('MARKER',marker)
+                bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'upgrade'},
+                        'recipe':{'install_plan':{'version':1,'files':[{'path':'.hooks/callback.js','content':hook,'expected_sha256':None}]}},
+                        'constraints':{'compatibility':{'platform':platform.system(),'architecture':platform.machine(),'runtime':'native','executable':hashlib.sha256(exe.read_bytes()).hexdigest()}},'verification':{}}
+                bundle['integrity']={'algorithm':'sha256','digest':digest(bundle)}
+                with tarfile.open(fileobj=io.BytesIO(build(bundle))) as tar:tar.extractall(pkg)
+                return pkg
+            packages=[make_package(x) for x in ('one','two','three')]
+            base=['--target',str(workspace),'--exe',str(exe),'--backend-url','http://127.0.0.1:8095','--agent-id','upgrade-agent','--platform','upgrade-agent','--token-file',str(token)]
+            def run(pkg,extra=()):return subprocess.run([sys.executable,str(pkg/'install.py')]+base+list(extra),capture_output=True,text=True)
+            self.assertEqual(run(packages[0]).returncode,0)
+            self.assertEqual(run(packages[1],['--upgrade']).returncode,0)
+            third=run(packages[2],['--upgrade'])
+            self.assertEqual(third.returncode,0,third.stderr)
+            self.assertIn('three',(workspace/'.hooks/callback.js').read_text())
+            (workspace/'.hooks/callback.js').write_text('user edit')
+            self.assertNotEqual(run(packages[1],['--upgrade']).returncode,0)
+
 if __name__=='__main__':unittest.main()

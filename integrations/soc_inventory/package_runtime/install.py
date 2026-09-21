@@ -350,12 +350,25 @@ def main():
         if package_changed:
             if not (a.upgrade or (a.rebind and binding_changed and not content_changed)):
                 raise ValueError('another package is installed; uninstall it before changing recipes')
-            # Explicit upgrade: roll the previous plan back first, then install
-            # the newly selected package. Failures restore via the transaction
-            # manifest; nothing is silently overwritten in place.
-            if not a.dry_run:
-                learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=previous['plan_digest'])
-                plan=prepare_plan()
+            # Upgrade in place only from bytes owned by the prior verified
+            # receipt. Rolling back first is incorrect after multiple releases:
+            # it restores an older package whose bytes need not satisfy the
+            # newest recipe's original preconditions. The new transaction
+            # backs up this exact prior version and remains reversible.
+            prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
+            desired_paths={item['path'] for item in plan['files']}
+            removed=set(prior_files)-desired_paths
+            if removed:
+                raise ValueError('verified package upgrade removes managed files; uninstall is required first')
+            for name,content in prior_files.items():
+                target=workspace/name
+                if (not target.is_file()
+                        or hashlib.sha256(target.read_bytes()).hexdigest()!=hashlib.sha256(content.encode()).hexdigest()):
+                    raise ValueError('managed file changed; refusing package upgrade: '+name)
+            for item in plan['files']:
+                if item['path'] in prior_files:
+                    item['expected_sha256']=hashlib.sha256((workspace/item['path']).read_bytes()).hexdigest()
+            plan=learned_install.validate_plan(plan)
     if a.verify_pid:
         import psutil
         process=psutil.Process(a.verify_pid)
@@ -381,7 +394,11 @@ def main():
         (state/'activation-receipt.json').write_text(json.dumps(result))
     elif a.uninstall:
         previous=json.loads(receipt.read_text())
-        result=learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=previous['plan_digest'])
+        rolled=[]
+        for approved in [previous['plan_digest']]+list(reversed(previous.get('rollback_chain',[]))):
+            step=learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=approved)
+            rolled.append(step)
+        result={'status':'rolled_back','transactions':rolled}
     else:
         if reuse_existing:
             result={'status':'already_installed','plan_digest':previous['plan_digest'],
@@ -394,7 +411,10 @@ def main():
             state.mkdir(parents=True,exist_ok=True)
             result=learned_install.install(plan,workspace,state,approved_workspace=workspace,approved_digest=learned_install.plan_digest(plan))
             installed_at=(time.time() if package_changed else previous.get('installed_at',time.time())) if receipt.exists() else time.time()
-            receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at}));receipt.chmod(0o600)
+            chain=(list(previous.get('rollback_chain',[]))+[previous['plan_digest']]
+                   if receipt.exists() and package_changed else
+                   list(previous.get('rollback_chain',[])) if receipt.exists() else [])
+            receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at,'rollback_chain':chain}));receipt.chmod(0o600)
     print(json.dumps(result))
 if __name__=='__main__':
     try:main()
