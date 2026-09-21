@@ -1,0 +1,58 @@
+runtime/matcher.py
+  s_7a5b8096b41d01::t_4391efebe66fff 220-233,268,277-279
+  s_7a5b8096b41d01::t_b3872c77cc8124 265
+  s_7a5b8096b41d01::t_10b95076f87e54 266-267,269-274
+runtime/onboarding.py
+  s_7a5b8096b41d01::t_4391efebe66fff 358-362,365-366
+test_reuse_exact_fileplan.py
+  s_7a5b8096b41d01::t_5199456b0cd5d1 155-172
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_aede0cfe0044f4 13,39-57,60-67
+  s_7a5b8096b41d01::t_263bcfacfab8ca 58-59
+  s_7a5b8096b41d01::t_f240c2d578e9ec 14,17-38
+runtime/fingerprints.json
+  s_7a5b8096b41d01::t_0c536e73c7bb3b 491,608,817,963,2570,2739-4942
+integrations/soc_inventory/test_discovery.py
+  s_7a5b8096b41d01::t_b799c468ef3c15 3,6-8
+integrations/soc_inventory/test_channel_and_budget.py
+  s_7a5b8096b41d01::t_f27b137ee57ed9 80-96
+integrations/soc_inventory/test_inventory_discovery_learning.py
+  s_7a5b8096b41d01::t_5199456b0cd5d1 10,74-91
+  s_7a5b8096b41d01::t_908651e7777869 92
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_60de1fa92dbb0c 11,269-285
+  s_7a5b8096b41d01::t_4391efebe66fff 150-151
+  s_7a5b8096b41d01::t_aede0cfe0044f4 170-175
+test_goose_stage1.py
+  s_7a5b8096b41d01::t_98c5238c246058 223-224
+integrations/soc_inventory/runtime_bridge.py
+  s_7a5b8096b41d01::t_f27b137ee57ed9 81-85,88-103
+  s_7a5b8096b41d01::t_baef12bb482155 86-87
+integrations/soc_inventory/discovery.py
+  s_7a5b8096b41d01::t_b799c468ef3c15 10,23-46,116
+  s_7a5b8096b41d01::t_b3872c77cc8124 12
+  s_7a5b8096b41d01::t_4391efebe66fff 119-122,125,139-169
+  s_7a5b8096b41d01::t_c1e218db5b0863 170
+integrations/soc_inventory/deployment_package.py
+  s_7a5b8096b41d01::t_aede0cfe0044f4 13-24,45
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_8ae0bf3b7a73af 166-169
+  s_7a5b8096b41d01::t_f240c2d578e9ec 135-164,178-179,237
+  s_7a5b8096b41d01::t_a4b0c4c0c2b4ed 165,170-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e2803f616e41fd5750c5a1ca7f6463bb720365c7",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
