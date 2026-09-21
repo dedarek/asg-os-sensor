@@ -1,0 +1,21 @@
+integrations/soc_inventory/test_event_helper_js.py
+  s_7a5b8096b41d01::t_d65583c6f9234f 36-40
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_d65583c6f9234f 28-30,368-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "66cbf3f79671086fb3ee92aa556aeac4233dd3e3",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
