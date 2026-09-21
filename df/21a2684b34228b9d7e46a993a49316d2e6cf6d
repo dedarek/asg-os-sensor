@@ -1,0 +1,27 @@
+test_model_settings.py
+  s_7a5b8096b41d01::t_245dfced374676 26-36
+test_integration_protocol.py
+  s_7a5b8096b41d01::t_1e1e937c0ac567 31,37-42
+runtime/model_settings.py
+  s_7a5b8096b41d01::t_245dfced374676 16,31,33-35,62-70
+runtime/integration_protocol.py
+  s_7a5b8096b41d01::t_1e1e937c0ac567 135,138-144,146,148-149
+web/dashboard.html
+  s_7a5b8096b41d01::t_245dfced374676 337-343,1395,1414-1416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "df21a2684b34228b9d7e46a993a49316d2e6cf6d",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
