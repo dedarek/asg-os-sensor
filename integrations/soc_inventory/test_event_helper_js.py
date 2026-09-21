@@ -33,6 +33,11 @@ class EventHelperSourceTests(unittest.TestCase):
         self.assertNotIn("/" + chr(92) + chr(92) + "/$/", helper)
         self.assertIn("/" + chr(92) + "/$/", helper)
 
+    def test_identity_binding_is_reloaded_for_every_event(self):
+        helper=installer._EVENT_HELPER
+        self.assertNotIn('if (socEventConfig) return socEventConfig',helper)
+        self.assertIn('JSON.parse(readFileSync(CONTROL_CONFIG',helper)
+
 class EventHelperRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.node = shutil.which("node")

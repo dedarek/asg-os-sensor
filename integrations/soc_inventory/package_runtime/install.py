@@ -25,7 +25,9 @@ function socOutboxPath() { return join(dirname(LOG_PATH), "soc-outbox.jsonl"); }
 const SOC_OUTBOX_LIMIT = 20000;
 
 function loadSocEventConfig() {
-  if (socEventConfig) return socEventConfig;
+  // Identity may be rebound after the Agent starts. Read the tiny local
+  // binding on every delivery so the process never keeps reporting to the
+  // previous instance merely because hook.loaded happened first.
   socEventConfig = JSON.parse(readFileSync(CONTROL_CONFIG, "utf8"));
   socEventToken = readFileSync(socEventConfig.token_file, "utf8").trim();
   return socEventConfig;
@@ -363,7 +365,10 @@ def main():
             # backs up this exact prior version and remains reversible.
             prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
             desired_files={item['path']:item['content'] for item in plan['files']}
-            activation_affecting_change=binding_changed or prior_files!=desired_files
+            transport_only={'.soc-hook/artifacts/autonomous-service/hook-control-client.json','.soc-hook/agent.key'}
+            activation_affecting_change=any(
+                prior_files.get(name)!=content for name,content in desired_files.items()
+                if name not in transport_only)
             desired_paths={item['path'] for item in plan['files']}
             removed=set(prior_files)-desired_paths
             if removed:
