@@ -1,0 +1,19 @@
+integrations/soc_inventory/discovery.py
+  s_7a5b8096b41d01::t_553bf3aa4f520d 59-66,275-285,287-290,309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4ac7abfec837179de7476ffb7d60e4ee2eb4b951",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
