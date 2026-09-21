@@ -739,13 +739,17 @@ def hook_install_records(home):
         except json.JSONDecodeError:
             continue
         prior = load_json_str(onboarding.get(agent.get('asg_instance_id')))
-        if not prior or prior.get('status') not in ('installed', 'already_installed'):
+        if not prior or prior.get('status') not in (
+                'installed', 'already_installed', 'installed_waiting_activation',
+                'activation_verified'):
             continue
         if prior.get('transport') != 'soc-direct-v1':
             records.append({'instance': agent.get('asg_instance_id'), 'kind': 'native',
                             'status': prior.get('status')})
             continue
-        workspace = agent.get('workspace')
+        # The Hook may be installed in a profile/config root different from the
+        # process cwd. Doctor must resolve the same target the installer used.
+        workspace = agent.get('hook_workspace') or agent.get('workspace')
         if not workspace:
             continue
         state = Path(workspace).expanduser().resolve().parent / ('.asg-install-' + hashlib.sha256(
@@ -886,8 +890,14 @@ def cmd_doctor(home, args):
                     mismatch.append(change['path'])
             if mismatch:
                 drifted.append(item['instance'] + '：文件与收据不一致 ' + ', '.join(mismatch[:3]))
-            elif load_json(Path(item['state_dir']) / 'activation-receipt.json'):
-                activated += 1
+            else:
+                activation = load_json(Path(item['state_dir']) / 'activation-receipt.json')
+                if activation:
+                    expected_instance = '%s:%s' % (activation.get('pid'), activation.get('create_time'))
+                    if (expected_instance == item['instance']
+                            and activation.get('package_digest') == receipt.get('bundle_digest')
+                            and activation.get('plan_digest') == receipt.get('plan_digest')):
+                        activated += 1
         check('Hook 安装', not drifted,
               '已核对 %d 项，文件与记录一致（其中 %d 项有真实回调凭据）' % (len(records), activated)
               if not drifted else '；'.join(drifted[:5]))
