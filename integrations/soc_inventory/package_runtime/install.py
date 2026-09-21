@@ -506,6 +506,24 @@ def main():
             workspace.mkdir(parents=True,exist_ok=True)
             state.mkdir(parents=True,exist_ok=True)
             result=learned_install.install(plan,workspace,state,approved_workspace=workspace,approved_digest=learned_install.plan_digest(plan))
+            # A Hook module can change while its loader patch stays byte-for-byte
+            # identical. Live-reload runtimes watch the patch path, not every
+            # imported module, so signal the already verified patch after an
+            # upgrade. The atomic same-byte replacement changes no user config,
+            # remains covered by the transaction digest, and gives the target a
+            # deterministic opportunity to reload before verification.
+            reload_signaled=[]
+            if receipt.exists() and package_changed:
+                import yaml
+                for item in plan['files']:
+                    path=workspace/item['path']
+                    if path.suffix.lower() not in ('.yaml','.yml') or not path.is_file():continue
+                    try:parsed=yaml.safe_load(item['content'])
+                    except yaml.YAMLError:continue
+                    if not (isinstance(parsed,list) and any(isinstance(group,dict) and 'insert' in group for group in parsed)):continue
+                    learned_install._atomic(path,path.read_bytes())
+                    reload_signaled.append(item['path'])
+            if reload_signaled:result['activation_reload_signaled']=reload_signaled
             if receipt.exists() and package_changed and not activation_affecting_change:
                 # Installer-only releases do not require the Agent to reload an
                 # unchanged Hook. A callback from this same process remains
