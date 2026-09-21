@@ -71,8 +71,15 @@ async function exchange (kind, data) {
   const allow = [0, '0', 'allow', 'audit', 'inject'].includes(value)
   const deny = [3, 8, 9, '3', '8', '9', 'block', 'confirm'].includes(value)
   if (!allow && !deny) throw new Error('SOC returned no recognized decision')
-  return { request_id: raw.request_id || randomUUID(), decision: allow ? 'allow' : 'deny',
-    reason: raw.message || raw.ret_msg || 'SOC policy', enforcement_verified: false }
+  const policy = config.policy || { default: 'allow', rules: [] }
+  const rule = Array.isArray(policy.rules) ? policy.rules.find((item) => item && item.tool === data.tool) : null
+  const lastKnown = rule?.decision || policy.default || 'allow'
+  // A cached SOC policy may tighten a live allow, never weaken a live deny.
+  // "ask" is fail-closed because this standalone Hook has no trusted prompt
+  // channel after the collector is removed.
+  const policyDenies = lastKnown === 'deny' || lastKnown === 'ask'
+  return { request_id: raw.request_id || randomUUID(), decision: (deny || policyDenies) ? 'deny' : 'allow',
+    reason: policyDenies ? 'SOC distributed policy' : (raw.message || raw.ret_msg || 'SOC policy'), enforcement_verified: false }
 }
 
 try {

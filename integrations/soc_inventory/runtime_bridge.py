@@ -4,7 +4,9 @@ Commands are fixed operations, pinned to an exact instance. A crash after dispat
 is uncertain and is not retried automatically (installation must not run twice).
 """
 import json
+import os
 import time
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, build_opener, ProxyHandler
 from .protocol import canonical
@@ -49,6 +51,21 @@ class RuntimeBridge:
         endpoint.db.executescript('CREATE TABLE IF NOT EXISTS runtime_commands(id TEXT PRIMARY KEY,status TEXT,result TEXT); CREATE TABLE IF NOT EXISTS runtime_revision(agent TEXT PRIMARY KEY,revision INTEGER);')
     def local(self,path,body=None):
         with build_opener(ProxyHandler({})).open(Request(self.base+path,data=canonical(body) if body is not None else None,headers={'Content-Type':'application/json'}),timeout=15) as r:return json.load(r)
+    def install_direct_policy(self,agent,policy):
+        """Persist a SOC-issued policy beside an installed direct Hook.
+
+        The Hook still asks SOC for every decision. This bounded last-known
+        policy can only make that answer stricter, and remains available if the
+        collector is later removed. The client reloads this file per call.
+        """
+        workspace=agent.get('hook_workspace')
+        if not workspace:return False
+        path=Path(workspace)/'.soc-hook/artifacts/autonomous-service/hook-control-client.json'
+        if not path.is_file():return False
+        config=json.loads(path.read_text());config['policy']=policy
+        temporary=path.with_name(path.name+'.tmp')
+        temporary.write_text(json.dumps(config));temporary.chmod(0o600);os.replace(temporary,path)
+        return True
     def run_once(self):
         state=self.local('/api/state')
         controls=self.local('/api/hook-control/status')
@@ -142,6 +159,8 @@ class RuntimeBridge:
                                 else:
                                     if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings'):path+='?'+urlencode({'pid':target['pid']})
                                     result=self.local(path,arguments)
+                                    if command['operation']=='control_policy':
+                                        result={**result,'direct_hook_updated':self.install_direct_policy(agent,result)}
                                 if command['operation']=='collect':
                                     with self.endpoint.db:
                                         self.endpoint.db.execute('CREATE TABLE IF NOT EXISTS collection_requests(id INTEGER PRIMARY KEY AUTOINCREMENT)')
