@@ -1,0 +1,30 @@
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_ffeae352af9174 73,96-98,100-109,184-193,195-196,234-244
+integrations/soc_inventory/test_soc_direct.py
+  s_7a5b8096b41d01::t_a07b136be8e8df 36-65
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_68d950fa5da5cb 129,153-162
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_a07b136be8e8df 51-75
+  s_7a5b8096b41d01::t_915c9dd58da8eb 76
+integrations/soc_inventory/test_channel_and_budget.py
+  s_7a5b8096b41d01::t_a07b136be8e8df 141-158
+integrations/soc_inventory/package_runtime/soc_client.py
+  s_7a5b8096b41d01::t_82cab6fa3dfeca 6-7,20-21,23-35,53-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e005d51c777b3b02c9cd300f2c476a3ba918bbec",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
