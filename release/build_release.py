@@ -155,6 +155,32 @@ README = """# ASG 终端服务交付包
 数据目录: macOS ~/Library/Application Support/ASG, Linux ~/.local/share/asg。
 故障处理先看 ./asgctl doctor 的输出与数据目录 logs/。凭据只保存在 config/ 下,
 请勿提交或粘贴凭据内容。
+
+## 本包对应的构建
+
+版本与提交见包内 release.json（asg_version / git_commit / 每个文件 SHA-256）。
+安装时会校验摘要；升级/回滚/健康检查行为以随包验收报告为准
+（仓库 docs/stage1/TERMINAL_LIFECYCLE_ACCEPTANCE_20260921.md 与
+docs/stage1/evidence/ 下按包摘要命名的报告）。
+
+## 已支持范围（本 PoC 承诺）
+
+- macOS 与 Linux 用户级服务；Windows 不在本轮范围。
+- 自动发现机器上的 Agent 进程（含进程/包/配置/网络线索），区分 Agent、
+  模型网关、宿主与其他类别。
+- 四类已知 Agent（Codex/OpenCode/OpenClaw/Hermes）按 SOC 发布包确定性安装
+  （无模型调用）；兼容新实例复用已验证配方，构建或安装文件变化时拒绝复用
+  并转入调查。
+- Hook 事件直报 SOC、断连本地缓冲补报（容量 2000、事件 ID 幂等）、
+  严格模式决策超时阻断。
+
+## 已知限制
+
+- 目标应用原生的 Hook 信任审批（如桌面 Codex /hooks）只能由用户本人在目标
+  应用内完成，本服务不代批；需要时会明确提示而不是静默重试。
+- 未列入支持清单的陌生 Agent：能发现、调查并生成候选配方，但安装接通需要
+  该配方的独立验证完成。
+- 内容安全扫描（Guardian）与跨机器配方分发依赖外部平台，未随本包交付。
 """
 
 
