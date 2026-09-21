@@ -227,6 +227,34 @@ const publishModelRequest = (options) => {
     if tools_anchor not in content:return content
     return content.replace(tools_anchor,model_listener+tools_anchor,1)
 
+def pin_loader_revision(plan):
+    """Bind an ASG loader entry to the transformed Hook module digest."""
+    try:import yaml
+    except ImportError:return plan
+    files={item['path']:item for item in plan['files']}
+    for item in plan['files']:
+        if not item['path'].lower().endswith(('.yaml','.yml')):continue
+        try:value=yaml.safe_load(item['content'])
+        except yaml.YAMLError:continue
+        if not isinstance(value,list):continue
+        changed=False
+        for group in value:
+            if not isinstance(group,dict) or not isinstance(group.get('insert'),list):continue
+            for entry in group['insert']:
+                if not isinstance(entry,dict) or entry.get('id')!='asg-observer':continue
+                name=entry.get('name')
+                if not isinstance(name,str):continue
+                module=name[2:] if name.startswith('./') else name
+                source=files.get(module)
+                if source is None:continue
+                config=entry.get('config')
+                if config is None:config={};entry['config']=config
+                if not isinstance(config,dict):raise ValueError('asg-observer loader config must be an object')
+                config['asg_package_revision']=hashlib.sha256(source['content'].encode()).hexdigest()
+                changed=True
+        if changed:item['content']=yaml.safe_dump(value,sort_keys=False,allow_unicode=True)
+    return plan
+
 def merge_structured_patch(plan, workspace):
     """Preserve unrelated YAML patch entries on a reused profile.
 
@@ -246,8 +274,8 @@ def merge_structured_patch(plan, workspace):
         if path.suffix.lower() not in ('.yaml','.yml') or not path.is_file():continue
         try:
             desired=yaml.safe_load(item['content'])
-            current_text=path.read_text()
-            current=yaml.safe_load(current_text)
+            original_text=path.read_text()
+            current=yaml.safe_load(original_text)
         except (OSError,UnicodeError,yaml.YAMLError):continue
         def insertions(value):
             if not isinstance(value,list) or not value:return None
@@ -275,15 +303,19 @@ def merge_structured_patch(plan, workspace):
                         and 'asg-runtime-observer' in entry.get('name','')
                         and control.get('enabled') is True):
                     control['enabled']=False;migrated=True
-        if migrated:
-            current_text=yaml.safe_dump(current,sort_keys=False,allow_unicode=True)
         by_id={entry['id']:entry for entry in present}
         additions=[]
         for entry in wanted:
             prior=by_id.get(entry['id'])
             if prior is not None and prior!=entry:
-                raise ValueError('conflicting YAML patch id: '+entry['id'])
+                if (entry['id']=='asg-observer'
+                        and prior.get('name')==entry.get('name')):
+                    prior.clear();prior.update(entry);migrated=True
+                else:
+                    raise ValueError('conflicting YAML patch id: '+entry['id'])
             if prior is None:additions.append(entry)
+        current_text=(yaml.safe_dump(current,sort_keys=False,allow_unicode=True)
+                      if migrated else original_text)
         if additions:
             # Append the already validated source fragment verbatim. This
             # preserves comments, custom tags and formatting in the target.
@@ -291,7 +323,7 @@ def merge_structured_patch(plan, workspace):
         else:
             merged=current_text
         item['content']=merged
-        item['expected_sha256']=hashlib.sha256(current_text.encode()).hexdigest()
+        item['expected_sha256']=hashlib.sha256(original_text.encode()).hexdigest()
     return plan
 
 def main():
@@ -353,6 +385,7 @@ def main():
             item['content']=wire_soc_events(item['content'])
             item['content']=wire_soc_control_client(item['content'],asg_root)
             item['content']=wire_model_request_payload(item['content'])
+        plan=pin_loader_revision(plan)
         cfg={'backend_url':a.backend_url,'agent_id':a.agent_id,'agent_name':a.agent_name,'platform':a.platform,'instance_id':a.instance_id or a.agent_id,'token_file':str(asg_root/'agent.key')}
         for rel,content in [('runtime/hook_control_client.mjs',(ROOT/'soc_client.mjs').read_text()),
                             # Preserve the previously managed Python file during

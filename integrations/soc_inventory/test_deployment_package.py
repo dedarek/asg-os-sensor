@@ -11,9 +11,26 @@ import unittest
 from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
 from integrations.soc_inventory.soc_onboarding import integrity,existing_install_mode
-from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch
+from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch,pin_loader_revision
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_loader_revision_tracks_hook_and_replaces_owned_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);(workspace/'plugins').mkdir()
+            target=workspace/'cordis.patch.yml'
+            target.write_text('''- insert:\n  - id: keep-me\n    name: ./keep.mjs\n  - id: asg-observer\n    name: ./plugins/asg-observer.mjs\n''')
+            plan={'version':1,'files':[
+                {'path':'plugins/asg-observer.mjs','content':'new hook','expected_sha256':None},
+                {'path':'cordis.patch.yml','content':'- insert:\n  - id: asg-observer\n    name: ./plugins/asg-observer.mjs\n','expected_sha256':None}]}
+            merged=merge_structured_patch(pin_loader_revision(plan),workspace)
+            patch=next(x for x in merged['files'] if x['path']=='cordis.patch.yml')
+            import yaml
+            entries=[entry for group in yaml.safe_load(patch['content']) for entry in group['insert']]
+            by_id={entry['id']:entry for entry in entries}
+            self.assertEqual(by_id['keep-me']['name'],'./keep.mjs')
+            self.assertEqual(by_id['asg-observer']['config']['asg_package_revision'],hashlib.sha256(b'new hook').hexdigest())
+            self.assertEqual(patch['expected_sha256'],hashlib.sha256(target.read_bytes()).hexdigest())
+
     def test_existing_profile_chooses_rebind_or_upgrade_from_exact_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);workspace=root/'profile';workspace.mkdir()
