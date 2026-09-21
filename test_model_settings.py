@@ -23,6 +23,17 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(candidate['key'],'private')
             self.assertEqual(candidate['route']['base_url'],route['base_url'])
 
+    def test_reasoning_effort_is_validated_and_saved_as_request_option(self):
+        route={'base_url':'https://original.example/v1','model':'old'}
+        with patch('runtime.llm_config.analyst_route',return_value=route), \
+             patch('runtime.llm_config.analyst_key',return_value='private'):
+            candidate=m.prepare({'base_url':'https://original.example/v1','model':'new',
+                                 'reasoning_effort':'xhigh'})
+            self.assertEqual(candidate['route']['request_options']['reasoning_effort'],'xhigh')
+            with self.assertRaises(ValueError):
+                m.prepare({'base_url':'https://original.example/v1','model':'new',
+                           'reasoning_effort':'extreme'})
+
     def test_failed_goose_does_not_change_saved_configuration(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'ASG_RUN_DIR':tmp}), \
              patch('runtime.llm_config.goose_env',return_value={}), patch('shutil.which',return_value='/goose'), \

@@ -13,6 +13,7 @@ from runtime.learned_install import _atomic
 
 LOCK = threading.RLock()
 JOB = {'status': 'idle'}
+REASONING_EFFORTS = {'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'}
 
 def path():
     return Path(os.environ.get('ASG_RUN_DIR', 'artifacts/stage1/dashboard')) / 'model_settings.json'
@@ -27,8 +28,11 @@ def public():
     from runtime.llm_config import analyst_route, analyst_key
     route = analyst_route()
     with LOCK:
+        options = route.get('request_options') if isinstance(route.get('request_options'), dict) else {}
         return {'config': {'base_url': route.get('base_url'), 'model': route.get('model'),
-                'provider': route.get('provider'), 'has_key': bool(analyst_key(route))}, 'test': dict(JOB) if JOB.get('status') != 'idle' else (load() or {}).get('verification', dict(JOB))}
+                'provider': route.get('provider'), 'has_key': bool(analyst_key(route)),
+                'reasoning_effort': options.get('reasoning_effort')},
+                'test': dict(JOB) if JOB.get('status') != 'idle' else (load() or {}).get('verification', dict(JOB))}
 
 def prepare(data):
     from runtime.llm_config import analyst_route, analyst_key
@@ -55,6 +59,15 @@ def prepare(data):
         raise ValueError('请输入 API Key；更换地址时不能沿用旧地址的密钥')
     route = dict(current) if same_endpoint else {}
     route.update(provider='openai', model=model, base_url=base, route='dashboard', key_env='ASG_DASHBOARD_KEY')
+    effort = str(data.get('reasoning_effort') or '').strip().lower()
+    if effort:
+        if effort not in REASONING_EFFORTS:
+            raise ValueError('不支持的思考强度')
+        options = dict(route.get('request_options') or {})
+        options['reasoning_effort'] = effort
+        route['request_options'] = options
+    elif not same_endpoint:
+        route.pop('request_options', None)
     return {'route': route, 'key': key}
 
 def assistant_text(stdout):

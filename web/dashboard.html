@@ -334,6 +334,13 @@
     <p style="color:var(--text-muted)">OpenAI 兼容接口。验证会启动 Goose 获取真实回复，成功后保存；正在执行的调查继续使用原配置。</p>
     <label>API 地址 <input id="model-base" type="url" required style="width:100%;padding:8px" placeholder="https://example.com/v1"></label>
     <label>模型名称 <input id="model-name" required style="width:100%;padding:8px" placeholder="模型 ID"></label>
+    <label>思考强度
+      <select id="model-reasoning" style="width:100%;padding:8px">
+        <option value="">接口默认</option><option value="low">low</option>
+        <option value="medium">medium</option><option value="high">high</option>
+        <option value="xhigh">xhigh</option><option value="max">max</option><option value="ultra">ultra</option>
+      </select>
+    </label>
     <label>API Key <input id="model-key" type="password" autocomplete="new-password" style="width:100%;padding:8px" placeholder="同一地址留空保留现有密钥；更换地址请填写新密钥"></label>
     <span id="model-key-state" class="asset-note"></span>
     <button id="model-test-button" class="refresh-btn" type="submit">验证并保存</button>
@@ -1385,6 +1392,7 @@ async function loadModelSettings(poll=false) {
     if (!poll) {
       document.getElementById('model-base').value = data.config.base_url || '';
       document.getElementById('model-name').value = data.config.model || '';
+      document.getElementById('model-reasoning').value = data.config.reasoning_effort || '';
       document.getElementById('model-key-state').innerText = data.config.has_key ? '已配置密钥（不回显）' : '尚未配置密钥';
     }
     const testing = data.test.status === 'testing';
@@ -1403,7 +1411,9 @@ async function testModelSettings(event) {
   try {
     const response = await fetch('/api/model-settings', {method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({base_url:document.getElementById('model-base').value,
-        model:document.getElementById('model-name').value,api_key:document.getElementById('model-key').value})});
+        model:document.getElementById('model-name').value,
+        reasoning_effort:document.getElementById('model-reasoning').value,
+        api_key:document.getElementById('model-key').value})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || '验证启动失败');
     document.getElementById('model-key').value = '';

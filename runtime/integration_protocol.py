@@ -132,11 +132,21 @@ def validate_selection(recipe, evidence_dir, target, required=False):
     if not isinstance(refs, list) or not refs or any(r not in recipe.get('evidence_refs', []) for r in refs):
         raise ValueError('integration.evidence_refs must cite recipe evidence_refs')
     candidates = []
+    inspected = 0
     for ref in refs:
         item = json.loads((Path(evidence_dir) / (ref + '.json')).read_text())
-        if item.get('tool') != 'inspect_integration_protocols' or item.get('target') != target or item.get('error'):
+        # integration.evidence_refs may also cite the source/config evidence that
+        # explains the selection. recipe_validation already verifies that every
+        # cited ref is a successful observation from this exact target. Only the
+        # protocol inspection result contributes detected protocol candidates.
+        if item.get('tool') != 'inspect_integration_protocols':
+            continue
+        if item.get('target') != target or item.get('error'):
             raise ValueError('Run inspect_integration_protocols on current target before proposing integration')
+        inspected += 1
         candidates.extend(item.get('result', {}).get('candidates', []))
+    if not inspected:
+        raise ValueError('Run inspect_integration_protocols on current target before proposing integration')
     family = selection['family']
     if family in ('command_hooks', 'acp') and not any(c['family'] == family for c in candidates):
         raise ValueError('Selected protocol has no observed structured evidence; inspect configuration/handshake first')

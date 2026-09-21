@@ -28,12 +28,18 @@ class ProtocolTests(unittest.TestCase):
     def test_protocol_selection_requires_bound_inspection_and_fallback_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             ref = 'ev-123-0123456789'
+            source_ref = 'ev-124-0123456789'
             target = {'pid': 42, 'create_time': 1.0}
             file = Path(tmp) / (ref + '.json')
             item = {'tool': 'inspect_integration_protocols', 'target': target,
                     'result': {'candidates': [{'family': 'command_hooks'}]}}
             file.write_text(json.dumps(item))
-            recipe = {'evidence_refs': [ref], 'integration': {'family': 'command_hooks', 'evidence_refs': [ref], 'missing_capabilities': ['model.request']}}
+            (Path(tmp) / (source_ref + '.json')).write_text(json.dumps({
+                'tool': 'read_related_file', 'target': target,
+                'result': {'path': '/tmp/hooks.json', 'content': {'hooks': {}}}}))
+            recipe = {'evidence_refs': [ref, source_ref], 'integration': {
+                'family': 'command_hooks', 'evidence_refs': [ref, source_ref],
+                'missing_capabilities': ['model.request']}}
             protocol.validate_selection(recipe, tmp, target, required=True)
             recipe['integration']['family'] = 'acp'
             with self.assertRaises(ValueError): protocol.validate_selection(recipe, tmp, target)
