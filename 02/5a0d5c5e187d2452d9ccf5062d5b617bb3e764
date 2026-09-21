@@ -1,0 +1,28 @@
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_fb6d2bbbba3ad9 303-316,339
+  s_7a5b8096b41d01::t_dcbe4b35d9b28c 248,324-328,330,332
+integrations/soc_inventory/discovery.py
+  s_7a5b8096b41d01::t_30f788fde74891 279-285,324,343,347
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_dcbe4b35d9b28c 264-273
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_dcbe4b35d9b28c 191-203
+integrations/soc_inventory/test_discovery.py
+  s_7a5b8096b41d01::t_30f788fde74891 88-89,109-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "025a0d5c5e187d2452d9ccf5062d5b617bb3e764",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
