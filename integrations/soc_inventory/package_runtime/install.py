@@ -147,14 +147,15 @@ def wire_soc_control_client(content, asg_root):
     return re.sub(pattern,lambda match:match.group(1)+'process.execPath'+match.group(2),content)
 
 def wire_model_request_payload(content):
-    """Capture the request object exposed by a learned agent/request hook.
+    """Capture DSH's complete semantic LLM request without changing execution.
 
-    The route metadata alone is not a model-input record. Preserve the full
-    callback payload made available by the target, with recursive secret-key
-    redaction and the existing size bound. If the target exposes no payload,
-    the event stays explicit rather than claiming transport-level coverage.
+    ``agent/request`` only exposes routing state.  DSH's ``llm/stream``
+    waterfall receives the immutable ``GenerateOptions`` object that is sent
+    to the provider adapter, including messages and tools.  Short requests are
+    emitted as one event; large requests are losslessly split into base64 JSON
+    chunks so the SOC can reconstruct them instead of accepting truncation.
     """
-    if 'request_payload: requestBody.content' in content:return content
+    if "ctx.on('llm/stream'" in content:return content
     route="""        content: {
           provider: (resolved && resolved.provider) ?? null,
           model: (resolved && resolved.model) ?? null,
@@ -163,7 +164,6 @@ def wire_model_request_payload(content):
         content_complete: true,"""
     if route not in content or "ctx.on('agent/request'" not in content:return content
     helper="""const redactRequest = (value, key = '', depth = 0) => {
-  if (depth > 12) return '[MAX_DEPTH]'
   if (/token|secret|password|api[_-]?key|authorization|cookie/i.test(key)) return '[REDACTED]'
   if (Array.isArray(value)) return value.map((item) => redactRequest(item, key, depth + 1))
   if (value && typeof value === 'object') {
@@ -173,23 +173,59 @@ def wire_model_request_payload(content):
   return value
 }
 
+const publishModelRequest = (options) => {
+  const safe = redactRequest(options)
+  let json
+  try { json = JSON.stringify(safe) } catch { json = JSON.stringify({ serialization_error: true }) }
+  const bytes = Buffer.from(json, 'utf8')
+  const requestId = String((options && (options.requestId || options.id)) || ('llm:' + pid + ':' + (sequence + 1)))
+  const sessionId = idOf((options && options.session) || options) || null
+  const turn = (options && (options.turn ?? options.turnId)) ?? null
+  const step = (options && options.step) ?? null
+  if (bytes.length <= maxBytes) {
+    publish({ event: 'model.request', session_id: sessionId, turn_id: turn, step,
+      event_id: requestId + ':model.request', call_id: requestId, content: safe,
+      content_complete: true })
+    return
+  }
+  const chunkCount = Math.ceil(bytes.length / maxBytes)
+  for (let index = 0; index < chunkCount; index += 1) {
+    const data = bytes.subarray(index * maxBytes, Math.min(bytes.length, (index + 1) * maxBytes)).toString('base64')
+    publish({ event: index === 0 ? 'model.request' : 'model.request.chunk',
+      session_id: sessionId, turn_id: turn, step,
+      event_id: requestId + ':model.request:' + index, call_id: requestId,
+      content: { request_id: requestId, chunk_index: index, chunk_count: chunkCount,
+        encoding: 'base64-json', data, request_payload_complete: true },
+      content_complete: true })
+  }
+}
+
 """
     anchor="  // ── 2. 模型请求路由（waterfall：必须原样返回 next() 结果）──\n"
     if anchor in content:content=content.replace(anchor,helper+anchor,1)
     section=content.find("ctx.on('agent/request'")
     resolved=content.find("    const resolved = await next()\n",section)
     if resolved < 0:return content
-    insertion=resolved+len("    const resolved = await next()\n")
-    content=content[:insertion]+"    const requestBody = bounded(redactRequest(payload))\n"+content[insertion:]
     replacement="""        content: {
           provider: (resolved && resolved.provider) ?? null,
           model: (resolved && resolved.model) ?? null,
           reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,
-          request_payload: requestBody.content,
-          request_payload_complete: requestBody.complete,
         },
-        content_complete: requestBody.complete,"""
-    return content.replace(route,replacement,1)
+        content_complete: true,"""
+    content=content.replace(route,replacement,1)
+    content=content.replace("        event: 'model.request',\n","        event: 'model.route',\n",1)
+    model_listener="""
+
+  // Complete provider-adapter input. Returning next() unchanged preserves the
+  // target's streaming semantics and makes capture observational only.
+  ctx.on('llm/stream', (options, next) => {
+    try { publishModelRequest(options) } catch { /* capture must not break the model call */ }
+    return next()
+  })
+"""
+    tools_anchor="\n  // ── 3. 工具执行前：同步 decision 门控 ──\n"
+    if tools_anchor not in content:return content
+    return content.replace(tools_anchor,model_listener+tools_anchor,1)
 
 def merge_structured_patch(plan, workspace):
     """Preserve unrelated YAML patch entries on a reused profile.

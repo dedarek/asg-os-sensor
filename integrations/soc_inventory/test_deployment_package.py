@@ -86,13 +86,14 @@ class DeploymentPackageTests(unittest.TestCase):
             self.assertTrue(by_id['administrator-hook']['config']['control']['enabled'])
             self.assertEqual(by_id['asg-observer']['name'],'./plugins/asg-observer.mjs')
 
-    def test_model_request_capture_includes_available_payload_and_redaction(self):
+    def test_model_request_capture_uses_complete_llm_stream_payload_and_chunks(self):
         source="""const bounded = (value) => ({ content: value, complete: true })
 function apply (ctx) {
   // ── 2. 模型请求路由（waterfall：必须原样返回 next() 结果）──
   ctx.on('agent/request', async (payload, next) => {
     const resolved = await next()
     publish({
+        event: 'model.request',
         content: {
           provider: (resolved && resolved.provider) ?? null,
           model: (resolved && resolved.model) ?? null,
@@ -101,10 +102,17 @@ function apply (ctx) {
         content_complete: true,
     })
   })
+
+  // ── 3. 工具执行前：同步 decision 门控 ──
 }
 """
         wired=wire_model_request_payload(source)
-        self.assertIn('request_payload: requestBody.content',wired)
+        self.assertIn("ctx.on('llm/stream'",wired)
+        self.assertIn("event: 'model.route'",wired)
+        self.assertIn("event: index === 0 ? 'model.request' : 'model.request.chunk'",wired)
+        self.assertIn("encoding: 'base64-json'",wired)
+        self.assertIn('request_payload_complete: true',wired)
+        self.assertNotIn('redactRequest(payload)',wired)
         self.assertIn("'[REDACTED]'",wired)
         self.assertEqual(wired,wire_model_request_payload(wired))
 
