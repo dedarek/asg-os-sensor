@@ -17,6 +17,7 @@ import copy
 import hashlib
 import json
 import platform
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,19 @@ def portable_recipe(recipe: dict, *, asg_root, target_workspace,
             if hits:
                 text = text.replace(value, placeholder)
                 counts[placeholder] = hits
+    # A verified recipe can outlive the checkout that learned it. Recognize
+    # ASG-owned runtime paths by their stable suffix so packaging from an
+    # installed release can migrate a recipe learned in a developer checkout.
+    # Target-owned paths are never rewritten this way.
+    owned = {
+        r'/Users/[^"\n]+?/runtime/hook_control_client\.py':
+            PLACEHOLDER_ROOT + '/runtime/hook_control_client.py',
+        r'/Users/[^"\n]+?/artifacts/(?:stage1/dashboard|autonomous-service)/hook-control-client\.json':
+            PLACEHOLDER_ROOT + '/artifacts/autonomous-service/hook-control-client.json',
+    }
+    for pattern, replacement in owned.items():
+        text, hits = re.subn(pattern, replacement, text)
+        if hits:counts[PLACEHOLDER_ROOT] = counts.get(PLACEHOLDER_ROOT, 0) + hits
     return json.loads(text), counts
 
 

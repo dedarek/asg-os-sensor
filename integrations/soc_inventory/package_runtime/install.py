@@ -128,9 +128,17 @@ def wire_soc_control_client(content, asg_root):
     calls=all(re.search(r"client\s*\(\s*['\"]"+action+r"['\"]",content)
               for action in ('event','decision','ack'))
     if not calls or 'hook_control_client.py' not in content:return content
-    config=str(Path(asg_root)/'artifacts/autonomous-service/hook-control-client.json')
-    return re.sub(r'(["\'])[^"\'\n]*hook-control-client\.json\1',
-                  lambda match: json.dumps(config),content)
+    python=json.dumps(sys.executable)
+    client=json.dumps(str(Path(asg_root)/'runtime/hook_control_client.py'))
+    config=json.dumps(str(Path(asg_root)/'artifacts/autonomous-service/hook-control-client.json'))
+    content=re.sub(r'(["\'])[^"\'\n]*hook_control_client\.py\1',client,content)
+    content=re.sub(r'(["\'])[^"\'\n]*hook-control-client\.json\1',config,content)
+    # The common learned client is a three-item argv array. Once both ASG-owned
+    # suffixes are present, replace its interpreter too; never retain the
+    # learning machine's /Library, venv, or Windows Python path.
+    pattern=(r'(\[\s*)["\'][^"\'\n]+["\'](\s*,\s*'
+             +re.escape(client)+r'\s*,\s*'+re.escape(config)+r'\s*,?\s*\])')
+    return re.sub(pattern,lambda match:match.group(1)+python+match.group(2),content)
 
 def wire_model_request_payload(content):
     """Capture the request object exposed by a learned agent/request hook.

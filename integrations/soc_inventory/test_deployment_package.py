@@ -105,6 +105,10 @@ ctx.on('tools/pre-execute', async () => ({ kind: "deny", reason: 'blocked' }))
             installed=wire_soc_control_client(content,workspace/'.soc-hook')
             self.assertIn(str(workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json'),installed)
             self.assertNotIn('artifacts/stage1/dashboard/hook-control-client.json',installed)
+            legacy=content.replace(sys.executable,'/Library/old-machine/python3')
+            rewired=wire_soc_control_client(legacy,workspace/'.soc-hook')
+            self.assertIn(sys.executable,rewired)
+            self.assertNotIn('/Library/old-machine/python3',rewired)
 
     def test_unproven_plugin_control_pattern_is_not_packaged(self):
         bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'bad'},

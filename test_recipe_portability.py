@@ -45,6 +45,20 @@ class PortabilityTests(unittest.TestCase):
         self.assertIn("api_key", scan["credential_hits"])
         self.assertIn("conversation", scan["chat_hits"])
 
+    def test_export_from_another_checkout_rewrites_asg_owned_runtime_suffixes(self):
+        db = copy.deepcopy(DB)
+        recipe = db['fingerprints'][0]['hook_recipe']
+        recipe['install_plan']['files'][0]['content'] = (
+            "const clientCommand = ['/Library/Old/Python', "
+            "'/Users/old/dev/asg/runtime/hook_control_client.py', "
+            "'/Users/old/dev/asg/artifacts/stage1/dashboard/hook-control-client.json']")
+        bundle = recipe_bundle.export_bundle('fp-port', db=db, asg_root='/opt/new/asg',
+                                             target_workspace='/Users/dev/proj/ws')
+        text = __import__('json').dumps(bundle['recipe'])
+        self.assertNotIn('/Users/old/dev/asg', text)
+        self.assertIn('${ASG_ROOT}/runtime/hook_control_client.py', text)
+        self.assertIn('${ASG_ROOT}/artifacts/autonomous-service/hook-control-client.json', text)
+
 
 if __name__ == "__main__":
     unittest.main()
