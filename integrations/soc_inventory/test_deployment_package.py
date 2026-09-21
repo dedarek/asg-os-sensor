@@ -30,7 +30,10 @@ class DeploymentPackageTests(unittest.TestCase):
             self.assertEqual(by_id['keep-me']['name'],'./keep.mjs')
             revision=hashlib.sha256(b'new hook').hexdigest()
             self.assertEqual(by_id['asg-observer']['config']['asg_package_revision'],revision)
-            self.assertEqual(by_id['asg-observer']['name'],'./plugins/asg-observer.mjs?asg_revision='+revision)
+            revisioned='plugins/asg-observer.'+revision+'.mjs'
+            self.assertEqual(by_id['asg-observer']['name'],'./'+revisioned)
+            copied=next(x for x in merged['files'] if x['path']==revisioned)
+            self.assertEqual(copied['content'],'new hook')
             self.assertEqual(patch['expected_sha256'],hashlib.sha256(target.read_bytes()).hexdigest())
 
     def test_existing_profile_chooses_rebind_or_upgrade_from_exact_package(self):

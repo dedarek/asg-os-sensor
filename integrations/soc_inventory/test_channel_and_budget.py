@@ -102,8 +102,13 @@ class BudgetTests(unittest.TestCase):
                 seen.append(agent['agent_id'])
                 if agent['agent_id']=='bad': raise OSError('boom')
             bridge._runtime_cycle = cycle
-            bridge.endpoint.agents = {'bad':{'agent_id':'bad'},'good':{'agent_id':'good'}}
-            bridge.local = lambda path, body=None: {'agents':[],'scan_interval':None}
+            bridge.endpoint.agents = {
+                'bad':{'agent_id':'bad','asg_instance_id':'1:1'},
+                'good':{'agent_id':'good','asg_instance_id':'2:2'},
+                'stale':{'agent_id':'stale','asg_instance_id':'3:3'}}
+            bridge.local = lambda path, body=None: {
+                'agents':[{'instance_id':'1:1'},{'instance_id':'2:2'}],
+                'scan_interval':None}
             bridge.run_once()
             self.assertEqual(seen, ['bad','good'])
 

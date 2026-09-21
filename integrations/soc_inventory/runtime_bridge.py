@@ -70,12 +70,20 @@ class RuntimeBridge:
         state=self.local('/api/state')
         controls=self.local('/api/hook-control/status')
         model_settings=self.local('/api/model-settings')
+        active_instances={row.get('instance_id') for row in state.get('agents',[])
+                          if isinstance(row,dict) and row.get('instance_id')}
         try:
             raw=self.local('/api/fingerprints').get('fingerprints')
             fingerprints=fingerprint_summary(raw) if isinstance(raw, list) else None
         except Exception:
             fingerprints=None
         for agent in self.endpoint.agents.values():
+            # Enrollment history is durable, but runtime telemetry is a live
+            # channel. Do not query Hook data, commands or SOC runtime cards
+            # for exited test/old instances merely because their enrollment is
+            # retained for audit.
+            if agent.get('asg_instance_id') not in active_instances:
+                continue
             try:
                 self._runtime_cycle(agent,state,controls,model_settings,fingerprints)
             except OSError as exc:

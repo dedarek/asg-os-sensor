@@ -183,7 +183,8 @@ def main():
                                           'alive': process.poll() is None,
                                           'exit_code': process.poll()}
         snapshot['engine'] = engine_probe(config, scan_track)
-        snapshot['endpoint'] = endpoint_probe(home)
+        snapshot['endpoint'] = endpoint_probe(
+            home, snapshot['children'].get('endpoint', {}).get('pid'))
         snapshot['soc'] = snapshot['endpoint'].get('soc', {})
         write_json(operations / 'heartbeat.json', snapshot)
 
@@ -247,17 +248,23 @@ def engine_probe(config, scan_track):
     return out
 
 
-def endpoint_probe(home):
+def endpoint_probe(home, endpoint_pid=None):
     out = {'loop_age_s': None, 'bridge_age_s': None, 'soc': {}, 'queue': {}}
     state = home / 'state' / 'endpoint'
     for key, name in (('loop_age_s', 'loop-beat.json'), ('bridge_age_s', 'bridge-beat.json')):
         try:
             beat = json.loads((state / name).read_text())
+            if endpoint_pid is not None and int(beat.get('pid', -1)) != int(endpoint_pid):
+                continue
             out[key] = round(max(0.0, time.time() - float(beat['t'])), 1)
         except (OSError, ValueError, KeyError, TypeError):
             pass
     try:
         out['soc'] = json.loads((state / 'soc-health.json').read_text())
+        if (endpoint_pid is not None
+                and int(out['soc'].get('pid', -1)) != int(endpoint_pid)):
+            out['soc'] = {'state': 'unknown',
+                          'detail': 'current endpoint has not reported yet'}
     except (OSError, ValueError):
         out['soc'] = {'state': 'unknown', 'detail': 'endpoint has not reported yet'}
     try:

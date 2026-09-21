@@ -253,10 +253,19 @@ def pin_loader_revision(plan):
                 if not isinstance(config,dict):raise ValueError('asg-observer loader config must be an object')
                 revision=hashlib.sha256(source['content'].encode()).hexdigest()
                 config['asg_package_revision']=revision
-                # ESM caches by URL. A config-only reload would execute the old
-                # module object again, so use a content-addressed query string
-                # to make the loader import the bytes this package verified.
-                entry['name']=bare+'?asg_revision='+revision
+                # DSH resolves local plugin names as file paths before handing
+                # them to ESM. A query string is therefore escaped to ``%3F``
+                # and becomes part of the filename instead of an import query.
+                # Install an immutable content-addressed module and make the
+                # live patch point at that real path. The changed module name
+                # also defeats DSH's package-name loader cache.
+                module_path=Path(module)
+                revisioned=str(module_path.with_name(
+                    module_path.stem+'.'+revision+module_path.suffix))
+                if revisioned not in files:
+                    copy=dict(source);copy['path']=revisioned
+                    plan['files'].append(copy);files[revisioned]=copy
+                entry['name']=('./' if bare.startswith('./') else '')+revisioned
                 changed=True
         if changed:item['content']=yaml.safe_dump(value,sort_keys=False,allow_unicode=True)
     return plan
@@ -311,11 +320,14 @@ def merge_structured_patch(plan, workspace):
                     control['enabled']=False;migrated=True
         by_id={entry['id']:entry for entry in present}
         additions=[]
+        def loader_base(name):
+            value=str(name).split('?',1)[0]
+            return re.sub(r'\.[0-9a-f]{64}(?=\.[^./]+$)','',value)
         for entry in wanted:
             prior=by_id.get(entry['id'])
             if prior is not None and prior!=entry:
                 if (entry['id']=='asg-observer'
-                        and str(prior.get('name')).split('?',1)[0]==str(entry.get('name')).split('?',1)[0]):
+                        and loader_base(prior.get('name'))==loader_base(entry.get('name'))):
                     prior.clear();prior.update(entry);migrated=True
                 else:
                     raise ValueError('conflicting YAML patch id: '+entry['id'])
@@ -461,6 +473,17 @@ def main():
             # backs up this exact prior version and remains reversible.
             prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
             desired_files={item['path']:item['content'] for item in plan['files']}
+            # Content-addressed loader modules may still be executing while the
+            # live patch switches to the next revision. Keep earlier immutable
+            # copies in the managed receipt so an upgrade never deletes bytes
+            # that the target process may still reference.
+            addressed=re.compile(r'\.[0-9a-f]{64}\.[^/]+$')
+            for name,content in prior_files.items():
+                if name not in desired_files and addressed.search(name):
+                    plan['files'].append({'path':name,'content':content,
+                                          'expected_sha256':hashlib.sha256(content.encode()).hexdigest()})
+                    desired_files[name]=content
+            plan=learned_install.validate_plan(plan)
             transport_only=RUNTIME_MUTABLE|{'.soc-hook/agent.key'}
             activation_affecting_change=any(
                 prior_files.get(name)!=content for name,content in desired_files.items()
