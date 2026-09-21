@@ -241,3 +241,19 @@ API key）全量回显，本地日志 40 分钟内涨至 104MB，且违反"日�
 （交付规格第七节要求），manifest b10d0987。17 步独立复验全部通过、失败 0
 （报告 docs/stage1/evidence/terminal_lifecycle_0_9_5_readme_report.json）。
 当前对外口径以 0.9.5 为确定交付版本；远端 beta 推送与历史限制不变。
+
+## 追加：0.9.6 协议纠偏版本全生命周期复验（2026-09-21）
+
+0.9.6 构建自提交 `43b3f0b`，manifest sha256
+`1b10895db842572d14dd19e790cb1f17226b6d89c88cb809f1b00b4898020225`，
+包内 2335 个文件。17 步独立复验全部通过，失败 0，报告见
+`docs/stage1/evidence/terminal_lifecycle_0_9_6_protocol_soc_report.json`。
+
+本版新增内容为协议接入纠偏：删除本地 8081 协议安装入口；区分真实打开配置与
+目录线索；对真实加载的 JSON command-Hook 配置可零模型生成 `soc-direct-v1`
+制品，经 SOC 登记、下载、事务安装和回滚。独立真实 SOC 链路证据见
+`docs/stage1/evidence/deterministic_protocol_soc_e2e_20260921.json`。
+
+本轮升级故障步骤总耗时 163.0 秒，其中实际故障回滚 78.3 秒；总耗时包含规格要求的
+回滚后再次重试。不能把总步骤耗时写成回滚耗时，也不能把隔离协议宿主写成第三方
+Agent 已验收。

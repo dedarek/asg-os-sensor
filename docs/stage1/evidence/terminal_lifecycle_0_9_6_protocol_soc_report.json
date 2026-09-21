@@ -1,0 +1,34 @@
+{
+  "schema": "asg-terminal-lifecycle-summary.v1",
+  "version": "0.9.6",
+  "git_commit": "43b3f0bb97831377b40d8de1e382b6282ada0895",
+  "package_manifest_sha256": "1b10895db842572d14dd19e790cb1f17226b6d89c88cb809f1b00b4898020225",
+  "gateway": "http://127.0.0.1:8095",
+  "steps_passed": 17,
+  "steps_failed": 0,
+  "steps": [
+    {"name": "install_healthy_within_60s", "pass": true, "elapsed_s": 24.3},
+    {"name": "service_survives_package_removal", "pass": true, "elapsed_s": 12.0},
+    {"name": "repeat_install_idempotent", "pass": true, "elapsed_s": 1.9},
+    {"name": "register_test_agent", "pass": true, "elapsed_s": 0.4},
+    {"name": "first_collection_reaches_soc", "pass": true, "elapsed_s": 5.5},
+    {"name": "disconnect_queues_reconnect_drains", "pass": true, "elapsed_s": 9.8},
+    {"name": "soc_snapshots_no_duplicates", "pass": true, "elapsed_s": 0.1},
+    {"name": "start_stop_cycles", "pass": true, "elapsed_s": 66.3, "cycles": 10, "no_autorestart_30s": true},
+    {"name": "bad_credential_rc5_and_repair", "pass": true, "elapsed_s": 14.7},
+    {"name": "negative_installs", "pass": true, "elapsed_s": 27.6},
+    {"name": "doctor_fault_injection", "pass": true, "elapsed_s": 26.4},
+    {"name": "seed_user_config_key", "pass": true, "elapsed_s": 0.0},
+    {"name": "upgrade_a_to_b", "pass": true, "elapsed_s": 20.8, "healthy_in_s": 17.5},
+    {"name": "upgrade_failure_rolls_back_within_90s", "pass": true, "elapsed_s": 163.0, "rollback_total_s": 78.3, "note": "elapsed includes the required subsequent retry; rollback itself stayed below 90 seconds"},
+    {"name": "uninstall_keeps_data_and_hooks", "pass": true, "elapsed_s": 5.1},
+    {"name": "reinstall_seed_hooks", "pass": true, "elapsed_s": 25.3},
+    {"name": "uninstall_remove_hooks_scoped", "pass": true, "elapsed_s": 3.0}
+  ],
+  "full_report_at_run_time": "/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-lifecycle-acceptance-ja0je_2a/report.json",
+  "claim_boundary": [
+    "This report validates terminal delivery lifecycle for package 0.9.6 on macOS against the local SOC POC.",
+    "It does not turn the isolated deterministic protocol fixture into third-party Agent acceptance.",
+    "Windows remains outside the user-requested scope for this batch."
+  ]
+}
