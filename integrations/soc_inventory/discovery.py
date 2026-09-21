@@ -44,6 +44,18 @@ def platform_id(identity):
     return candidate[:80] or 'unknown'
 
 
+def durable_asset_id(agent):
+    """Identify one installed Agent asset independently of a process restart."""
+    platform=str(agent.get('platform') or 'unknown')
+    candidates=(agent.get('hook_workspace'),agent.get('executable'),
+                agent.get('workspace'))
+    root=next((item for item in candidates if isinstance(item,(str,bytes,os.PathLike))
+               and str(item)), '')
+    try:root=str(Path(root).expanduser().resolve())
+    except (OSError,RuntimeError):root=str(root)
+    return hashlib.sha256((platform+'\0'+root).encode()).hexdigest()
+
+
 def _servers_map(value):
     if not isinstance(value,dict) or not value:return False
     return any(isinstance(d,dict) and any(k in d for k in ('command','url','transport','type')) for d in value.values())
@@ -137,8 +149,13 @@ def confirmed(state):
             workspace_binding='live_open_file' if hook_workspace else 'unresolved'
         if not isinstance(hook_workspace,str) or not Path(hook_workspace).is_absolute():
             hook_workspace=None
-        agent={'platform':platform,'workspace':workspace,'hook_workspace':hook_workspace,'hook_workspace_binding':workspace_binding,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
+        # SOC owns one durable asset per Agent type and installation/profile
+        # location. Process identity remains pid:create_time and is never used
+        # as the durable card id. Hash the local path before it leaves the host.
+        agent={'platform':platform,'workspace':workspace,'executable':process.exe(),
+               'hook_workspace':hook_workspace,'hook_workspace_binding':workspace_binding,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
                'hook_fingerprint':plan.get('fingerprint_id'),'agent_version':str(identity.get('version') or target.get('version') or 'unknown'),'classification':classification.get('status','pending'),'name':target.get('name') or platform,'learned_skill_roots':[],'learned_mcp_configs':[]}
+        agent['asset_id']=durable_asset_id(agent)
         # Only explicit resource paths in structured evidence, no prose extraction.
         assets=adapter.get('assets') or {}
         skills=(assets.get('skills') or {}).get('value') or {}
@@ -204,8 +221,18 @@ class Discovery:
         # Capture before the first network enrollment. An exited instance's
         # retained snapshot remains historical evidence, never a live heartbeat.
         for agent in current:
+            # Rolling upgrades may read cached discoveries written before
+            # asset_id existed. Derive it instead of dropping the discovery.
+            agent.setdefault('asset_id',durable_asset_id(agent))
             instance=agent['asg_instance_id']
-            if self.endpoint.db.execute('SELECT 1 FROM enrolled WHERE instance=?',(instance,)).fetchone():continue
+            enrolled=self.endpoint.db.execute(
+                'SELECT configuration FROM enrolled WHERE instance=?',(instance,)).fetchone()
+            if enrolled:
+                prior=json.loads(enrolled[0])
+                # Existing stable rows stay idempotent. Legacy instance-scoped
+                # rows must pass through enrollment once so SOC can replace
+                # restart-created cards with the durable asset card.
+                if prior.get('asset_id')==agent['asset_id']:continue
             # Same live process, drifted identity stamp: macOS create_time reads
             # can flap by ~1s, which would double-enroll one process, duplicate
             # SOC cards and strand queued commands. Transfer the enrollment and
@@ -213,7 +240,7 @@ class Discovery:
             try:
                 dpi,dct=instance.split(':',1);dct=float(dct)
                 match=next((row for row in self.endpoint.db.execute('SELECT instance,configuration FROM enrolled').fetchall()
-                    if row[0].split(':',1)[0]==dpi and len(row[0].split(':',1))==2
+                    if row[0]!=instance and row[0].split(':',1)[0]==dpi and len(row[0].split(':',1))==2
                     and row[0].split(':',1)[1].replace('.','',1).isdigit()
                     and abs(float(row[0].split(':',1)[1])-dct)<=2.0),None)
             except ValueError:
@@ -235,8 +262,9 @@ class Discovery:
             with self.endpoint.db:self.endpoint.db.execute('INSERT OR IGNORE INTO pending_discoveries VALUES(?,?,?)',(instance,json.dumps(agent),canonical(envelope)))
         for instance,configuration,raw in self.endpoint.db.execute('SELECT instance,configuration,envelope FROM pending_discoveries').fetchall():
             agent=json.loads(configuration);provision={'key_file':self.options['application_key_file']}
+            agent.setdefault('asset_id',durable_asset_id(agent))
             try:
-                result=self.endpoint.request(provision,'/api/asg/enroll',canonical({'host_id':self.host.read_text().strip(),'instance_id':instance,'name':agent['name'],'platform':agent['platform']}))
+                result=self.endpoint.request(provision,'/api/asg/enroll',canonical({'host_id':self.host.read_text().strip(),'asset_id':agent['asset_id'],'instance_id':instance,'name':agent['name'],'platform':agent['platform']}))
             except OSError:continue
             key=self.root/(result['agent_id']+'.key')
             fd=os.open(str(key),os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
@@ -245,6 +273,24 @@ class Discovery:
             envelope=json.loads(raw);envelope['agent_id']=agent['agent_id']
             identity,_=self.endpoint.stream_identity(agent)
             with self.endpoint.db:
+                # One durable local enrollment per installed asset. Runtime
+                # instances remain in SOC event history; they must not compete
+                # to populate the current card after a restart.
+                stale=[]
+                for prior_instance,prior_raw in self.endpoint.db.execute(
+                        'SELECT instance,configuration FROM enrolled').fetchall():
+                    if prior_instance==instance:continue
+                    prior=json.loads(prior_raw)
+                    same_asset=prior.get('asset_id')==agent['asset_id']
+                    if not prior.get('asset_id'):
+                        same_asset=(prior.get('platform')==agent.get('platform')
+                                    and (prior.get('hook_workspace') or prior.get('workspace'))
+                                    ==(agent.get('hook_workspace') or agent.get('workspace')))
+                    if same_asset:stale.append(prior_instance)
+                for prior_instance in stale:
+                    self.endpoint.db.execute('DELETE FROM enrolled WHERE instance=?',(prior_instance,))
+                    self.endpoint.db.execute('DELETE FROM soc_onboarding WHERE instance=?',(prior_instance,))
+                    self.endpoint.db.execute('DELETE FROM reported_protocol_packages WHERE instance=?',(prior_instance,))
                 self.endpoint.db.execute('INSERT OR REPLACE INTO enrolled VALUES(?,?)',(instance,json.dumps(agent)))
                 self.endpoint.db.execute('INSERT OR IGNORE INTO drafts VALUES(?,?)',(identity,canonical(envelope)))
                 self.endpoint.db.execute('DELETE FROM pending_discoveries WHERE instance=?',(instance,))

@@ -18,6 +18,23 @@ from runtime import learned_install,recipe_bundle
 # writes as package drift makes a healthy Hook fail its next verification.
 RUNTIME_MUTABLE={'.soc-hook/artifacts/autonomous-service/hook-control-client.json'}
 
+# These files execute out of process for every event/decision. Replacing them
+# changes the transport used by the next call, but does not change the module
+# already loaded inside the Agent. Only in-process Hook/configuration changes
+# require a fresh hook.loaded callback.
+OUT_OF_PROCESS_RUNTIME={
+    '.soc-hook/runtime/hook_control_client.mjs',
+    '.soc-hook/runtime/hook_control_client.py',
+    '.soc-hook/agent.key',
+}
+
+
+def activation_affecting_files_changed(prior_files, desired_files):
+    """Return whether an upgrade changes code/config loaded inside the Agent."""
+    transport_only=RUNTIME_MUTABLE|OUT_OF_PROCESS_RUNTIME
+    return any(prior_files.get(name)!=content for name,content in desired_files.items()
+               if name not in transport_only)
+
 _EVENT_CALL='  appendLine(LOG_PATH, JSON.stringify(row));\n  forwardSocEvent(row);'
 _EVENT_HELPER=r'''
 let socEventConfig = null;
@@ -484,10 +501,7 @@ def main():
                                           'expected_sha256':hashlib.sha256(content.encode()).hexdigest()})
                     desired_files[name]=content
             plan=learned_install.validate_plan(plan)
-            transport_only=RUNTIME_MUTABLE|{'.soc-hook/agent.key'}
-            activation_affecting_change=any(
-                prior_files.get(name)!=content for name,content in desired_files.items()
-                if name not in transport_only)
+            activation_affecting_change=activation_affecting_files_changed(prior_files,desired_files)
             desired_paths={item['path'] for item in plan['files']}
             removed=set(prior_files)-desired_paths
             if removed:
@@ -575,7 +589,7 @@ def main():
             # remains covered by the transaction digest, and gives the target a
             # deterministic opportunity to reload before verification.
             reload_signaled=[]
-            if receipt.exists() and package_changed:
+            if receipt.exists() and package_changed and activation_affecting_change:
                 import yaml
                 for item in plan['files']:
                     path=workspace/item['path']

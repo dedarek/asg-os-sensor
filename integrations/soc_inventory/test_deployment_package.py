@@ -11,9 +11,17 @@ import unittest
 from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
 from integrations.soc_inventory.soc_onboarding import integrity,existing_install_mode
-from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch,pin_loader_revision
+from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch,pin_loader_revision,activation_affecting_files_changed
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_transport_client_upgrade_does_not_require_agent_reload(self):
+        prior={'plugins/asg-observer.mjs':'hook-v1',
+               '.soc-hook/runtime/hook_control_client.mjs':'transport-v1'}
+        transport_only={**prior,'.soc-hook/runtime/hook_control_client.mjs':'transport-v2'}
+        hook_change={**transport_only,'plugins/asg-observer.mjs':'hook-v2'}
+        self.assertFalse(activation_affecting_files_changed(prior,transport_only))
+        self.assertTrue(activation_affecting_files_changed(prior,hook_change))
+
     def test_loader_revision_tracks_hook_and_replaces_owned_entry(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace=Path(tmp);(workspace/'plugins').mkdir()

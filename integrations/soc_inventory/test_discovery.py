@@ -14,6 +14,7 @@ class DiscoveryTest(unittest.TestCase):
             items=list(confirmed({'agents':[self.target(),self.target('pending'),self.target(role='model_gateway')]}))
         self.assertEqual(len(items),2);self.assertEqual(items[1]["classification"],"pending");self.assertEqual(items[0]['collection_environment'],{'OPENCODE_CONFIG_DIR':'/config'})
         self.assertEqual(items[0]['asg_instance_id'],'42:123.5')
+        self.assertEqual(items[0]['asset_id'],items[1]['asset_id'])
     def test_pending_process_without_agent_signal_is_not_registered(self):
         process=Mock();process.create_time.return_value=123.5;process.cwd.return_value='/workspace';process.environ.return_value={}
         plain=self.target('pending',score=0)
@@ -74,6 +75,34 @@ class DiscoveryTest(unittest.TestCase):
             self.assertEqual([row[0] for row in onboard],['42:101.0'])
             self.assertEqual(e.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0],0)
             e.db.close()
+    def test_legacy_instance_enrollment_migrates_to_durable_asset(self):
+        import tempfile,json
+        from .endpoint import Endpoint
+        from .discovery import Discovery,durable_asset_id
+        with tempfile.TemporaryDirectory() as directory:
+            cfg={'backend_url':'http://127.0.0.1:1','state_dir':directory,'agents':[],
+                 'discovery':{'application_key_file':'unused'}}
+            endpoint=Endpoint(cfg);discovery=Discovery(endpoint)
+            current={'name':'Example','platform':'codex','workspace':'/',
+                     'executable':'/Applications/Codex.app/Contents/MacOS/Codex',
+                     'asg_instance_id':'42:123.5','collection_environment':{}}
+            legacy={**current,'agent_id':'asg-instance-card','key_file':'unused'}
+            endpoint.db.execute('INSERT INTO enrolled VALUES(?,?)',
+                                (current['asg_instance_id'],json.dumps(legacy)))
+            sent=[]
+            endpoint.request=lambda _agent,_path,body:(sent.append(json.loads(body)),
+                {'agent_id':'asg-asset-card','api_key':'test-key'})[1]
+            with patch('integrations.soc_inventory.discovery.build_opener') as opener, \
+                 patch('integrations.soc_inventory.discovery.confirmed',return_value=iter([current])):
+                opener.return_value.open.side_effect=OSError('ASG unavailable')
+                self.assertEqual(discovery.refresh(),['asg-asset-card'])
+            self.assertEqual(sent[0]['asset_id'],durable_asset_id(current))
+            saved=json.loads(endpoint.db.execute(
+                'SELECT configuration FROM enrolled WHERE instance=?',
+                (current['asg_instance_id'],)).fetchone()[0])
+            self.assertEqual(saved['agent_id'],'asg-asset-card')
+            self.assertEqual(saved['asset_id'],durable_asset_id(current))
+            endpoint.db.close()
     def test_reused_pid_rejected(self):
         process=Mock();process.create_time.return_value=124
         with patch('psutil.Process',return_value=process):self.assertEqual(list(confirmed({'agents':[self.target()]})),[])

@@ -119,9 +119,26 @@ class RuntimeBridge:
                         onboarding['soc_install']=receipt
                         status=receipt.get('status')
                         if status in ('installed','already_installed','installed_waiting_activation','activation_verified'):
+                            onboarding['status']=status
                             onboarding['install']={'status':'installed','reason':status,
                                                    'artifact_id':receipt.get('artifact_id'),
                                                    'checksum':receipt.get('checksum')}
+                            plan=onboarding.get('plan')
+                            if isinstance(plan,dict):
+                                plan['authorization']={'status':'granted','source':'soc_install'}
+                            # Package installation supersedes the old local
+                            # "not installed / authorization required" view.
+                            # Activation remains a separate, evidence-bound
+                            # state and is never inferred from installation.
+                            if status=='activation_verified':
+                                adapter['hook_state']={'status':'loaded','verified':True,
+                                    'source':'soc_install','label':'SOC Hook 已加载'}
+                            else:
+                                adapter['hook_state']={'status':'installed','verified':False,
+                                    'source':'soc_install','label':'已安装，等待加载'}
+                            action=adapter.get('user_action')
+                            if isinstance(action,dict) and action.get('status')=='approval_required':
+                                adapter.pop('user_action',None)
                         elif status=='failed':
                             onboarding['install']={'status':'failed','reason':receipt.get('reason') or 'package_install_failed'}
                     except (ValueError,TypeError):
