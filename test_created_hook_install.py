@@ -9,6 +9,17 @@ import psutil
 from runtime import protocol_fastpath as fast, autonomous_pipeline as pipeline
 
 class ProtocolAdmissionTests(unittest.TestCase):
+    def test_protocol_discovery_preserves_loader_evidence(self):
+        from runtime.protocol_discovery import inspect_paths
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / 'settings.json'
+            config.write_text(json.dumps({'hooks': {'PreToolUse': [
+                {'type': 'command', 'command': 'existing'}]}}))
+            opened = inspect_paths([(config, 'opened_file')])['candidates'][0]
+            nearby = inspect_paths([(config, 'related_root_convention')])['candidates'][0]
+            self.assertTrue(opened['loaded_by_process'])
+            self.assertFalse(nearby['loaded_by_process'])
+
     def test_document_keywords_and_single_config_never_authorize_install(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}):
             root = Path(tmp)
@@ -18,8 +29,7 @@ class ProtocolAdmissionTests(unittest.TestCase):
             before = config.read_bytes()
             target = {'pid': os.getpid(), 'create_time': psutil.Process().create_time()}
             with patch('runtime.protocol_discovery.discover', return_value={
-                    'candidates': [], 'checked_paths': [str(config)]}), \
-                 patch.object(fast, 'install', side_effect=AssertionError('must not install')):
+                    'candidates': [], 'checked_paths': [str(config)]}):
                 result = fast.attempt(target)
             self.assertFalse(result['handled'])
             self.assertEqual(config.read_bytes(), before)
@@ -30,9 +40,7 @@ class ProtocolAdmissionTests(unittest.TestCase):
             target = {'pid': os.getpid(), 'create_time': psutil.Process().create_time()}
             for family in ('command_hooks', 'acp'):
                 with patch('runtime.protocol_discovery.discover', return_value={'candidates': [
-                    {'family': family, 'pointer': '/hooks', 'source': '/unused', 'status': 'configured'}]}), \
-                     patch.object(fast, 'install', side_effect=AssertionError('local install')), \
-                     patch.object(fast, 'install_acp', side_effect=AssertionError('local ACP install')):
+                    {'family': family, 'pointer': '/hooks', 'source': '/unused', 'status': 'configured'}]}):
                     result = fast.attempt(target)
                 self.assertFalse(result['handled'])
                 self.assertFalse(result['verified'])

@@ -1,16 +1,9 @@
 import json
-import os
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
 import time
 import unittest
 from unittest.mock import patch
 
-import psutil
-
-from runtime import protocol_fastpath as fast, autonomous_pipeline as pipeline, learned_install
+from runtime import protocol_fastpath as fast
 from runtime.command_protocol_hook import handle
 from runtime.integration_protocol import detect
 
@@ -70,46 +63,6 @@ class DirectProtocolTests(unittest.TestCase):
              patch.object(dashboard, '_goose_executable', return_value=None) as goose:
             dashboard._execute_investigation(123, {}, '123:1.0', 1.0)
             goose.assert_called_once()
-
-    def test_transaction_real_callback_and_rollback_without_goose(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp).resolve()
-            workspace, state = root / 'workspace', root / 'state'
-            workspace.mkdir(); state.mkdir()
-            config = workspace / 'settings.json'
-            original = json.dumps({'model': 'preserve', 'hooks': {
-                'UserPromptSubmit': [{'hooks': [{'type': 'command', 'command': 'original-callback'}]}],
-                'PreToolUse': [{'hooks': [{'type': 'command', 'command': 'original-callback'}]}],
-                'Stop': [{'hooks': [{'type': 'command', 'command': 'original-callback'}]}]}})
-            config.write_text(original)
-            target = {'pid': os.getpid(), 'create_time': psutil.Process().create_time()}
-            with patch.dict(os.environ, {'ASG_RUN_DIR': str(state), 'ASG_ONBOARDING_AUTHORIZED': '1',
-                    'ASG_ONBOARDING_AUTO_INSTALL': '1', 'ASG_ONBOARDING_SCOPE': 'project',
-                    'ASG_ONBOARDING_WORKSPACE_ROOTS': str(workspace)}):
-                result = fast.install(config, target, state, [])
-                self.assertEqual(result['status'], 'installed')
-                saved = json.loads(config.read_text())
-                self.assertEqual(saved['model'], 'preserve')
-                self.assertEqual(saved['hooks']['UserPromptSubmit'][0]['hooks'][0]['command'], 'original-callback')
-                hook = workspace / '.asg-command-protocol' / 'hook.py'
-                client = hook.with_name('client.json')
-                # This is a real child invocation of the installed generic Hook,
-                # not a mocked file write or a claimed real Agent acceptance.
-                for payload in ({'hook_event_name': 'UserPromptSubmit', 'session_id': 's', 'prompt': '真实协议回调 输入'},
-                                {'hook_event_name': 'Stop', 'session_id': 's', 'last_assistant_message': '真实协议回调 输出'}):
-                    run = subprocess.run([sys.executable, str(hook), str(client)], input=json.dumps(payload),
-                                         text=True, capture_output=True, timeout=10)
-                    self.assertEqual(run.returncode, 0, run.stderr)
-                from runtime.hook_data import snapshot
-                data = snapshot(state, pid=target['pid'], create_time=target['create_time'])
-                self.assertEqual([m['text'] for m in data['conversation']], ['真实协议回调 输入', '真实协议回调 输出'])
-                checks = data['coverage']['integration_selfchecks'][0]
-                self.assertGreaterEqual(checks['passed'], 3)
-                self.assertNotEqual(checks['status'], 'passed')  # no model/control evidence
-                learned_install.rollback(workspace, Path(result['state_dir']), approved_workspace=workspace,
-                                         approved_digest=result['plan_digest'])
-                self.assertEqual(config.read_text(), original)
-                self.assertFalse(hook.exists())
 
     def test_decision_is_waited_for_and_errors_deny(self):
         payload = {'hook_event_name': 'PreToolUse', 'tool_name': 'write', 'tool_input': {'path': 'canary'}, 'tool_use_id': 'c'}

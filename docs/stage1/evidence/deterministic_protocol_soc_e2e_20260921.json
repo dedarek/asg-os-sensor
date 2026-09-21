@@ -1,0 +1,35 @@
+{
+  "schema": "asg-deterministic-protocol-soc-e2e.v1",
+  "created_at": "2026-09-21T11:43:20+08:00",
+  "topology": {
+    "target": "isolated Python host retaining an opened command-Hook JSON config",
+    "collector": "ASG deterministic protocol package generator",
+    "gateway": "http://127.0.0.1:8095",
+    "transport": "soc-direct-v1",
+    "asg_runtime_required_after_install": false
+  },
+  "result": {
+    "passed": true,
+    "loader_evidence": true,
+    "archive_bytes": 18681,
+    "soc_artifact_accepted": true,
+    "catalog_transport": "soc-direct-v1",
+    "installed": true,
+    "existing_config_preserved": true,
+    "callback_exit": 0,
+    "soc_event_accepted": true,
+    "outbox_pending": 0,
+    "local_event_text_matched": true,
+    "transaction_rollback": true
+  },
+  "temporary_agent": {
+    "agent_id": "asg-0c53183cc5f9a4df84c3ffc794435621",
+    "name": "ASG deterministic protocol E2E",
+    "cleanup": "workspace, installed files, process and local credentials removed; SOC admin delete endpoint was unavailable, so the clearly named test record remains"
+  },
+  "claim_boundary": [
+    "This proves loader-evidence admission, SOC artifact publication, catalog selection, terminal installation, direct event delivery, durable queue drain and rollback against the real local SOC gateway.",
+    "The host was an isolated protocol fixture, not an independently developed desktop Agent.",
+    "It does not prove fresh activation or tool blocking for every command-Hook dialect; those remain per-Agent acceptance gates."
+  ]
+}

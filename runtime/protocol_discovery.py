@@ -34,7 +34,21 @@ def serialize_config(value, path):
 
 
 def inspect_paths(paths, *, limit=96):
-    pending = [(Path(p), 'process_related') for p in paths]
+    """Inspect bounded config paths while preserving how each path was found.
+
+    A file observed in the target process' open-file table is materially
+    stronger evidence than a conventional filename found below a related
+    directory.  Keep that distinction in every candidate so callers cannot
+    mistake directory proximity for proof that the host loaded a protocol.
+    Plain paths remain accepted for small callers and tests.
+    """
+    pending = []
+    for item in paths:
+        if isinstance(item, tuple):
+            path, relation = item
+        else:
+            path, relation = item, 'process_related'
+        pending.append((Path(path), relation))
     seen, findings, errors = set(), [], []
     while pending and len(seen) < limit:
         path, relation = pending.pop(0)
@@ -46,7 +60,9 @@ def inspect_paths(paths, *, limit=96):
         try:
             data = read_config(path)
             if not isinstance(data, dict): continue
-            findings.extend({**v, 'source': str(path), 'relation': relation} for v in detect(data))
+            findings.extend({**v, 'source': str(path), 'relation': relation,
+                             'loaded_by_process': relation == 'opened_file'}
+                            for v in detect(data))
             # Configured OTel is evidence of a transport option, not GenAI content.
             if isinstance(data.get('otel'), dict) or isinstance(data.get('opentelemetry'), dict):
                 findings.append({'family': 'otel', 'status': 'configured', 'source': str(path),
@@ -62,7 +78,7 @@ def inspect_paths(paths, *, limit=96):
                         if isinstance(ref, str):
                             linked = Path(ref).expanduser()
                             if not linked.is_absolute(): linked = path.parent / linked
-                            pending.append((linked, str(path) + ':hooks.' + key))
+                            pending.append((linked, 'linked_from:' + str(path) + ':hooks.' + key))
         except (OSError, ValueError, ImportError) as exc:
             errors.append({'path': str(path), 'error': type(exc).__name__})
     return {'candidates': findings, 'checked_paths': [str(p) for p in sorted(seen)],
@@ -74,7 +90,7 @@ def discover(process):
     surface = entry_surface(process)
     paths = []
     for item in surface.get('opened_files', []):
-        if item.get('resolved'): paths.append(Path(item['resolved']))
+        if item.get('resolved'): paths.append((Path(item['resolved']), 'opened_file'))
     roots = [Path(r['path']) for r in surface.get('related_roots', []) if r.get('path')]
     # Environment-declared app homes/config paths tie home locations to target.
     environment_error = None
@@ -87,20 +103,20 @@ def discover(process):
                 # A process running with a relocated home keeps its product
                 # configuration under that home; the real user home stays out.
                 if path.is_absolute() and (not relocated_home or path != Path.home()):
-                    if path.is_file(): paths.append(path)
+                    if path.is_file(): paths.append((path, 'environment_declared_file'))
                     elif path.is_dir(): roots.append(path)
     except (OSError, psutil.Error) as exc:
         # psutil access denial must not discard other evidence.
         environment_error = type(exc).__name__
     for root in dict.fromkeys(roots):
         if root == Path.home() or root == Path(root.anchor): continue
-        paths.extend(root / name for name in CONFIG_NAMES)
+        paths.extend((root / name, 'related_root_convention') for name in CONFIG_NAMES)
         # One level of concrete hidden project configuration directories.
         try:
             children = sorted(root.iterdir())[:100]
             for child in children:
                 if child.name.startswith('.') and child.is_dir() and not child.is_symlink() and child.name not in ('.git', '.venv', '.ssh'):
-                    paths.extend(child / name for name in CONFIG_NAMES)
+                    paths.extend((child / name, 'related_root_convention') for name in CONFIG_NAMES)
         except OSError: pass
     result = inspect_paths(paths)
     if environment_error: result['errors'].append({'scope': 'process.environment', 'error': environment_error})

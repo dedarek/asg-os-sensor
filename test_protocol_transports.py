@@ -119,20 +119,20 @@ for line in sys.stdin:
                     ExportLogsServiceResponse().ParseFromString(response.read())
             finally: server.shutdown();server.server_close();thread.join(timeout=5)
 
-    def test_acp_config_wrap_preserves_launch_arguments_and_rolls_back(self):
-        from runtime.protocol_fastpath import install_acp
-        from runtime.learned_install import rollback
+    def test_acp_declaration_is_discovered_but_never_wrapped_locally(self):
+        from runtime.protocol_fastpath import attempt
         with tempfile.TemporaryDirectory() as tmp:
             base=Path(tmp).resolve(); root=base/'workspace'; root.mkdir(); path=root/'config.json'
             original=json.dumps({'agent_servers':{'unknown':{'command':'agent.exe','args':['--acp'],'env':{'MODE':'local'}}},'other':7})
             path.write_text(original)
             target={'pid':os.getpid(),'create_time':psutil.Process().create_time()}
-            with patch.dict(os.environ,{'ASG_ONBOARDING_AUTO_INSTALL':'1','ASG_ONBOARDING_AUTHORIZED':'1','ASG_ONBOARDING_SCOPE':'project','ASG_ONBOARDING_WORKSPACE_ROOTS':str(root)}):
-                result=install_acp(path,target,base/'run',base/'control.json')
-            self.assertEqual(result['status'],'installed')
-            entry=json.loads(path.read_text())['agent_servers']['unknown']
-            self.assertEqual(entry['args'][-2:],['agent.exe','--acp']);self.assertEqual(entry['env'],{'MODE':'local'})
-            rollback(root,Path(result['state_dir']),approved_workspace=root,approved_digest=result['plan_digest'])
+            candidate={'family':'acp','pointer':'/agent_servers','source':str(path),
+                       'status':'configured','loaded_by_process':True}
+            with patch.dict(os.environ,{'ASG_RUN_DIR':str(base/'run')}), \
+                 patch('runtime.protocol_discovery.discover',return_value={'candidates':[candidate]}):
+                result=attempt(target)
+            self.assertFalse(result['handled'])
+            self.assertEqual(result['route'],'soc_package_pipeline')
             self.assertEqual(path.read_text(),original)
 
 

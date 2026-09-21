@@ -1,17 +1,13 @@
-"""Reusable command/JSON Hook endpoint, installed without an LLM.
+"""Pure command-Hook payload normalization and response semantics.
 
-Runs as a child of the target. Shared configs identify each live ancestor from
-an explicit binding list; neither PID reuse nor another instance inherits it.
-Stdout is reserved for the host Hook protocol. No transcript file is guessed.
+The old executable entrypoint wrote to ASG's local event log and called the
+local control client.  Production installation now belongs to the SOC package
+runtime, so this module intentionally contains no filesystem, process-launch
+or service dependency.
 """
-import json
-import os
-from pathlib import Path
-import subprocess
-import sys
 import time
 import uuid
-import psutil
+import subprocess
 
 # Structured event-name dialects that share this payload shape. Aliases come
 # from hosts whose own migration tooling converts between the two spellings;
@@ -60,52 +56,3 @@ def handle(payload, config, target, *, decide=None, emit=None):
     if not allowed:
         response.update({'decision': 'block', 'reason': 'ASG execution policy'})
     return response, 0 if allowed else 2
-
-
-def main():
-    config = json.loads(Path(sys.argv[1]).read_text())
-    ancestors = {p.pid: p for p in psutil.Process().parents()}
-    target = None
-    for candidate in reversed(config['targets']):
-        process = ancestors.get(candidate['pid'])
-        if process and abs(process.create_time() - candidate['create_time']) < .001:
-            target = candidate
-            break
-    if target is None: return 0  # A shared settings file can serve unrelated hosts.
-    raw = sys.stdin.buffer.read(1024 * 1024 + 1)
-    if len(raw) > 1024 * 1024: return 2
-    payload = json.loads(raw)
-    def emit(event):
-        # One append while locked avoids interleaving concurrent Hook processes.
-        fd = os.open(config['log_path'], os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        with os.fdopen(fd, 'a', encoding='utf-8') as stream:
-            # Use a separate lock byte: Windows byte-range locks cannot lock
-            # a zero-length event file and must not follow the append cursor.
-            with open(config['log_path'] + '.lock', 'a+b') as lock:
-                if os.name == 'nt':
-                    import msvcrt
-                    if os.fstat(lock.fileno()).st_size == 0:
-                        lock.write(b'0'); lock.flush()
-                    lock.seek(0); msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-                try:
-                    stream.write(json.dumps(event, ensure_ascii=False) + '\n')
-                    stream.flush()
-                finally:
-                    if os.name == 'nt':
-                        lock.seek(0); msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-                    else: fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-    def decide(request):
-        result = subprocess.run(config['control_client'], input=json.dumps(request),
-                                capture_output=True, text=True, timeout=65, check=True)
-        return json.loads(result.stdout)
-    response, code = handle(payload, config, target, decide=decide, emit=emit)
-    if response: print(json.dumps(response))
-    return code
-
-
-if __name__ == '__main__':
-    try: sys.exit(main())
-    except (OSError, ValueError, KeyError, psutil.Error): sys.exit(2)

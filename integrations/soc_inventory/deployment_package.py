@@ -13,7 +13,9 @@ def supports_direct_events(bundle):
     files=((bundle.get('recipe') or {}).get('install_plan') or {}).get('files') or []
     for item in files:
         content=item.get('content','') if isinstance(item,dict) else ''
-        if 'runControlClient("event"' in content or ('function record(event, meta)' in content and 'appendLine(LOG_PATH, JSON.stringify(row));' in content and 'CONTROL_CONFIG' in content):
+        if ('ASG_SOC_DIRECT_PROTOCOL = True' in content
+                or 'runControlClient("event"' in content
+                or ('function record(event, meta)' in content and 'appendLine(LOG_PATH, JSON.stringify(row));' in content and 'CONTROL_CONFIG' in content)):
             return True
     return False
 

@@ -115,6 +115,7 @@ class Discovery:
         endpoint.db.execute('CREATE TABLE IF NOT EXISTS enrolled(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL)')
         endpoint.db.execute('CREATE TABLE IF NOT EXISTS pending_discoveries(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL,envelope BLOB NOT NULL)')
         endpoint.db.execute('CREATE TABLE IF NOT EXISTS soc_onboarding(instance TEXT PRIMARY KEY,result TEXT)')
+        endpoint.db.execute('CREATE TABLE IF NOT EXISTS reported_protocol_packages(instance TEXT,digest TEXT,PRIMARY KEY(instance,digest))')
     def refresh(self):
         try:
             with build_opener(ProxyHandler({})).open(self.base+'/api/state',timeout=15) as r:state=json.load(r)
@@ -174,6 +175,38 @@ class Discovery:
             prior=json.loads(row[0]);agent.update({k:prior[k] for k in ('agent_id','key_file')})
             with self.endpoint.db:self.endpoint.db.execute('UPDATE enrolled SET configuration=? WHERE instance=?',(json.dumps(agent),agent['asg_instance_id']))
             self.endpoint.agents[agent['agent_id']]=agent;found.append(agent['agent_id'])
+
+        # A config that the live target actually opened can yield a generic
+        # command-Hook package without a model.  Publish it to SOC first; the
+        # normal catalog selector below then downloads and installs it exactly
+        # like every other artifact.  Directory-name clues never enter here.
+        if self.endpoint.config.get('soc_installation', False):
+            from .soc_onboarding import select
+            from .deployment_package import build as build_installation_package
+            from runtime.protocol_package import prepare as prepare_protocol_package
+            import psutil
+            for candidate in current:
+                instance=candidate['asg_instance_id']
+                registered=next((row for row in self.endpoint.agents.values()
+                                 if row.get('asg_instance_id')==instance),None)
+                if not registered:continue
+                try:
+                    pid,started=instance.split(':',1);process=psutil.Process(int(pid))
+                    if abs(process.create_time()-float(started))>0.01:continue
+                    if select(self.endpoint,registered,process.exe()) is not None:continue
+                    bundle=prepare_protocol_package(process)
+                    if bundle is None:continue
+                    archive=build_installation_package(bundle)
+                    revision=hashlib.sha256(canonical(bundle)).hexdigest()
+                    if self.endpoint.db.execute('SELECT 1 FROM reported_protocol_packages WHERE instance=? AND digest=?',(instance,revision)).fetchone():continue
+                    result=self.endpoint.request(registered,'/api/asg/artifact',canonical({
+                        'bundle':bundle,'agent_version':registered.get('agent_version','unknown'),
+                        'installation_archive':base64.b64encode(archive).decode()}))
+                    if result.get('accepted') is True:
+                        with self.endpoint.db:self.endpoint.db.execute(
+                            'INSERT OR IGNORE INTO reported_protocol_packages VALUES(?,?)',(instance,revision))
+                except (OSError,ValueError,KeyError,psutil.Error):
+                    continue
         def onboard(request_investigation):
             if not self.endpoint.config.get('soc_installation', False):return
             from .soc_onboarding import install
