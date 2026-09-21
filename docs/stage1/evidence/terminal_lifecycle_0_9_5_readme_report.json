@@ -1,0 +1,187 @@
+{
+ "package": "/private/tmp/asg-rel-g/asg-terminal",
+ "package_manifest_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+ "gateway": "http://127.0.0.1:8095",
+ "steps": [
+  {
+   "step": "install_healthy_within_60s",
+   "expected": "干净目录安装：60 秒内心跳健康，SOC 鉴权成功，rc0",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948859.08626,
+   "pass": true,
+   "detail": {
+    "healthy_in_s": 13.1
+   },
+   "elapsed_s": 13.1
+  },
+  {
+   "step": "service_survives_package_removal",
+   "expected": "删除/改名解压目录后服务心跳与子进程仍正常",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948872.1390631,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 12.0
+  },
+  {
+   "step": "repeat_install_idempotent",
+   "expected": "重复安装 3 次：只有一个服务、一个运行实例，rc0 already_installed",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948884.1478982,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 1.2
+  },
+  {
+   "step": "register_test_agent",
+   "expected": "隔离测试 Agent 经网关注册成功并写入采集配置",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948885.3826702,
+   "pass": true,
+   "detail": {
+    "agent_id": "asg-253611b72efecf6d79591371cbc88a58"
+   },
+   "elapsed_s": 0.3
+  },
+  {
+   "step": "first_collection_reaches_soc",
+   "expected": "首轮清点快照到达 SOC，队列清空",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948885.6401138,
+   "pass": true,
+   "detail": {
+    "snapshots": 1
+   },
+   "elapsed_s": 5.2
+  },
+  {
+   "step": "disconnect_queues_reconnect_drains",
+   "expected": "SOC 不可达时队列增长；恢复后自动补报清空且无需重装",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948890.8587132,
+   "pass": true,
+   "detail": {
+    "soc": "ok"
+   },
+   "elapsed_s": 9.8
+  },
+  {
+   "step": "soc_snapshots_no_duplicates",
+   "expected": "SOC 快照数等于去重后的修订数（无逻辑重复）",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948900.613334,
+   "pass": true,
+   "detail": {
+    "snapshots": 2
+   },
+   "elapsed_s": 0.3
+  },
+  {
+   "step": "start_stop_cycles",
+   "expected": "10 轮 start 只有一个进程；stop 后 30 秒不被服务管理器拉起",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948900.9171782,
+   "pass": true,
+   "detail": {
+    "cycles": 10,
+    "no_autorestart_30s": true
+   },
+   "elapsed_s": 65.8
+  },
+  {
+   "step": "bad_credential_rc5_and_repair",
+   "expected": "错误凭据：install rc5 报鉴权失败；更正凭据重装修复，不出现已连接误报",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948966.7411032,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 12.6
+  },
+  {
+   "step": "negative_installs",
+   "expected": "缺文件 rc2 点名缺失；篡改摘要 rc2 拒绝；SOC 离线仍可装成并明示离线",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948979.3733492,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 14.3
+  },
+  {
+   "step": "doctor_fault_injection",
+   "expected": "四类故障各自给出正确原因：坏凭据/网络断/缺文件/工作循环停滞；恢复后 OK",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789948993.702622,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 19.4
+  },
+  {
+   "step": "seed_user_config_key",
+   "expected": "写入用户自定义配置键，供升级后核验保留",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789949013.0778098,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 0.0
+  },
+  {
+   "step": "upgrade_a_to_b",
+   "expected": "升级后版本变新，用户配置键与流水线状态保留",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789949013.0787818,
+   "pass": true,
+   "detail": {
+    "upgraded_in_s": 10.3
+   },
+   "elapsed_s": 11.8
+  },
+  {
+   "step": "upgrade_failure_rolls_back_within_90s",
+   "expected": "坏版本升级失败自动回滚：旧版本健康、队列记录不丢、可重复重试",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789949024.832808,
+   "pass": true,
+   "detail": {
+    "rollback_total_s": 70.8
+   },
+   "elapsed_s": 143.2
+  },
+  {
+   "step": "uninstall_keeps_data_and_hooks",
+   "expected": "默认卸载移除服务与程序但保留配置/状态/Hook 运行目录；二次运行 not_installed",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789949168.004247,
+   "pass": true,
+   "detail": {},
+   "elapsed_s": 1.4
+  },
+  {
+   "step": "reinstall_seed_hooks",
+   "expected": "重装同一发布包成功；种入两项学习 Hook 安装后，doctor 点名被用户修改的那项漂移、未修改项不误报",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789949169.376967,
+   "pass": true,
+   "detail": {
+    "instances": [
+     "hook-ws-clean:1000.0",
+     "hook-ws-modified:1000.0"
+    ]
+   },
+   "elapsed_s": 10.6
+  },
+  {
+   "step": "uninstall_remove_hooks_scoped",
+   "expected": "--remove-hooks 只回滚未修改的 ASG 写入文件；被用户修改的保留并报冲突；无关文件与用户配置键不动；再次卸载 not_installed",
+   "package_sha256": "b10d0987d49263ec00560b41f807a3eca63b9db862e2217df23951eb83fc4fd5",
+   "started_at": 1789949179.981384,
+   "pass": true,
+   "detail": {
+    "removed": null,
+    "modified_kept_as_conflict": true
+   },
+   "elapsed_s": 0.5
+  }
+ ],
+ "failed": 0,
+ "home": "/var/folders/xf/_m1f6xjn7cd55zzpvqp3r3f80000gn/T/asg-lifecycle-acceptance-yilnlab6/home"
+}
