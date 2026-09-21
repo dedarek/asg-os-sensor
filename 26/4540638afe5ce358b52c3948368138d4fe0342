@@ -1,0 +1,25 @@
+runtime/identity.py
+  s_7a5b8096b41d01::t_bc3306726fa65f 202-216
+test_discovery.py
+  s_7a5b8096b41d01::t_89358a13929a92 94-95
+  s_7a5b8096b41d01::t_c5eaa26bac37d0 76,79-93,96-104
+  s_7a5b8096b41d01::t_57327dd5bc6e4c 105-109
+docs/stage1/evidence/discovery_gap_net_transport_20260921.json
+  s_7a5b8096b41d01::t_0423e6ce8365c5 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "264540638afe5ce358b52c3948368138d4fe0342",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
