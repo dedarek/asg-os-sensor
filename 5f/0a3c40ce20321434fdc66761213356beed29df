@@ -1,0 +1,38 @@
+runtime/discovery_sticky.py
+  s_7a5b8096b41d01::t_5468913b74f612 1-40
+runtime/protocol_discovery.py
+  s_7a5b8096b41d01::t_7d7fe6a103e3f6 83-85,87-89
+runtime/integration_protocol.py
+  s_7a5b8096b41d01::t_0332130b8e5c98 10-13,53
+test_protocol_fastpath.py
+  s_7a5b8096b41d01::t_2de2bfc3fd8adc 15,19-44,50,53-55
+  s_7a5b8096b41d01::t_054fa015539080 45-49,51-52
+runtime/command_protocol_hook.py
+  s_7a5b8096b41d01::t_5d36d4bbbd3154 53-57,60-61
+  s_7a5b8096b41d01::t_5f1d6674e18e08 16-18,21-23,33-34
+test_discovery_sticky.py
+  s_7a5b8096b41d01::t_4c03aa635a6e5d 1-22
+runtime/compatibility.py
+  s_7a5b8096b41d01::t_e0b205bb5007a1 36-49
+monitor_dashboard.py
+  s_7a5b8096b41d01::t_d358a10487249c 170-171
+  s_7a5b8096b41d01::t_6d89edd918192d 1535
+  s_7a5b8096b41d01::t_ebdf0be2cd5de9 1562-1566
+  s_7a5b8096b41d01::t_2b256b2ff6201a 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5f0a3c40ce20321434fdc66761213356beed29df",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "lenovo-qwen-flash-next/Qwen3.8-Flash-Next"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
