@@ -10,10 +10,24 @@ import tempfile
 import unittest
 from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
-from integrations.soc_inventory.soc_onboarding import integrity
+from integrations.soc_inventory.soc_onboarding import integrity,existing_install_mode
 from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_existing_profile_chooses_rebind_or_upgrade_from_exact_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);workspace=root/'profile';workspace.mkdir()
+            state=root/('.asg-install-'+hashlib.sha256(str(workspace.resolve()).encode()).hexdigest()[:16])
+            state.mkdir();package=root/'package';package.mkdir()
+            (package/'recipe-bundle.json').write_text(json.dumps({'integrity':{'digest':'bundle-a'}}))
+            (package/'transport.json').write_text(json.dumps({'installer_revision':'installer-a'}))
+            receipt=state/'package-receipt.json'
+            receipt.write_text(json.dumps({'bundle_digest':'bundle-a','installer_revision':'installer-a'}))
+            agent={'workspace':str(workspace),'hook_workspace':str(workspace)}
+            self.assertEqual(existing_install_mode(agent,package),'rebind')
+            receipt.write_text(json.dumps({'bundle_digest':'bundle-old','installer_revision':'installer-a'}))
+            self.assertEqual(existing_install_mode(agent,package),'upgrade')
+
     def test_reused_profile_keeps_existing_yaml_patch_entries(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace=Path(tmp);target=workspace/'cordis.patch.yml'

@@ -157,6 +157,29 @@ def install_target(agent):
     return str(workspace)
 
 
+def existing_install_mode(agent, package_root):
+    """Return the safe action for a direct package already in this profile.
+
+    A restarted instance with the exact same verified package needs only an
+    identity rebind. If SOC selected a newer verified package, the same pass
+    must perform an upgrade as well; otherwise every collector release that
+    improves the installer would strand existing profiles until a human
+    intervened.
+    """
+    target=install_target(agent)
+    if target is None:return None
+    target=Path(target)
+    state=target.parent/('.asg-install-'+hashlib.sha256(str(target).encode()).hexdigest()[:16])
+    receipt=state/'package-receipt.json'
+    if not receipt.is_file():return None
+    previous=json.loads(receipt.read_text())
+    bundle=json.loads((Path(package_root)/'recipe-bundle.json').read_text())
+    transport=json.loads((Path(package_root)/'transport.json').read_text())
+    same=(previous.get('bundle_digest')==(bundle.get('integrity') or {}).get('digest')
+          and previous.get('installer_revision')==transport.get('installer_revision'))
+    return 'rebind' if same else 'upgrade'
+
+
 def integrity(endpoint, agent, prior):
     """Byte-check learned (soc-direct-v1) installs against their receipt.
 
@@ -256,21 +279,20 @@ def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
             args+=['--entry',observed['entry_path']]
     else:
         raise ValueError('unsupported SOC package transport')
-    if upgrade:
+    existing_mode=(existing_install_mode(agent,root)
+                   if execute and selected['transport']=='soc-direct-v1' else None)
+    if upgrade or existing_mode=='upgrade':
         # The learned installer understands --upgrade (rollback then install);
         # the native bash installer only understands --force (replace a target
         # it already manages). Passing the wrong flag must fail before writes.
         args+=['--upgrade' if selected['transport']=='soc-direct-v1' else '--force']
-    elif execute and selected['transport']=='soc-direct-v1':
+    elif existing_mode=='rebind':
         # A restarted Agent instance receives a fresh SOC identity while its
         # verified Hook package remains in the same profile. Let the installer
         # perform a narrowly-scoped identity rebind. It refuses this flag if
         # either the package digest or installer revision changed, so a real
         # package replacement still requires the explicit upgrade path above.
-        import hashlib as _hashlib
-        target=Path(install_target(agent))
-        state=target.parent/('.asg-install-'+_hashlib.sha256(str(target).encode()).hexdigest()[:16])
-        if (state/'package-receipt.json').is_file():args+=['--rebind']
+        args+=['--rebind']
     result=subprocess.run(args+([] if execute else ['--dry-run']),capture_output=True,text=True,timeout=45)
     output=(result.stdout or result.stderr).strip()
     try:body=json.loads(output)
