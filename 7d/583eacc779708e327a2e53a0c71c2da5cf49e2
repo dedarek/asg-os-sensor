@@ -1,0 +1,22 @@
+runtime/onboarding.py
+  s_7a5b8096b41d01::t_09e89df60cba79 226-278,323
+test_reuse_exact_fileplan.py
+  s_7a5b8096b41d01::t_09e89df60cba79 17,174-196
+  s_7a5b8096b41d01::t_882492ab69c540 197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7d583eacc779708e327a2e53a0c71c2da5cf49e2",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@192.168.101.101>"
+    }
+  }
+}
