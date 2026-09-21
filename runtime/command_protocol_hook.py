@@ -13,9 +13,14 @@ import time
 import uuid
 import psutil
 
+# Structured event-name dialects that share this payload shape. Aliases come
+# from hosts whose own migration tooling converts between the two spellings;
+# recognition stays structural (exact keys), never product-name inference.
 EVENTS = {'SessionStart': 'hook.loaded', 'UserPromptSubmit': 'user.input',
           'PreToolUse': 'tool.execute.before', 'PostToolUse': 'tool.execute.after',
-          'Stop': 'assistant.output'}
+          'Stop': 'assistant.output',
+          'BeforeAgent': 'user.input', 'BeforeTool': 'tool.execute.before',
+          'AfterTool': 'tool.execute.after', 'AfterAgent': 'assistant.output'}
 
 
 def handle(payload, config, target, *, decide=None, emit=None):
@@ -25,7 +30,8 @@ def handle(payload, config, target, *, decide=None, emit=None):
     if not kind: return {}, 0
     call = payload.get('tool_use_id') or payload.get('tool_call_id')
     content = (payload.get('prompt') if kind == 'user.input' else
-               payload.get('last_assistant_message') if kind == 'assistant.output' else
+               payload.get('last_assistant_message') or payload.get('prompt_response')
+               if kind == 'assistant.output' else
                payload.get('tool_input') if kind == 'tool.execute.before' else
                payload.get('tool_response') if kind == 'tool.execute.after' else None)
     event = {'event': kind, **target, 'timestamp': time.time(), 'event_id': uuid.uuid4().hex,
@@ -44,10 +50,15 @@ def handle(payload, config, target, *, decide=None, emit=None):
         allowed = decision.get('decision') == 'allow'
     except (OSError, ValueError, subprocess.SubprocessError):
         allowed = False
-    # This output implements the command Hook dialect, not proof the host obeys.
-    response = {'hookSpecificOutput': {'hookEventName': 'PreToolUse',
+    # The response mirrors the dialect the host just used (its own event name).
+    # Both structured variants treat a missing decision as allow, so the
+    # blocking form is emitted only on refusal; either way this is only our
+    # declared answer, not proof the host obeys.
+    response = {'hookSpecificOutput': {'hookEventName': native,
                 'permissionDecision': 'allow' if allowed else 'deny',
                 'permissionDecisionReason': 'ASG execution policy'}}
+    if not allowed:
+        response.update({'decision': 'block', 'reason': 'ASG execution policy'})
     return response, 0 if allowed else 2
 
 

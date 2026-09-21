@@ -7,6 +7,10 @@ remain responsible for installing and verifying the learned binding.
 import json
 
 EVENTS = ('UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionStart')
+# Structured alias spellings used by hosts that document them as equivalent
+# to the names above; detection stays structural, never product-name based.
+EVENT_ALIASES = {'BeforeAgent': 'UserPromptSubmit', 'BeforeTool': 'PreToolUse',
+                 'AfterTool': 'PostToolUse', 'AfterAgent': 'Stop'}
 FAMILIES = ('command_hooks', 'acp', 'plugin', 'unsupported')
 
 
@@ -46,7 +50,7 @@ def detect(value):
         hooks = node.get('hooks')
         if isinstance(hooks, dict):
             events = []
-            for event in EVENTS:
+            for event in (*EVENTS, *EVENT_ALIASES):
                 entries = hooks.get(event)
                 if not isinstance(entries, list): continue
                 for entry in entries:

@@ -33,10 +33,20 @@ def observe(exe, argv, cwd):
         runtime = 'python' if name.startswith('python') else name
     entry = None
     if runtime != 'native':
-        # Unknown interpreter option syntax fails closed instead of guessing prompt text.
-        if len(argv) > 1 and not argv[1].startswith('-'):
-            entry = Path(argv[1]); entry = entry if entry.is_absolute() else Path(cwd) / entry
-        else:
+        # The entry script is the first positional token after interpreter
+        # runtime options. Inline-value options (--flag=value) cannot consume
+        # the next token, so they are safe to skip; any other leading option
+        # might consume a value or hide prompt text and fails closed.
+        for token in argv[1:]:
+            if token in ('-c', '-e', '--eval'):
+                return None
+            if len(token) > 2 and token.startswith('--') and '=' in token:
+                continue
+            if token.startswith('-'):
+                return None
+            entry = Path(token); entry = entry if entry.is_absolute() else Path(cwd) / entry
+            break
+        if entry is None:
             return None
     build = {'executable': digest(exe), 'entry': digest(entry) if entry else 'native',
              'platform': platform.system(), 'architecture': platform.machine(), 'runtime': runtime}

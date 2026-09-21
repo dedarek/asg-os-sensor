@@ -80,10 +80,13 @@ def discover(process):
     environment_error = None
     try:
         for key, value in process.environ().items():
-            if key in ('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'PATH'): continue
-            if key.endswith(('_HOME', '_CONFIG_DIR', '_CONFIG_PATH')) and value:
+            if key == 'PATH': continue
+            relocated_home = key in ('HOME', 'USERPROFILE')
+            if (relocated_home or key.endswith(('_HOME', '_CONFIG_DIR', '_CONFIG_PATH'))) and value:
                 path = Path(value).expanduser()
-                if path.is_absolute():
+                # A process running with a relocated home keeps its product
+                # configuration under that home; the real user home stays out.
+                if path.is_absolute() and (not relocated_home or path != Path.home()):
                     if path.is_file(): paths.append(path)
                     elif path.is_dir(): roots.append(path)
     except (OSError, psutil.Error) as exc:

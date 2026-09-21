@@ -40,6 +40,7 @@ from runtime.learned_presentation import hook_state as learned_hook_state
 from runtime.tool_transport_health import ToolTransportHealth
 from runtime.recipe_validation import validate as validate_recipe
 from runtime.identity import identify, ownership, metadata_identity, runtime_discovery_candidate
+from runtime import discovery_sticky
 from runtime.stream_parser import redact
 from runtime.llm_config import analyst_key as load_analyst_key
 from runtime.llm_config import analyst_route as load_analyst_route
@@ -166,6 +167,8 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 OBSERVE_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 STATE_LOCK = threading.Lock()
+# pid -> instance-bound discovery evidence kept briefly across scan gaps.
+DISCOVERY_EVIDENCE_CACHE: dict = {}
 SCAN_STATE = {
     "last_scan_time": None,
     "scan_interval": SCAN_INTERVAL_S,
@@ -1529,6 +1532,7 @@ def _scan_agents_once():
     global SCAN_STATE
     policies = load_policies()
     sensor = Sensor(policies)
+    discovery_sticky.prune(DISCOVERY_EVIDENCE_CACHE)
     threshold = int(policies.get("agent_score_threshold", 50))
     observation_snapshot = read_observation_snapshot()
     
@@ -1555,6 +1559,11 @@ def _scan_agents_once():
             w = sensor.wrap_pid(pid)
             score, reasons = sensor.agent_score(w)
             discovery = runtime_discovery_candidate(pinfo, proc) if 0 <= score < threshold else {}
+            if 0 <= score < threshold:
+                # Bursty agents connect only while reasoning; instance-bound
+                # evidence collected moments ago stays presentable briefly.
+                discovery = discovery_sticky.apply(DISCOVERY_EVIDENCE_CACHE, pid,
+                                                   pinfo.get("create_time") or 0, discovery)
             pinfo['discovery_evidence'] = discovery
             discovery_audit[pid] = {'pid': pid, 'name': name, 'status': 'candidate' if score >= threshold or discovery else 'below_threshold', 'score': score, 'reason': '; '.join(reasons) or '当前快照没有足够 Agent 线索', 'evidence': discovery}
             if score >= threshold or discovery:
