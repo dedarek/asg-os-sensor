@@ -126,6 +126,10 @@ def validate(recipe, evidence_dir, target=None, known_harness_ids=None, require_
     install_plan = recipe.get('install_plan')
     if hook['method'] == 'file_plan' and install_plan is None:
         raise ValueError('file_plan requires recipe.install_plan at top level, not nested under hook; new files use expected_sha256=null, not a fabricated digest')
+    if hook['method'] == 'file_plan':
+        workspace = hook.get('workspace')
+        if not isinstance(workspace, str) or not Path(workspace).is_absolute():
+            raise ValueError('file_plan requires hook.workspace as the absolute target configuration/profile root proved by evidence')
     if install_plan is not None:
         # Candidate file plans are validated here; execution still requires a
         # supervisor-approved workspace and plan digest (learned_install.install).

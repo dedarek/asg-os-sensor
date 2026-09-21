@@ -28,7 +28,8 @@ REQUIRED_TOP = ("schema", "created_at", "fingerprint", "recipe", "constraints", 
 # resolved by the receiver, so a bundle never needs manual path edits.
 PLACEHOLDER_WORKSPACE = "${TARGET_WORKSPACE}"
 PLACEHOLDER_ROOT = "${ASG_ROOT}"
-PLACEHOLDERS = (PLACEHOLDER_WORKSPACE, PLACEHOLDER_ROOT)
+PLACEHOLDER_PYTHON = "${PYTHON_EXECUTABLE}"
+PLACEHOLDERS = (PLACEHOLDER_WORKSPACE, PLACEHOLDER_ROOT, PLACEHOLDER_PYTHON)
 _SECRET_KEY = ("api_key", "apikey", "authorization", "access_token", "refresh_token",
                "auth_token", "secret", "password", "passwd", "credential", "cookie")
 _SECRET_VALUE = ("sk-", "ghp_", "Bearer ", "eyJ")
@@ -39,11 +40,16 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def portable_recipe(recipe: dict, *, asg_root, target_workspace) -> tuple[dict, dict]:
+def portable_recipe(recipe: dict, *, asg_root, target_workspace,
+                    python_executable=None) -> tuple[dict, dict]:
     """Replace machine-specific absolute paths with receiver-resolved placeholders."""
     text = json.dumps(recipe, ensure_ascii=False)
     counts = {}
-    for placeholder, value in ((PLACEHOLDER_WORKSPACE, target_workspace), (PLACEHOLDER_ROOT, asg_root)):
+    if python_executable is None:
+        python_executable = sys.executable
+    for placeholder, value in ((PLACEHOLDER_WORKSPACE, target_workspace),
+                               (PLACEHOLDER_ROOT, asg_root),
+                               (PLACEHOLDER_PYTHON, python_executable)):
         if isinstance(value, str) and value:
             hits = text.count(value)
             if hits:
@@ -57,6 +63,7 @@ def resolve_bundle(bundle: dict, *, asg_root, target_workspace) -> dict:
     text = json.dumps(bundle, ensure_ascii=False)
     text = text.replace(PLACEHOLDER_WORKSPACE, str(target_workspace or ""))
     text = text.replace(PLACEHOLDER_ROOT, str(asg_root or ""))
+    text = text.replace(PLACEHOLDER_PYTHON, sys.executable)
     resolved = json.loads(text)
     # The receiver transformation is sanctioned, so its own digest is recomputed;
     # the received bundle must be validated (transit integrity) before this.
@@ -155,6 +162,13 @@ def export_bundle(fingerprint_id: str, *, db: dict | None = None, note: str | No
     portable, counts = portable_recipe(recipe, asg_root=asg_root, target_workspace=target_workspace)
     revisions = entry.get("revisions") or []
     latest = revisions[-1] if revisions and isinstance(revisions[-1], dict) else {}
+    portable_compatibility = copy.deepcopy(latest.get("compatibility"))
+    if isinstance(portable_compatibility, dict):
+        # These describe the exporting machine's launch location, not the
+        # executable/entry bytes used for compatibility. Keeping them would
+        # leak a local path and make a portable package look machine-bound.
+        portable_compatibility.pop("entry_path", None)
+        portable_compatibility.pop("launch", None)
     bundle = {
         "schema": SCHEMA,
         "created_at": _now(),
@@ -171,7 +185,7 @@ def export_bundle(fingerprint_id: str, *, db: dict | None = None, note: str | No
         },
         "constraints": {
             "revision": latest.get("revision", entry.get("revision")),
-            "compatibility": copy.deepcopy(latest.get("compatibility")),
+            "compatibility": portable_compatibility,
             "observed": copy.deepcopy(latest.get("observed") or entry.get("features")),
             "covers": ["可执行文件内容", "入口（脚本/模块）内容", "运行时与平台", "启动参数与工作目录"],
             "not_covers": ["配置文件内容", "依赖版本", "MCP/插件集合", "模型路由", "Hook 是否已生效"],

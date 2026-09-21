@@ -57,6 +57,20 @@ class McpLearning(unittest.TestCase):
         self.assertEqual(len(agents), 1)
         self.assertEqual(agents[0]["learned_mcp_configs"], [{"path": str(cfg.resolve()), "field": "mcpServers"}])
 
+    def test_confirmed_preserves_evidence_backed_hook_workspace(self):
+        target = {"agents": [{"pid": 4242, "instance_id": "4242:123.5", "name": "learned-target",
+            "identity": {"id": "unknown-platform", "version": "9"},
+            "adapter": {"agent_classification": {"status": "confirmed_agent", "roles": ["agent"]},
+                "onboarding": {"plan": {"workspace": "/profiles/isolated", "fingerprint_id": "harness-one"}}}}]}
+        process = patch("psutil.Process").start().return_value
+        process.create_time.return_value = 123.5
+        process.cwd.return_value = "/runtime/cwd"
+        process.environ.return_value = {}
+        self.addCleanup(patch.stopall)
+        agent = list(confirmed(target))[0]
+        self.assertEqual(agent["workspace"], "/runtime/cwd")
+        self.assertEqual(agent["hook_workspace"], "/profiles/isolated")
+
 
 if __name__ == "__main__":
     unittest.main()

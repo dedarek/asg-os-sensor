@@ -89,8 +89,12 @@ def confirmed(state):
         except (ValueError,KeyError,psutil.Error):continue
         identity=target.get('identity') or {}
         platform=str(identity.get('id') or 'unknown')
-        agent={'platform':platform,'workspace':workspace,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
-               'hook_fingerprint':((adapter.get('onboarding') or {}).get('plan') or {}).get('fingerprint_id'),'agent_version':str(identity.get('version') or target.get('version') or 'unknown'),'classification':classification.get('status','pending'),'name':target.get('name') or platform,'learned_skill_roots':[],'learned_mcp_configs':[]}
+        plan=(adapter.get('onboarding') or {}).get('plan') or {}
+        hook_workspace=plan.get('workspace')
+        if not isinstance(hook_workspace,str) or not Path(hook_workspace).is_absolute():
+            hook_workspace=None
+        agent={'platform':platform,'workspace':workspace,'hook_workspace':hook_workspace,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
+               'hook_fingerprint':plan.get('fingerprint_id'),'agent_version':str(identity.get('version') or target.get('version') or 'unknown'),'classification':classification.get('status','pending'),'name':target.get('name') or platform,'learned_skill_roots':[],'learned_mcp_configs':[]}
         # Only explicit resource paths in structured evidence, no prose extraction.
         assets=adapter.get('assets') or {}
         skills=(assets.get('skills') or {}).get('value') or {}

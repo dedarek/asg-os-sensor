@@ -8,10 +8,76 @@ import sys
 import tarfile
 import tempfile
 import unittest
-from runtime.recipe_bundle import digest
+from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
+from integrations.soc_inventory.package_runtime.install import wire_soc_control_client
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_goose_plugin_is_portable_and_uses_packaged_soc_client(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);workspace=root/'profile';source_root=root/'source'
+            python='/machine/python3'
+            plugin="""const clientCommand = [
+  '/machine/python3',
+  'SOURCE_ROOT/runtime/hook_control_client.py',
+  'SOURCE_ROOT/artifacts/stage1/dashboard/hook-control-client.json',
+]
+const client = () => {}
+client("event", record)
+client("decision", request)
+client("ack", { request_id: 'denied', applied: true, outcome: "blocked" })
+ctx.on('tools/pre-execute', async () => ({ kind: "deny", reason: 'blocked' }))
+""".replace('SOURCE_ROOT',str(source_root))
+            recipe={'hook':{'workspace':str(workspace)},'observation_source':{
+                'log_path':'plugins/events.jsonl','fields':{'event':'event','pid':'pid','timestamp':'timestamp'}},
+                'install_plan':{'version':1,'files':[{'path':'plugins/hook.mjs','content':plugin,'expected_sha256':None}]}}
+            portable,counts=portable_recipe(recipe,asg_root=str(source_root),target_workspace=str(workspace),python_executable=python)
+            bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'goose'},'recipe':portable,
+                    'constraints':{'compatibility':{'platform':platform.system(),'architecture':platform.machine(),
+                    'runtime':'native','executable':hashlib.sha256(Path(sys.executable).resolve().read_bytes()).hexdigest()}},
+                    'verification':{}}
+            bundle['integrity']={'algorithm':'sha256','digest':digest(bundle)}
+            self.assertEqual(set(counts),{'${TARGET_WORKSPACE}','${ASG_ROOT}','${PYTHON_EXECUTABLE}'})
+            report=scan_portability(bundle,asg_root=str(source_root),target_workspace=str(workspace))
+            self.assertEqual(report['machine_paths'],[])
+            self.assertEqual(report['credential_hits'],[])
+            self.assertIn('${PYTHON_EXECUTABLE}',report['placeholders'])
+            archive=build(bundle)
+            self.assertGreater(len(archive),1000)
+            resolved=resolve_bundle(bundle,asg_root=workspace/'.soc-hook',target_workspace=workspace)
+            content=resolved['recipe']['install_plan']['files'][0]['content']
+            self.assertIn(sys.executable,content)
+            self.assertIn(str(workspace/'.soc-hook/runtime/hook_control_client.py'),content)
+            self.assertNotIn('/machine/python3',content)
+            self.assertNotIn(str(source_root),content)
+            installed=wire_soc_control_client(content,workspace/'.soc-hook')
+            self.assertIn(str(workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json'),installed)
+            self.assertNotIn('artifacts/stage1/dashboard/hook-control-client.json',installed)
+
+    def test_unproven_plugin_control_pattern_is_not_packaged(self):
+        bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'bad'},
+                'recipe':{'install_plan':{'version':1,'files':[{'path':'hook.mjs',
+                'content':"client('event', row)", 'expected_sha256':None}]}},
+                'constraints':{'compatibility':{}},'verification':{}}
+        bundle['integrity']={'algorithm':'sha256','digest':digest(bundle)}
+        with self.assertRaisesRegex(ValueError,'direct normalized event'):
+            build(bundle)
+
+    def test_plugin_without_denied_execution_ack_is_not_packaged(self):
+        content="""client('event', record)
+client('decision', request)
+client('ack', { request_id: 'allowed', applied: true, outcome: 'allowed' })
+ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
+// hook_control_client.py
+"""
+        bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'missing-deny-ack'},
+                'recipe':{'install_plan':{'version':1,'files':[{'path':'hook.mjs',
+                'content':content,'expected_sha256':None}]}},
+                'constraints':{'compatibility':{}},'verification':{}}
+        bundle['integrity']={'algorithm':'sha256','digest':digest(bundle)}
+        with self.assertRaisesRegex(ValueError,'direct normalized event'):
+            build(bundle)
+
     def test_install_reinstall_conflict_rollback_build_rejection(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);pkg=root/'package';pkg.mkdir();workspace=root/'workspace'

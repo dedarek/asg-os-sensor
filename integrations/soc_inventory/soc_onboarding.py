@@ -142,7 +142,11 @@ def install_target(agent):
     Learned file plans are workspace-relative and the installer rejects
     anything else; the filesystem root is never a meaningful workspace.
     """
-    workspace=Path(agent['workspace']).expanduser().resolve()
+    # Learned integrations may live in a profile/config root distinct from the
+    # process cwd (GUI/web launchers commonly run from / or a temp directory).
+    # The investigation must provide that root explicitly; never guess it from
+    # a product name or install next to an unrelated cwd.
+    workspace=Path(agent.get('hook_workspace') or agent['workspace']).expanduser().resolve()
     # A GUI process launched from the filesystem root has no meaningful project
     # workspace; return None so the installer applies its own standard-directory
     # defaults instead of writing next to the filesystem root.

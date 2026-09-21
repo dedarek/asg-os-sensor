@@ -123,6 +123,15 @@ def wire_soc_events(content):
     content=content.replace(anchor,_EVENT_HELPER+'\n'+anchor,1).replace(call,_EVENT_CALL,1)
     return _fs_import_fix(content)
 
+def wire_soc_control_client(content, asg_root):
+    """Point a learned subprocess client at the package-owned SOC config."""
+    calls=all(re.search(r"client\s*\(\s*['\"]"+action+r"['\"]",content)
+              for action in ('event','decision','ack'))
+    if not calls or 'hook_control_client.py' not in content:return content
+    config=str(Path(asg_root)/'artifacts/autonomous-service/hook-control-client.json')
+    return re.sub(r'(["\'])[^"\'\n]*hook-control-client\.json\1',
+                  lambda match: json.dumps(config),content)
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--platform');p.add_argument('--target',required=True)
@@ -136,6 +145,10 @@ def main():
     a=p.parse_args();workspace=Path(a.target).expanduser().resolve()
     state=Path(a.state_dir).expanduser().resolve() if a.state_dir else workspace.parent/('.asg-install-'+hashlib.sha256(str(workspace).encode()).hexdigest()[:16])
     bundle=json.loads((ROOT/'recipe-bundle.json').read_text())
+    transport=json.loads((ROOT/'transport.json').read_text())
+    installer_revision=transport.get('installer_revision')
+    if not isinstance(installer_revision,str) or len(installer_revision)!=64:
+        raise ValueError('installation package has no valid installer revision')
     recipe_bundle.validate_bundle(bundle)
     constraint=bundle['constraints'].get('compatibility') or {}
     exe=Path(a.exe).expanduser().resolve()
@@ -175,6 +188,7 @@ def main():
         for item in plan['files']:
             item['content']=re.sub(r'(const CONTROL_PYTHON\s*=\s*)[\"\'][^\"\']+[\"\']',lambda m:m[1]+json.dumps(sys.executable),item['content'])
             item['content']=wire_soc_events(item['content'])
+            item['content']=wire_soc_control_client(item['content'],asg_root)
         cfg={'backend_url':a.backend_url,'agent_id':a.agent_id,'agent_name':a.agent_name,'platform':a.platform,'instance_id':a.instance_id or a.agent_id,'token_file':str(asg_root/'agent.key')}
         for rel,content in [('runtime/hook_control_client.py',(ROOT/'soc_client.py').read_text()),('artifacts/autonomous-service/hook-control-client.json',json.dumps(cfg)),('agent.key',Path(a.token_file).read_text().strip())]:
             plan['files'].append({'path':'.soc-hook/'+rel,'content':content,'expected_sha256':None})
@@ -185,10 +199,17 @@ def main():
         if not target.exists():item['expected_sha256']=None
     binding={'transport':'soc-direct-v1' if direct else 'asg-local','backend_url':a.backend_url,'agent_id':a.agent_id}
     receipt=state/'package-receipt.json'
+    package_changed=False
     if receipt.exists() and not a.uninstall:
         previous=json.loads(receipt.read_text())
-        if previous.get('binding',{'transport':'asg-local','backend_url':None,'agent_id':None}) != binding:raise ValueError('installed transport/identity differs; uninstall before switching control plane')
-        if previous.get('bundle_digest') != bundle['integrity']['digest']:
+        prior_binding=previous.get('binding',{'transport':'asg-local','backend_url':None,'agent_id':None})
+        binding_changed=prior_binding != binding
+        if binding_changed and not a.upgrade:
+            raise ValueError('installed transport/identity differs; use explicit upgrade to rebind this verified package')
+        package_changed=(previous.get('bundle_digest') != bundle['integrity']['digest']
+                         or previous.get('installer_revision') != installer_revision
+                         or binding_changed)
+        if package_changed:
             if not a.upgrade:
                 raise ValueError('another package is installed; uninstall it before changing recipes')
             # Explicit upgrade: roll the previous plan back first, then install
@@ -200,7 +221,6 @@ def main():
         import psutil
         process=psutil.Process(a.verify_pid)
         if Path(process.exe()).resolve()!=exe:raise ValueError('verification process executable differs')
-        if Path(process.cwd()).resolve()!=workspace:raise ValueError('verification process workspace differs')
         previous=json.loads(receipt.read_text())
         for item in previous['installed_plan']['files']:
             if digest(workspace/item['path'])!=hashlib.sha256(item['content'].encode()).hexdigest():raise ValueError('installed file changed; verification rejected')
@@ -229,7 +249,8 @@ def main():
         workspace.mkdir(parents=True,exist_ok=True)
         state.mkdir(parents=True,exist_ok=True)
         result=learned_install.install(plan,workspace,state,approved_workspace=workspace,approved_digest=learned_install.plan_digest(plan))
-        receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installed_plan':plan,'binding':binding,'installed_at':previous.get('installed_at',time.time()) if receipt.exists() else time.time()}));receipt.chmod(0o600)
+        installed_at=(time.time() if package_changed else previous.get('installed_at',time.time())) if receipt.exists() else time.time()
+        receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at}));receipt.chmod(0o600)
     print(json.dumps(result))
 if __name__=='__main__':
     try:main()
