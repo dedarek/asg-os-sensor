@@ -1,0 +1,26 @@
+runtime/recipe_bundle.py
+  s_7a5b8096b41d01::t_54a056858ef958 20,59-71
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_7353dcafd14fc9 108-111
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_54a056858ef958 131-138,140-141
+  s_7a5b8096b41d01::t_7353dcafd14fc9 139
+test_recipe_portability.py
+  s_7a5b8096b41d01::t_54a056858ef958 48-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "859073e3a9c050dab5c1e124ad6a70072f622a1d",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
