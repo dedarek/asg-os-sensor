@@ -59,6 +59,33 @@ class DeploymentPackageTests(unittest.TestCase):
       name: ./other.mjs
 """,'expected_sha256':None}]},workspace)
 
+    def test_new_direct_hook_disables_only_legacy_asg_control_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);target=workspace/'cordis.patch.yml'
+            target.write_text("""- insert:
+  - id: asg-runtime-observer
+    name: ./asg-runtime-observer/index.mjs
+    config:
+      control:
+        enabled: true
+  - id: administrator-hook
+    name: ./admin.mjs
+    config:
+      control:
+        enabled: true
+""")
+            desired={'version':1,'files':[{'path':'cordis.patch.yml','content':"""- insert:
+  - id: asg-observer
+    name: ./plugins/asg-observer.mjs
+""",'expected_sha256':None}]}
+            content=merge_structured_patch(desired,workspace)['files'][0]['content']
+            import yaml
+            entries=[entry for group in yaml.safe_load(content) for entry in group['insert']]
+            by_id={entry['id']:entry for entry in entries}
+            self.assertFalse(by_id['asg-runtime-observer']['config']['control']['enabled'])
+            self.assertTrue(by_id['administrator-hook']['config']['control']['enabled'])
+            self.assertEqual(by_id['asg-observer']['name'],'./plugins/asg-observer.mjs')
+
     def test_model_request_capture_includes_available_payload_and_redaction(self):
         source="""const bounded = (value) => ({ content: value, complete: true })
 function apply (ctx) {

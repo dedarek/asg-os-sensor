@@ -221,6 +221,21 @@ def merge_structured_patch(plan, workspace):
             return found
         wanted=insertions(desired);present=insertions(current)
         if wanted is None or present is None:continue
+        # Supersede only the legacy ASG control gate that this project itself
+        # installed. Leaving it enabled would make two controllers race and a
+        # stale local client could deny before the new SOC-direct Hook runs.
+        # Observation remains loaded, unrelated entries are untouched, and the
+        # transaction backup restores the exact original YAML on uninstall.
+        migrated=False
+        if any(entry.get('id')=='asg-observer' for entry in wanted):
+            for entry in present:
+                control=((entry.get('config') or {}).get('control') or {})
+                if (entry.get('id')=='asg-runtime-observer'
+                        and 'asg-runtime-observer' in entry.get('name','')
+                        and control.get('enabled') is True):
+                    control['enabled']=False;migrated=True
+        if migrated:
+            current_text=yaml.safe_dump(current,sort_keys=False,allow_unicode=True)
         by_id={entry['id']:entry for entry in present}
         additions=[]
         for entry in wanted:
