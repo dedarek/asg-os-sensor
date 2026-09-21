@@ -138,6 +138,24 @@ class NativeConstraintTests(unittest.TestCase):
                    'version':'9.9.9'}}
         self.assertFalse(compatible(learned, exe, 'codex', '1.0.0'))
 
+    def test_interpreter_package_requires_observed_entry_digest(self):
+        import hashlib
+        import platform as pf
+        import sys
+        exe=Path(sys.executable).resolve()
+        entry=Path(__file__).resolve()
+        stored={'platform':pf.system(),'architecture':pf.machine(),'runtime':'python',
+                'executable':hashlib.sha256(exe.read_bytes()).hexdigest(),
+                'entry':hashlib.sha256(entry.read_bytes()).hexdigest(),
+                # Paths and cwd are intentionally portable metadata, not pins.
+                'entry_path':'/another/machine/app.py','launch':'historical'}
+        observed={**stored,'entry_path':str(entry),'launch':'current'}
+        self.assertTrue(compatible({'compatibility':stored},exe,'unknown',
+                                   observed_compatibility=observed))
+        self.assertFalse(compatible({'compatibility':stored},exe,'unknown',
+                                    observed_compatibility={**observed,'entry':'0'*64}))
+        self.assertFalse(compatible({'compatibility':stored},exe,'unknown'))
+
 
 if __name__=='__main__':
     unittest.main()

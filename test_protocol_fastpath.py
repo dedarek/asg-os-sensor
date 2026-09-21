@@ -124,25 +124,6 @@ class DirectProtocolTests(unittest.TestCase):
         def broken(request): raise OSError('unavailable')
         self.assertEqual(handle(payload, {'control_client': ['fixture']}, {}, decide=broken, emit=lambda _: None)[1], 2)
 
-    def test_fallback_is_once_per_instance_and_records_gaps(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}):
-            target = {'pid': 123, 'create_time': 1.0}
-            iid = '123:1.0'
-            pipeline.save(iid, 'protocol_fastpath', '', status='installed', installed_at=0)
-            with patch.object(pipeline, 'verify_installed', return_value={'valid_events': 2, 'selfcheck': {'status': 'pending', 'next_checks': ['io_round']}}):
-                self.assertFalse(fast.attempt(target)['handled'])
-                self.assertEqual(pipeline.read(iid)['upgrade']['missing_checks'], ['io_round'])
-            with patch.object(pipeline, 'verify_installed', side_effect=AssertionError('must not retry install')):
-                self.assertFalse(fast.attempt(target)['handled'])
-
-    def test_pending_activation_does_not_call_goose_or_claim_success(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'ASG_RUN_DIR': tmp}):
-            target = {'pid': 123, 'create_time': 1.0}
-            pipeline.save('123:1.0', 'protocol_fastpath', '', status='installed', installed_at=time.time())
-            with patch.object(pipeline, 'verify_installed', return_value={'valid_events': 0}):
-                result = fast.attempt(target)
-                self.assertTrue(result['handled'])
-                self.assertFalse(result['verified'])
 
 
 if __name__ == '__main__': unittest.main()

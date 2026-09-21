@@ -48,4 +48,30 @@ class DeploymentPackageTests(unittest.TestCase):
             self.assertNotEqual(run().returncode,0)
             self.assertFalse(file.exists())
 
+    def test_interpreter_entrypoint_is_pinned_and_verified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);pkg=root/'package';pkg.mkdir();workspace=root/'workspace'
+            exe=Path(sys.executable).resolve();entry=root/'agent.py';entry.write_text('print("agent")\n')
+            hook='''import { appendFileSync, readFileSync } from "node:fs";\nimport { createHash } from "node:crypto";\nconst CONTROL_CONFIG = "placeholder";\nconst LOG_PATH = "events.jsonl";\nfunction appendLine(path, text) { appendFileSync(path, text + "\\n"); }\nfunction redact(value, depth) { return value; }\nfunction record(event, meta) { const row = {event, meta};\n  appendLine(LOG_PATH, JSON.stringify(row));\n}\n'''
+            compatibility={'platform':platform.system(),'architecture':platform.machine(),
+                           'runtime':'python','executable':hashlib.sha256(exe.read_bytes()).hexdigest(),
+                           'entry':hashlib.sha256(entry.read_bytes()).hexdigest(),
+                           'entry_path':'/portable/original/agent.py','launch':'historical'}
+            bundle={'schema':'asg-recipe-bundle.v1','created_at':'test','fingerprint':{'id':'script'},
+                    'recipe':{'install_plan':{'version':1,'files':[{'path':'.hooks/callback.js',
+                    'content':hook,'expected_sha256':None}]}},
+                    'constraints':{'compatibility':compatibility},'verification':{}}
+            bundle['integrity']={'algorithm':'sha256','digest':digest(bundle)}
+            with tarfile.open(fileobj=io.BytesIO(build(bundle))) as tar:tar.extractall(pkg)
+            token=root/'agent.key';token.write_text('isolated-test-key')
+            args=[sys.executable,str(pkg/'install.py'),'--target',str(workspace),'--exe',str(exe),
+                  '--entry',str(entry),'--platform','script','--backend-url','http://127.0.0.1:8095',
+                  '--agent-id','script','--token-file',str(token),'--dry-run']
+            ok=subprocess.run(args,capture_output=True,text=True)
+            self.assertEqual(ok.returncode,0,ok.stderr)
+            entry.write_text('print("changed")\n')
+            bad=subprocess.run(args,capture_output=True,text=True)
+            self.assertNotEqual(bad.returncode,0)
+            self.assertIn('entrypoint build mismatch',bad.stderr)
+
 if __name__=='__main__':unittest.main()

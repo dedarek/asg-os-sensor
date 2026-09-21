@@ -70,7 +70,7 @@ def _scope_ok(pin, observed):
     return True
 
 
-def compatible(constraints, exe, agent_type, agent_version=None):
+def compatible(constraints, exe, agent_type, agent_version=None, observed_compatibility=None):
     if constraints.get('adapter')=='soc-native-v1':
         if constraints.get('agent_type')!=agent_type:return False
         # Fail closed: a native package must ship an auditable compatibility
@@ -93,8 +93,20 @@ def compatible(constraints, exe, agent_type, agent_version=None):
         if not _build_ok(constraints,exe):return False
         return True
     c=constraints.get('compatibility') or {}
-    if c.get('platform')!=platform.system() or c.get('architecture')!=platform.machine() or c.get('runtime')!='native':return False
+    if c.get('platform')!=platform.system() or c.get('architecture')!=platform.machine():return False
+    runtime=c.get('runtime')
+    if runtime not in ('native','node','bun','python'):return False
     if not _build_ok(c,exe):return False
+    if runtime!='native':
+        observed=observed_compatibility or {}
+        # Interpreter identity alone is meaningless: the script/module bytes
+        # are the portable build pin. Launch path and cwd may differ between
+        # machines, so they are intentionally excluded from package matching.
+        for field in ('platform','architecture','runtime','executable','entry'):
+            if not c.get(field) or c.get(field)!=observed.get(field):return False
+        if c.get('entry')=='native':return False
+    elif c.get('entry') not in (None,'native'):
+        return False
     if not _version_ok(c,agent_version):return False
     return True
 
@@ -169,8 +181,19 @@ def integrity(endpoint, agent, prior):
 def select(endpoint, agent, exe):
     """Current catalog choice for this instance, or None (needs investigation)."""
     exe=Path(exe).resolve()
+    observed=None
+    try:
+        import psutil
+        from runtime.compatibility import observe
+        pid,started=agent['asg_instance_id'].split(':',1)
+        process=psutil.Process(int(pid))
+        if abs(process.create_time()-float(started))<=0.01:
+            observed=observe(str(exe),process.cmdline(),process.cwd())
+    except (KeyError,ValueError,psutil.Error,OSError):
+        pass
     catalog=endpoint.request(agent,'/api/asg/artifact/catalog',None,'GET')
-    return next((x for x in catalog['items'] if compatible(x['constraints'],exe,agent['platform'],agent.get('agent_version'))),None)
+    return next((x for x in catalog['items'] if compatible(
+        x['constraints'],exe,agent['platform'],agent.get('agent_version'),observed)),None)
 
 
 def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
@@ -208,6 +231,17 @@ def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
         target=install_target(agent)
         if target is None:raise ValueError('learned package requires a concrete Agent workspace')
         args=[sys.executable,str(root/'install.py'),'--target',target,'--exe',str(exe),'--platform',agent['platform'],'--backend-url',endpoint.url,'--agent-id',agent['agent_id'],'--agent-name',agent.get('name') or agent['platform'],'--instance-id',agent.get('asg_instance_id',''),'--token-file',agent['key_file']]
+        compatibility=(selected.get('constraints') or {}).get('compatibility') or {}
+        if compatibility.get('runtime')!='native':
+            import psutil
+            from runtime.compatibility import observe
+            pid,started=agent['asg_instance_id'].split(':',1)
+            process=psutil.Process(int(pid))
+            if abs(process.create_time()-float(started))>0.01:raise ValueError('target instance changed before entrypoint validation')
+            observed=observe(str(exe),process.cmdline(),process.cwd())
+            if not observed or observed.get('entry')!=compatibility.get('entry'):
+                raise ValueError('interpreter entrypoint build mismatch; investigate before installing')
+            args+=['--entry',observed['entry_path']]
     else:
         raise ValueError('unsupported SOC package transport')
     if upgrade:

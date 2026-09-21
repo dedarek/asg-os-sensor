@@ -126,7 +126,7 @@ def wire_soc_events(content):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--platform');p.add_argument('--target',required=True)
-    p.add_argument('--exe',required=True);p.add_argument('--asg-root')
+    p.add_argument('--exe',required=True);p.add_argument('--entry');p.add_argument('--asg-root')
     p.add_argument('--backend-url');p.add_argument('--agent-id');p.add_argument('--agent-name',default='')
     p.add_argument('--token-file');p.add_argument('--instance-id',default='')
     p.add_argument('--dry-run',action='store_true')
@@ -150,8 +150,16 @@ def main():
         if key.startswith('Contents/'):
             app=next((x for x in exe.parents if x.suffix=='.app'),None)
             if app is None or digest(app/key)!=value:raise ValueError('target bundle build mismatch')
-    # A script interpreter requires entrypoint validation; do not infer it from its name.
-    if constraint.get('runtime')!='native':raise ValueError('interpreter entrypoint validation is required')
+    runtime=constraint.get('runtime')
+    if runtime not in ('native','node','bun','python'):raise ValueError('unsupported runtime compatibility')
+    if runtime=='native':
+        if constraint.get('entry') not in (None,'native'):raise ValueError('native compatibility entry is invalid')
+        if a.entry:raise ValueError('native package does not accept a script entrypoint')
+    else:
+        if not a.entry or not constraint.get('entry'):raise ValueError('interpreter entrypoint validation is required')
+        entry=Path(a.entry).expanduser().resolve()
+        if not entry.is_file() or digest(entry)!=constraint['entry']:
+            raise ValueError('target entrypoint build mismatch; investigate before installing')
     direct=bool(a.backend_url)
     if direct:
         if not all((a.agent_id,a.platform,a.token_file)):raise ValueError('SOC agent-id, platform and token-file are required')
