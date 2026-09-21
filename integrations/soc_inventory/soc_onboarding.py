@@ -205,7 +205,9 @@ def integrity(endpoint, agent, prior):
         tx=json.loads((state/(str(record.get('plan_digest'))+'.json')).read_text())
     except (OSError,json.JSONDecodeError):return False
     if tx.get('status')!='installed':return False
+    runtime_mutable={'.soc-hook/artifacts/autonomous-service/hook-control-client.json'}
     for change in tx.get('changes',[]):
+        if change.get('path') in runtime_mutable:continue
         path=ws/change['path']
         try:data=path.read_bytes()
         except OSError:return False

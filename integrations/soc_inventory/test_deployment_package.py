@@ -130,9 +130,12 @@ ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
             resolved=profile.resolve()
             state=resolved.parent/('.asg-install-'+hashlib.sha256(str(resolved).encode()).hexdigest()[:16])
             state.mkdir();installed=profile/'plugins/hook.mjs';installed.parent.mkdir();installed.write_text('verified')
+            mutable=profile/'.soc-hook/artifacts/autonomous-service/hook-control-client.json'
+            mutable.parent.mkdir(parents=True);mutable.write_text('{"policy":{"default":"deny"}}')
             plan_digest='a'*64
             (state/(plan_digest+'.json')).write_text(json.dumps({'status':'installed','changes':[
-                {'path':'plugins/hook.mjs','after_sha256':hashlib.sha256(b'verified').hexdigest()}]}))
+                {'path':'plugins/hook.mjs','after_sha256':hashlib.sha256(b'verified').hexdigest()},
+                {'path':'.soc-hook/artifacts/autonomous-service/hook-control-client.json','after_sha256':'old-package-digest'}]}))
             (state/'package-receipt.json').write_text(json.dumps({'plan_digest':plan_digest}))
             agent={'workspace':str(cwd),'hook_workspace':str(profile)}
             self.assertTrue(integrity(None,agent,{'transport':'soc-direct-v1'}))
@@ -236,11 +239,16 @@ ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
             self.assertEqual(json.loads(rebound.stdout)['status'],'installed')
             config=json.loads((workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json').read_text())
             self.assertEqual(config['agent_id'],'different-agent')
+            config['policy']={'default':'allow','rules':[{'tool':'write','decision':'deny'}]}
+            (workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json').write_text(json.dumps(config))
             # A second pass with the same binding is idempotent even though
-            # create-only files now exist and a structured patch was merged.
+            # create-only files now exist, a structured patch was merged, and
+            # SOC has updated the package-created runtime policy file.
             repeated=run(['--rebind'])
             self.assertEqual(repeated.returncode,0,repeated.stderr)
             self.assertIn(json.loads(repeated.stdout)['status'],('installed','already_installed'))
+            preserved=json.loads((workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json').read_text())
+            self.assertEqual(preserved['policy'],config['policy'])
             # Rebind is deliberately narrower than upgrade: a different
             # package or installer revision cannot use it to overwrite files.
             receipt=next(workspace.parent.glob('.asg-install-*/package-receipt.json'))

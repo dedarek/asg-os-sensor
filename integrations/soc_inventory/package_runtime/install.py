@@ -13,6 +13,11 @@ ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT))
 from runtime import learned_install,recipe_bundle
 
+# This file is package-created but runtime-owned after installation: SOC policy
+# delivery and identity rebinding update it atomically. Treating those expected
+# writes as package drift makes a healthy Hook fail its next verification.
+RUNTIME_MUTABLE={'.soc-hook/artifacts/autonomous-service/hook-control-client.json'}
+
 _EVENT_CALL='  appendLine(LOG_PATH, JSON.stringify(row));\n  forwardSocEvent(row);'
 _EVENT_HELPER=r'''
 let socEventConfig = null;
@@ -366,9 +371,10 @@ def main():
         if not package_changed:
             prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
             desired_files={item['path']:item['content'] for item in plan['files']}
-            reuse_existing=(prior_files==desired_files and all(
+            reuse_existing=(prior_files.keys()==desired_files.keys() and all(
                 (workspace/name).is_file()
-                and hashlib.sha256((workspace/name).read_bytes()).hexdigest()==hashlib.sha256(content.encode()).hexdigest()
+                and (name in RUNTIME_MUTABLE
+                     or hashlib.sha256((workspace/name).read_bytes()).hexdigest()==hashlib.sha256(content.encode()).hexdigest())
                 for name,content in desired_files.items()))
         if package_changed:
             if not (a.upgrade or (a.rebind and binding_changed and not content_changed)):
@@ -380,7 +386,7 @@ def main():
             # backs up this exact prior version and remains reversible.
             prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
             desired_files={item['path']:item['content'] for item in plan['files']}
-            transport_only={'.soc-hook/artifacts/autonomous-service/hook-control-client.json','.soc-hook/agent.key'}
+            transport_only=RUNTIME_MUTABLE|{'.soc-hook/agent.key'}
             activation_affecting_change=any(
                 prior_files.get(name)!=content for name,content in desired_files.items()
                 if name not in transport_only)
@@ -390,12 +396,24 @@ def main():
                 raise ValueError('verified package upgrade removes managed files; uninstall is required first')
             for name,content in prior_files.items():
                 target=workspace/name
+                if name in RUNTIME_MUTABLE:
+                    continue
                 if (not target.is_file()
                         or hashlib.sha256(target.read_bytes()).hexdigest()!=hashlib.sha256(content.encode()).hexdigest()):
                     raise ValueError('managed file changed; refusing package upgrade: '+name)
             for item in plan['files']:
                 if item['path'] in prior_files:
-                    item['expected_sha256']=hashlib.sha256((workspace/item['path']).read_bytes()).hexdigest()
+                    target=workspace/item['path']
+                    item['expected_sha256']=hashlib.sha256(target.read_bytes()).hexdigest()
+                    if item['path'] in RUNTIME_MUTABLE:
+                        # Preserve only the SOC-issued policy. Package/rebind
+                        # arguments remain authoritative for agent identity,
+                        # instance identity, endpoint and token path.
+                        current_config=json.loads(target.read_text())
+                        desired_config=json.loads(item['content'])
+                        if 'policy' in current_config:
+                            desired_config['policy']=current_config['policy']
+                        item['content']=json.dumps(desired_config)
             plan=learned_install.validate_plan(plan)
     if a.verify_pid:
         import psutil
@@ -403,6 +421,7 @@ def main():
         if Path(process.exe()).resolve()!=exe:raise ValueError('verification process executable differs')
         previous=json.loads(receipt.read_text())
         for item in previous['installed_plan']['files']:
+            if item['path'] in RUNTIME_MUTABLE:continue
             if digest(workspace/item['path'])!=hashlib.sha256(item['content'].encode()).hexdigest():raise ValueError('installed file changed; verification rejected')
         source=resolved['recipe']['observation_source']
         log=Path(source['log_path'])
@@ -424,6 +443,19 @@ def main():
         previous=json.loads(receipt.read_text())
         rolled=[]
         for approved in [previous['plan_digest']]+list(reversed(previous.get('rollback_chain',[]))):
+            # SOC may legitimately change the runtime policy after install.
+            # Rebase only that explicitly mutable file's rollback guard to its
+            # current bytes; all executable/configuration files retain strict
+            # byte-for-byte rollback protection.
+            manifest_path=state/(approved+'.json')
+            manifest=json.loads(manifest_path.read_text())
+            changed=False
+            for change in manifest.get('changes',[]):
+                if change.get('path') not in RUNTIME_MUTABLE:continue
+                current=workspace/change['path']
+                if current.is_file():
+                    change['after_sha256']=digest(current);changed=True
+            if changed:manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
             step=learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=approved)
             rolled.append(step)
         result={'status':'rolled_back','transactions':rolled}
