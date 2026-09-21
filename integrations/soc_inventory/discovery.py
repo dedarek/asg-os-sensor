@@ -56,6 +56,14 @@ def durable_asset_id(agent):
     return hashlib.sha256((platform+'\0'+root).encode()).hexdigest()
 
 
+def same_asset(prior, current):
+    if prior.get('asset_id') and current.get('asset_id'):
+        return prior['asset_id']==current['asset_id']
+    return (prior.get('platform')==current.get('platform')
+            and (prior.get('hook_workspace') or prior.get('workspace'))
+            ==(current.get('hook_workspace') or current.get('workspace')))
+
+
 def _servers_map(value):
     if not isinstance(value,dict) or not value:return False
     return any(isinstance(d,dict) and any(k in d for k in ('command','url','transport','type')) for d in value.values())
@@ -264,8 +272,22 @@ class Discovery:
         for instance,configuration,raw in self.endpoint.db.execute('SELECT instance,configuration,envelope FROM pending_discoveries').fetchall():
             agent=json.loads(configuration);provision={'key_file':self.options['application_key_file']}
             agent.setdefault('asset_id',durable_asset_id(agent))
+            superseded=[]
+            for prior_instance,prior_raw in self.endpoint.db.execute(
+                    'SELECT instance,configuration FROM enrolled').fetchall():
+                if prior_instance==instance or not same_asset(json.loads(prior_raw),agent):continue
+                prior_id=json.loads(prior_raw).get('agent_id')
+                if prior_id:superseded.append(prior_id)
+            existing=self.endpoint.db.execute(
+                'SELECT configuration FROM enrolled WHERE instance=?',(instance,)).fetchone()
+            if existing:
+                prior_id=json.loads(existing[0]).get('agent_id')
+                if prior_id:superseded.append(prior_id)
             try:
-                result=self.endpoint.request(provision,'/api/asg/enroll',canonical({'host_id':self.host.read_text().strip(),'asset_id':agent['asset_id'],'instance_id':instance,'name':agent['name'],'platform':agent['platform']}))
+                result=self.endpoint.request(provision,'/api/asg/enroll',canonical({
+                    'host_id':self.host.read_text().strip(),'asset_id':agent['asset_id'],
+                    'instance_id':instance,'name':agent['name'],'platform':agent['platform'],
+                    'supersedes_agent_ids':sorted(set(superseded))[:256]}))
             except OSError:continue
             key=self.root/(result['agent_id']+'.key')
             fd=os.open(str(key),os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
@@ -284,12 +306,7 @@ class Discovery:
                         'SELECT instance,configuration FROM enrolled').fetchall():
                     if prior_instance==instance:continue
                     prior=json.loads(prior_raw)
-                    same_asset=prior.get('asset_id')==agent['asset_id']
-                    if not prior.get('asset_id'):
-                        same_asset=(prior.get('platform')==agent.get('platform')
-                                    and (prior.get('hook_workspace') or prior.get('workspace'))
-                                    ==(agent.get('hook_workspace') or agent.get('workspace')))
-                    if same_asset:stale.append(prior_instance)
+                    if same_asset(prior,agent):stale.append(prior_instance)
                 for prior_instance in stale:
                     self.endpoint.db.execute('DELETE FROM enrolled WHERE instance=?',(prior_instance,))
                     self.endpoint.db.execute('DELETE FROM soc_onboarding WHERE instance=?',(prior_instance,))
