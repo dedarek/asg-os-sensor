@@ -73,7 +73,39 @@ class DiscoveryTests(unittest.TestCase):
         process.open_files.return_value = [Mock(path='/example/arbitrary/SKILL.md')]
         self.assertEqual(runtime_discovery_candidate({}, process)['source'], 'opened-standard-asset')
         process.open_files.return_value = [Mock(path='/example/readme.md')]
+        process.net_connections.return_value = []
         self.assertEqual(runtime_discovery_candidate({}, process), {})
+
+    def test_owned_package_entry_with_established_connection_is_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entry = root / 'launch.js'
+            entry.touch()
+            (root / 'package.json').write_text(json.dumps({'name': uuid.uuid4().hex,
+                'bin': {'arbitrary': 'launch.js'}}))
+            p = Process('node', ['node', str(entry), 'run'])
+            conn = Mock(status='ESTABLISHED', raddr=Mock(ip='203.0.113.9', port=443))
+            idle = Mock()
+            idle.open_files.return_value = []
+            idle.children.return_value = []
+            idle.net_connections.return_value = [Mock(status='LISTEN', raddr=None)]
+            self.assertEqual(runtime_discovery_candidate(p.info, idle), {})
+            busy = Mock()
+            busy.open_files.return_value = []
+            busy.children.return_value = []
+            busy.net_connections.return_value = [conn]
+            result = runtime_discovery_candidate(p.info, busy)
+            self.assertIn('model-transport-connection',
+                          [s['source'] for s in result['signals']])
+            # An established connection alone never admits a process without
+            # script-package ownership evidence (browsers, system binaries).
+            native = Mock()
+            native.open_files.return_value = []
+            native.children.return_value = []
+            native.net_connections.return_value = [conn]
+            self.assertEqual(runtime_discovery_candidate(
+                {'cmdline': ['/Applications/SomeApp.app/Contents/MacOS/SomeApp']}, native), {})
+
 
     def test_protocol_ecosystem_dependency_admits_investigation_generically(self):
         # A previously unseen harness that embeds an MCP/ACP client stack must

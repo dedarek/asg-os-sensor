@@ -1,0 +1,31 @@
+{
+  "check": "discovery_gap_model_transport_connection_live_proof",
+  "when": "2026-09-21T00:35:41.090388+00:00",
+  "target": {
+    "name": "@google/gemini-cli 0.60.0 (clean install, deps fully bundled, short -m flag)",
+    "install": "/tmp/asg-g07-target",
+    "model_transport": "http://127.0.0.1:7777 (demo gateway)"
+  },
+  "before": "idle TUI and headless runs scored 0 with empty discovery evidence: bin-mapping is locating-only; empty package.json dependencies yielded no model_sdk/protocol signals; short -m flag outside long-flag families; no open standard assets or children",
+  "mechanism": "identity.runtime_discovery_candidate: established remote inet connection counts as capability evidence only when metadata ownership is bin-mapping or script-under-package; native .app and opaque binaries gain nothing from traffic (anti-false-positive)",
+  "observed": {
+    "candidate_pid_seen_in_8081_audit": [
+      646,
+      969,
+      1849
+    ],
+    "signals": [
+      "package-bin-mapping",
+      "model-transport-connection"
+    ],
+    "collection_net": {
+      "status": "collected",
+      "established": 1
+    }
+  },
+  "negative_control": {
+    "native_gemini_desktop_app_pid_88143": "below_threshold score 0 no signals while running"
+  },
+  "unit": "test_discovery.test_owned_package_entry_with_established_connection_is_candidate (idle LISTEN-only -> {}, busy ESTABLISHED -> signal, native .app + conn -> {})",
+  "generalization": "signal names no vendor and reads no prompt content; applies to any script-package-owned process"
+}

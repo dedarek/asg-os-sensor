@@ -199,6 +199,21 @@ def runtime_discovery_candidate(info, process):
     desktop = desktop_discovery_candidate(info)
     if desktop:
         add(desktop['source'], desktop['evidence'], '桌面主程序归属已核实')
+    # Established outbound transport is a capability signal only when the
+    # entry is owned by a resolvable script package (bin mapping / in-package
+    # script). Native .app bundles and opaque system binaries keep no such
+    # claim, so browsers and desktop apps never gain points from mere traffic.
+    if metadata.get('ownership') in ('bin-mapping', 'script-under-package'):
+        try:
+            conns = process.net_connections(kind='inet')
+            remote = sorted({f'{c.raddr.ip}:{c.raddr.port}' for c in conns
+                             if c.status == 'ESTABLISHED' and c.raddr})
+            collection['net'] = {'status': 'collected', 'established': len(remote)}
+            if remote:
+                add('model-transport-connection', remote[:4],
+                    '安装包归属进程保持远端服务连接')
+        except (AttributeError, OSError, TypeError, psutil.Error) as exc:
+            collection['net'] = {'status': 'unavailable', 'reason': type(exc).__name__}
     # Ownership is locating evidence, never Agent capability evidence. A plain
     # desktop app or any npm CLI must not enter automatic investigation alone.
     capability_signals = [s for s in signals if s['source'] not in
