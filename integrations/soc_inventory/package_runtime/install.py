@@ -311,12 +311,24 @@ def main():
         # never an overwrite.
         for item in prepared['files']:
             target=workspace/item['path']
-            if not target.exists():item['expected_sha256']=None
+            if not target.exists():
+                item['expected_sha256']=None
+            else:
+                current=target.read_bytes()
+                desired=item['content'].encode()
+                # A later instance may reuse files this same verified package
+                # already owns. Treat an exact desired byte match as an
+                # idempotent precondition; any differing byte still has to
+                # match the recipe's explicit precondition or installation
+                # fails closed below.
+                if hashlib.sha256(current).digest()==hashlib.sha256(desired).digest():
+                    item['expected_sha256']=hashlib.sha256(current).hexdigest()
         return learned_install.validate_plan(prepared)
     plan=prepare_plan()
     binding={'transport':'soc-direct-v1' if direct else 'asg-local','backend_url':a.backend_url,'agent_id':a.agent_id}
     receipt=state/'package-receipt.json'
     package_changed=False
+    reuse_existing=False
     if receipt.exists() and not a.uninstall:
         previous=json.loads(receipt.read_text())
         prior_binding=previous.get('binding',{'transport':'asg-local','backend_url':None,'agent_id':None})
@@ -328,6 +340,13 @@ def main():
         if binding_changed and not (a.upgrade or a.rebind):
             raise ValueError('installed transport/identity differs; use explicit upgrade to rebind this verified package')
         package_changed=content_changed or binding_changed
+        if not package_changed:
+            prior_files={item['path']:item['content'] for item in previous.get('installed_plan',{}).get('files',[])}
+            desired_files={item['path']:item['content'] for item in plan['files']}
+            reuse_existing=(prior_files==desired_files and all(
+                (workspace/name).is_file()
+                and hashlib.sha256((workspace/name).read_bytes()).hexdigest()==hashlib.sha256(content.encode()).hexdigest()
+                for name,content in desired_files.items()))
         if package_changed:
             if not (a.upgrade or (a.rebind and binding_changed and not content_changed)):
                 raise ValueError('another package is installed; uninstall it before changing recipes')
@@ -364,13 +383,18 @@ def main():
         previous=json.loads(receipt.read_text())
         result=learned_install.rollback(workspace,state,approved_workspace=workspace,approved_digest=previous['plan_digest'])
     else:
-        if a.dry_run:
+        if reuse_existing:
+            result={'status':'already_installed','plan_digest':previous['plan_digest'],
+                    'manifest':str(state/(previous['plan_digest']+'.json')),
+                    'activation':'unverified'}
+        elif a.dry_run:
             print(json.dumps({'status':'validated','files':[f['path'] for f in plan['files']],'target':str(workspace),'activation':'unverified'}));return
-        workspace.mkdir(parents=True,exist_ok=True)
-        state.mkdir(parents=True,exist_ok=True)
-        result=learned_install.install(plan,workspace,state,approved_workspace=workspace,approved_digest=learned_install.plan_digest(plan))
-        installed_at=(time.time() if package_changed else previous.get('installed_at',time.time())) if receipt.exists() else time.time()
-        receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at}));receipt.chmod(0o600)
+        else:
+            workspace.mkdir(parents=True,exist_ok=True)
+            state.mkdir(parents=True,exist_ok=True)
+            result=learned_install.install(plan,workspace,state,approved_workspace=workspace,approved_digest=learned_install.plan_digest(plan))
+            installed_at=(time.time() if package_changed else previous.get('installed_at',time.time())) if receipt.exists() else time.time()
+            receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at}));receipt.chmod(0o600)
     print(json.dumps(result))
 if __name__=='__main__':
     try:main()

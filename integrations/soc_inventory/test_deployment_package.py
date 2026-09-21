@@ -207,6 +207,11 @@ ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
             self.assertEqual(json.loads(rebound.stdout)['status'],'installed')
             config=json.loads((workspace/'.soc-hook/artifacts/autonomous-service/hook-control-client.json').read_text())
             self.assertEqual(config['agent_id'],'different-agent')
+            # A second pass with the same binding is idempotent even though
+            # create-only files now exist and a structured patch was merged.
+            repeated=run(['--rebind'])
+            self.assertEqual(repeated.returncode,0,repeated.stderr)
+            self.assertIn(json.loads(repeated.stdout)['status'],('installed','already_installed'))
             # Rebind is deliberately narrower than upgrade: a different
             # package or installer revision cannot use it to overwrite files.
             receipt=next(workspace.parent.glob('.asg-install-*/package-receipt.json'))
