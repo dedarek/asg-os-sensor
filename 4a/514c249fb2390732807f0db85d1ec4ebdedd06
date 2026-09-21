@@ -1,0 +1,45 @@
+runtime/recipe_validation.py
+  s_7a5b8096b41d01::t_6da0a356e49200 129-132
+integrations/soc_inventory/test_inventory_discovery_learning.py
+  s_7a5b8096b41d01::t_51171309f8341f 60-73
+runtime/recipe_bundle.py
+  s_7a5b8096b41d01::t_e873874fabf630 31-32,43-44,48-52,66
+  s_7a5b8096b41d01::t_6da0a356e49200 165-171,188
+integrations/soc_inventory/discovery.py
+  s_7a5b8096b41d01::t_51171309f8341f 92-97
+integrations/soc_inventory/soc_onboarding.py
+  s_7a5b8096b41d01::t_51171309f8341f 145-149
+integrations/soc_inventory/package_runtime/install.py
+  s_7a5b8096b41d01::t_fb6421e30da3fa 205-208,210-211
+  s_7a5b8096b41d01::t_e00fd27a2b9694 148-151,209,212
+  s_7a5b8096b41d01::t_b8a5f99fd10d2c 126-127,131-134,191
+  s_7a5b8096b41d01::t_624155a0aadd84 128-130
+  s_7a5b8096b41d01::t_84c772e1f2ff60 202,252-253
+integrations/soc_inventory/deployment_package.py
+  s_7a5b8096b41d01::t_6da0a356e49200 33-37
+  s_7a5b8096b41d01::t_e88385ffba6d5b 6,19
+  s_7a5b8096b41d01::t_624155a0aadd84 17-18,20-22
+  s_7a5b8096b41d01::t_e00fd27a2b9694 39
+  s_7a5b8096b41d01::t_e873874fabf630 25
+integrations/soc_inventory/test_deployment_package.py
+  s_7a5b8096b41d01::t_e873874fabf630 11,16-25,30-52,56-60,76-80
+  s_7a5b8096b41d01::t_a06f3f3d38e3e0 13,53-55
+  s_7a5b8096b41d01::t_624155a0aadd84 26-29
+  s_7a5b8096b41d01::t_e88385ffba6d5b 61-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4a514c249fb2390732807f0db85d1ec4ebdedd06",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
