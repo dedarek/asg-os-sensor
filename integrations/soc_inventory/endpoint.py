@@ -113,7 +113,7 @@ class Endpoint:
                 # A completed inventory exchange clears any earlier rejected/
                 # error state. Only the inventory channel marks ok: the runtime
                 # bridge probes commands and must not overwrite SOC health.
-                if path.startswith('/api/inventory') or path=='/api/asg/enroll':
+                if path.startswith('/api/inventory') or path in ('/api/asg/enroll','/api/asg/self'):
                     self.soc_note('ok','HTTP %s %s'%(getattr(response,'status',200),path))
                 return payload
         except HTTPError as exc:
@@ -177,11 +177,31 @@ class Endpoint:
                     LOG.warning('SOC report retained: status=%s route=%s',e.code,path);break
                 except OSError as e:LOG.warning('SOC report retained: %s',type(e).__name__);break
                 with self.db:self.db.execute('DELETE FROM queue WHERE id=?',(identifier,))
+    def enqueue_cached_drafts(self):
+        """Turn already-captured first snapshots into durable upload tasks."""
+        failed=False
+        for agent in list(self.agents.values()):
+            identity,_=self.stream_identity(agent)
+            if not self.db.execute('SELECT 1 FROM drafts WHERE id=?',(identity,)).fetchone():continue
+            try:self.enqueue(agent)
+            except (OSError,ValueError,KeyError) as e:
+                failed=True
+                LOG.warning('Cached discovery pending: %s',type(e).__name__)
+        self.flush()
+        return not failed
     def run(self,once=False):
         discovery=None
         if self.config.get('discovery'):
             from .discovery import Discovery
             discovery=Discovery(self)
+            # Prove that this process, with the configured enrollment identity,
+            # can reach SOC.  A health file from a previous endpoint PID is not
+            # current evidence.  Deep asset collection may be manual, but
+            # connectivity status must become truthful immediately after a
+            # service restart.
+            provision={'key_file':self.config['discovery']['application_key_file']}
+            try:self.request(provision,'/api/asg/self',None,'GET')
+            except (OSError,ValueError,KeyError):pass
         if self.config.get('runtime_bridge') and not once:
             def runtime_loop():
                 from .runtime_bridge import RuntimeBridge
@@ -220,6 +240,14 @@ class Endpoint:
                     collection_failed=True
                     LOG.warning('Discovery pending: %s',type(e).__name__)
                 self.flush()
+                if manual:
+                    # Registration captures a bounded first snapshot before any
+                    # network dependency.  Reporting that already-cached draft
+                    # is lifecycle delivery, not a new deep scan, so it must not
+                    # wait for a user collection click.  This also replays a new
+                    # Agent first seen while SOC was offline even if the process
+                    # exited before connectivity returned.
+                    if not self.enqueue_cached_drafts():collection_failed=True
                 if not manual:
                     for agent in list(self.agents.values()):
                         identity,_=self.stream_identity(agent)
@@ -241,7 +269,7 @@ class Endpoint:
                 time.sleep(15)
                 continue
             if manual:
-                self.flush()
+                if not self.enqueue_cached_drafts():collection_failed=True
                 time.sleep(2)
                 continue
             for agent in list(self.agents.values()):

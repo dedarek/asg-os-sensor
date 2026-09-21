@@ -6,9 +6,12 @@ payloads and could fail to parse at load time. These checks lock the fix in.
 """
 import json
 import shutil
+import socket
 import subprocess
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from .package_runtime import install as installer
@@ -57,6 +60,42 @@ class EventHelperRuntimeTests(unittest.TestCase):
         source=Path(installer.__file__).with_name('soc_client.mjs')
         done=subprocess.run([self.node,'--check',str(source)],capture_output=True,text=True,timeout=30)
         self.assertEqual(done.returncode,0,done.stderr)
+
+    def test_standalone_node_client_persists_offline_event_and_replays(self):
+        if not self.node:
+            self.skipTest("node runtime unavailable")
+        source=Path(installer.__file__).with_name('soc_client.mjs')
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp);token=directory/'token';token.write_text('k')
+            probe=socket.socket();probe.bind(('127.0.0.1',0));port=probe.getsockname()[1];probe.close()
+            config=directory/'config.json'
+            config.write_text(json.dumps({'backend_url':f'http://127.0.0.1:{port}',
+                'agent_id':'a1','instance_id':'42:100','token_file':str(token)}))
+            event={'event':'user.input','timestamp':'2026-09-21T00:00:00Z','content':'offline'}
+            first=subprocess.run([self.node,str(source),str(config),'event'],input=json.dumps(event),
+                capture_output=True,text=True,timeout=30)
+            self.assertEqual(first.returncode,0,first.stderr)
+            self.assertFalse(json.loads(first.stdout)['accepted'])
+            queued=list((directory/'soc-outbox-node').rglob('*.json'))
+            self.assertEqual(len(queued),1)
+            received=[]
+            class Handler(BaseHTTPRequestHandler):
+                def do_POST(self):
+                    length=int(self.headers.get('Content-Length','0'))
+                    received.append(json.loads(self.rfile.read(length)))
+                    body=b'{"accepted":true}'
+                    self.send_response(200);self.send_header('Content-Type','application/json')
+                    self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+                def log_message(self,*args):pass
+            server=HTTPServer(('127.0.0.1',port),Handler)
+            thread=threading.Thread(target=server.handle_request,daemon=True);thread.start()
+            replay=subprocess.run([self.node,str(source),str(config),'flush'],input='{}',
+                capture_output=True,text=True,timeout=30)
+            thread.join(5);server.server_close()
+            self.assertEqual(replay.returncode,0,replay.stderr)
+            self.assertTrue(json.loads(replay.stdout)['accepted'])
+            self.assertEqual(received[0]['events'][0]['payload']['content'],'offline')
+            self.assertEqual(list((directory/'soc-outbox-node').rglob('*.json')),[])
 
     def test_outbox_persists_dedupes_and_drains(self):
         if not self.node:

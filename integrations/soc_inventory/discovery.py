@@ -98,6 +98,21 @@ def confirmed(state):
         classification=adapter.get('agent_classification') or {}
         if classification.get('status') not in ('pending','confirmed_agent'):continue
         if classification.get('roles') and 'agent' not in classification['roles']:continue
+        # A pending investigation is not, by itself, an Agent identity.  Keep
+        # zero-prior discovery generic, but require at least one deterministic
+        # Agent signal before a pending process is registered in SOC.  This
+        # admits protocol-bearing runtimes and strong process profiles while
+        # excluding ordinary package-owned servers (for example a web dev
+        # server with one network connection) from the Agent inventory.
+        if classification.get('status')=='pending':
+            identity=target.get('identity') or {}
+            protocols=identity.get('protocol_dependencies') or []
+            signals={item.get('source') for item in (target.get('discovery_evidence') or {}).get('signals',[]) if isinstance(item,dict)}
+            strong_signal=bool(protocols) or bool(signals & {
+                'opened-standard-asset','agent-control-protocol',
+                'agent-tool-protocol','model-sdk-runtime',
+            })
+            if int(target.get('score') or 0)<40 and not strong_signal:continue
         instance=target.get('instance_id','');source_instance=instance;changed=False
         try:
             pid,created=instance.split(':',1);process=psutil.Process(int(pid))

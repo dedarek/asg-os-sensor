@@ -1,7 +1,8 @@
 // Installed Hook transport. It runs with the Agent's own Node runtime and
 // talks to SOC directly; no ASG service, release path, or npm dependency.
 import { createHash, randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
 
 const config = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 const action = process.argv[3] || 'decision'
@@ -35,16 +36,59 @@ async function request (path, body) {
   } finally { clearTimeout(timer) }
 }
 
+function eventOutbox () {
+  const binding = JSON.stringify([config.backend_url, config.agent_id, config.instance_id || config.agent_id])
+  const tag = createHash('sha256').update(binding).digest('hex').slice(0, 24)
+  return join(dirname(config.token_file), 'soc-outbox-node', tag)
+}
+
+function storeEvent (event) {
+  const folder = eventOutbox()
+  mkdirSync(folder, { recursive: true, mode: 0o700 })
+  try {
+    writeFileSync(join(folder, event.event_id + '.json'), JSON.stringify(event), { flag: 'wx', mode: 0o600 })
+  } catch (error) {
+    // An existing content-addressed file is the same event.  Any other local
+    // persistence failure must fail this delivery attempt explicitly.
+    if (error?.code !== 'EEXIST') throw error
+  }
+  return folder
+}
+
+async function flushEvents () {
+  const folder = eventOutbox()
+  mkdirSync(folder, { recursive: true, mode: 0o700 })
+  const names = readdirSync(folder).filter((name) => /^[a-f0-9]{64}\.json$/.test(name)).sort().slice(0, 50)
+  if (!names.length) return { accepted: true, queued: false, pending: 0, delivered: 0 }
+  const events = names.map((name) => JSON.parse(readFileSync(join(folder, name), 'utf8')))
+  const reply = await request('/api/asg/events', { instance_id: String(config.instance_id || config.agent_id), events })
+  if (reply.accepted !== true) throw new Error('SOC did not acknowledge events')
+  for (const name of names) {
+    try { unlinkSync(join(folder, name)) } catch (error) { if (error?.code !== 'ENOENT') throw error }
+  }
+  const pending = readdirSync(folder).filter((name) => /^[a-f0-9]{64}\.json$/.test(name)).length
+  return { ...reply, accepted: pending === 0, queued: pending > 0, pending, delivered: names.length }
+}
+
 async function exchange (kind, data) {
   if (kind === 'event') {
     const eventType = String(data.event || data.event_type || '')
     if (!eventType || eventType.length > 200) throw new Error('invalid event type')
     const instanceId = String(config.instance_id || config.agent_id)
     const eventId = createHash('sha256').update(JSON.stringify([instanceId, data])).digest('hex')
-    return await request('/api/asg/events', { instance_id: instanceId, events: [{
+    const event = {
       event_id: eventId, instance_id: instanceId, event_type: eventType,
       timestamp: data.timestamp, channel: 'direct', payload: data,
-    }] })
+    }
+    const folder = storeEvent(event)
+    try {
+      const result = await flushEvents()
+      return { ...result, accepted: !readdirSync(folder).includes(eventId + '.json') }
+    } catch (error) {
+      return { accepted: false, queued: true,
+        pending: readdirSync(folder).filter((name) => name.endsWith('.json')).length,
+        error: error?.name || 'Error' }
+    }
   }
   if (kind === 'ack') {
     const event = {
@@ -57,6 +101,7 @@ async function exchange (kind, data) {
     const result = await exchange('event', event)
     return { ...result, scope: result.accepted ? 'execution_ack_reported' : 'execution_ack_queued', enforcement_verified: false }
   }
+  if (kind === 'flush') return await flushEvents()
   if (kind !== 'decision') throw new Error('unsupported Hook action')
   const payload = {
     platform: config.platform, agent_id: config.agent_id, agent_name: config.agent_name || '',

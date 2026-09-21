@@ -6,14 +6,25 @@ class DiscoveryTest(unittest.TestCase):
     def test_package_identity_becomes_portable_platform_id(self):
         self.assertEqual(platform_id({'id':'package:/Users/a/.npm/node_modules/@deepseek-ai/dsh'}),'deepseek-ai-dsh')
         self.assertEqual(platform_id({'id':'OpenCode'}),'opencode')
-    def target(self,status='confirmed_agent',role='agent'):
-        return {'pid':42,'instance_id':'42:123.5','name':'Example','identity':{'id':'unknown-runtime'},'adapter':{'agent_classification':{'status':status,'roles':[role]},'assets':{}}}
+    def target(self,status='confirmed_agent',role='agent',score=50):
+        return {'pid':42,'instance_id':'42:123.5','name':'Example','score':score,'identity':{'id':'unknown-runtime'},'adapter':{'agent_classification':{'status':status,'roles':[role]},'assets':{}}}
     def test_pending_and_confirmed_live_instances_without_infrastructure(self):
         process=Mock();process.create_time.return_value=123.5;process.cwd.return_value='/workspace';process.environ.return_value={'OPENCODE_CONFIG_DIR':'/config','API_KEY':'SECRET'}
         with patch('psutil.Process',return_value=process):
             items=list(confirmed({'agents':[self.target(),self.target('pending'),self.target(role='model_gateway')]}))
         self.assertEqual(len(items),2);self.assertEqual(items[1]["classification"],"pending");self.assertEqual(items[0]['collection_environment'],{'OPENCODE_CONFIG_DIR':'/config'})
         self.assertEqual(items[0]['asg_instance_id'],'42:123.5')
+    def test_pending_process_without_agent_signal_is_not_registered(self):
+        process=Mock();process.create_time.return_value=123.5;process.cwd.return_value='/workspace';process.environ.return_value={}
+        plain=self.target('pending',score=0)
+        plain['identity']={'id':'package:/tmp/node_modules/vite','protocol_dependencies':[]}
+        plain['discovery_evidence']={'signals':[{'source':'package-bin-mapping'},{'source':'model-transport-connection'}]}
+        protocol=self.target('pending',score=0)
+        protocol['identity']={'id':'package:/tmp/node_modules/example','protocol_dependencies':['example-acp']}
+        with patch('psutil.Process',return_value=process):
+            items=list(confirmed({'agents':[plain,protocol]}))
+        self.assertEqual([item['name'] for item in items],['Example'])
+        self.assertEqual(items[0]['platform'],'example')
     def test_new_offline_target_cached_and_replayed_after_exit(self):
         import tempfile,json
         from pathlib import Path
