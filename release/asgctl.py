@@ -426,6 +426,44 @@ def self_check(release_dir):
     return None
 
 
+def seed_fingerprint_db(home, release_dir):
+    """Merge shipped verified recipes into the writable runtime database.
+
+    Locally learned families remain intact. A shipped id is authoritative for
+    that id so an upgraded release can repair a previously published recipe;
+    match counters and last-seen timestamps remain local runtime state.
+    """
+    source = load_json(Path(release_dir) / 'app/runtime/fingerprints.json')
+    if not isinstance(source, dict) or not isinstance(source.get('fingerprints'), list):
+        raise ValueError('交付包指纹库缺失或损坏')
+    target = Path(home) / 'state' / 'fingerprints.json'
+    if target.exists():
+        current = load_json(target)
+        if not isinstance(current, dict) or not isinstance(current.get('fingerprints'), list):
+            raise ValueError('运行指纹库损坏，拒绝覆盖')
+    else:
+        current = {'version': source.get('version', 1), 'fingerprints': []}
+    existing = {item.get('id'): item for item in current['fingerprints']
+                if isinstance(item, dict) and item.get('id')}
+    for shipped in source['fingerprints']:
+        if not isinstance(shipped, dict) or not shipped.get('id'):
+            raise ValueError('交付包包含无 id 的指纹')
+        previous = existing.get(shipped['id'])
+        replacement = json.loads(json.dumps(shipped))
+        if previous:
+            for key in ('match_count', 'last_seen'):
+                if key in previous:
+                    replacement[key] = previous[key]
+            index = current['fingerprints'].index(previous)
+            current['fingerprints'][index] = replacement
+        else:
+            current['fingerprints'].append(replacement)
+        existing[shipped['id']] = replacement
+    write_json(target, current, mode=0o600)
+    return {'path': str(target), 'count': len(current['fingerprints']),
+            'shipped': len(source['fingerprints'])}
+
+
 def cmd_install(home, args):
     home = Path(home)
     label = args.service_label or default_label()
@@ -465,6 +503,12 @@ def cmd_install(home, args):
             loaded, _ = service_loaded(terminal.get('service_label', label))
             health = evaluate_health(home, version)
             if same and health['healthy'] and loaded:
+                try:
+                    seed_fingerprint_db(home, home / 'current')
+                except (OSError, ValueError) as exc:
+                    emit(args, {'command': 'install', 'status': 'failed', 'error': str(exc)},
+                         '服务健康，但配方库同步失败: %s' % exc, error=True)
+                    return 1
                 # Probe SOC even on the short-circuit path: re-running install
                 # with a corrected credential must surface the new connection
                 # state immediately (the endpoint re-reads the key per request).
@@ -503,6 +547,13 @@ def cmd_install(home, args):
     if failure:
         emit(args, {'command': 'install', 'status': 'failed', 'error': failure},
              '本地自检失败: %s（未注册任何服务）' % failure, error=True)
+        return 1
+
+    try:
+        seed_fingerprint_db(home, release_dir)
+    except (OSError, ValueError) as exc:
+        emit(args, {'command': 'install', 'status': 'failed', 'error': str(exc)},
+             '配方库初始化失败: %s（未注册任何服务）' % exc, error=True)
         return 1
 
     write_configs(home, args, version, label)
@@ -910,9 +961,29 @@ def cmd_upgrade(home, args):
             emit(args, {'command': 'upgrade', 'status': 'failed', 'error': 'db backup: %s' % exc},
                  '数据库备份失败（当前安装保持不变）', error=True)
             return 1
+    fingerprint = home / 'state' / 'fingerprints.json'
+    fingerprint_existed = fingerprint.is_file()
+    if fingerprint_existed:
+        shutil.copy2(fingerprint, backup / 'fingerprints.json')
+
+    def restore_fingerprints():
+        saved = backup / 'fingerprints.json'
+        if saved.is_file():
+            shutil.copy2(saved, fingerprint)
+            os.chmod(fingerprint, 0o600)
+        elif not fingerprint_existed:
+            fingerprint.unlink(missing_ok=True)
 
     old_target = os.readlink(home / 'current')
     unregister_service(label)
+    try:
+        seed_fingerprint_db(home, release_dir)
+    except (OSError, ValueError) as exc:
+        restore_fingerprints()
+        register_service(home, label)
+        emit(args, {'command': 'upgrade', 'status': 'failed', 'error': str(exc)},
+             '新版本配方库合并失败（已恢复原服务）', error=True)
+        return 1
     args.scan_interval = terminal.get('scan_interval', args.scan_interval)
     args.collection_mode = terminal.get('collection_mode', args.collection_mode)
     args.collect_interval = terminal.get('collect_interval', args.collect_interval)
@@ -925,6 +996,7 @@ def cmd_upgrade(home, args):
     try:
         register_service(home, label)
     except ValueError as exc:
+        restore_fingerprints()
         restore = home / ('.current-link-' + uuid.uuid4().hex[:6])
         os.symlink(old_target, restore)
         os.replace(restore, home / 'current')
@@ -936,6 +1008,7 @@ def cmd_upgrade(home, args):
     health = wait_healthy(home, new_version)
     if not health['healthy']:
         unregister_service(label)
+        restore_fingerprints()
         for name in ('terminal.json', 'endpoint.json', 'credentials.json'):
             source = backup / name
             if source.is_file():
