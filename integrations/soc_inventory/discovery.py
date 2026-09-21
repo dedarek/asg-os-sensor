@@ -232,7 +232,8 @@ class Discovery:
                 # Existing stable rows stay idempotent. Legacy instance-scoped
                 # rows must pass through enrollment once so SOC can replace
                 # restart-created cards with the durable asset card.
-                if prior.get('asset_id')==agent['asset_id']:continue
+                if (prior.get('asset_id')==agent['asset_id']
+                        and prior.get('enrollment_scope')=='asset'):continue
             # Same live process, drifted identity stamp: macOS create_time reads
             # can flap by ~1s, which would double-enroll one process, duplicate
             # SOC cards and strand queued commands. Transfer the enrollment and
@@ -269,7 +270,9 @@ class Discovery:
             key=self.root/(result['agent_id']+'.key')
             fd=os.open(str(key),os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
             with os.fdopen(fd,'w') as f:f.write(result['api_key'])
-            agent.update(agent_id=result['agent_id'],key_file=str(key))
+            agent.update(agent_id=result['agent_id'],key_file=str(key),
+                         enrollment_scope=('asset' if result.get('asset_id')==agent['asset_id']
+                                           else 'instance'))
             envelope=json.loads(raw);envelope['agent_id']=agent['agent_id']
             identity,_=self.endpoint.stream_identity(agent)
             with self.endpoint.db:
@@ -298,7 +301,7 @@ class Discovery:
         for agent in current:
             row=self.endpoint.db.execute('SELECT configuration FROM enrolled WHERE instance=?',(agent['asg_instance_id'],)).fetchone()
             if not row:continue
-            prior=json.loads(row[0]);agent.update({k:prior[k] for k in ('agent_id','key_file')})
+            prior=json.loads(row[0]);agent.update({k:prior[k] for k in ('agent_id','key_file','enrollment_scope') if k in prior})
             with self.endpoint.db:self.endpoint.db.execute('UPDATE enrolled SET configuration=? WHERE instance=?',(json.dumps(agent),agent['asg_instance_id']))
             self.endpoint.agents[agent['agent_id']]=agent;found.append(agent['agent_id'])
 

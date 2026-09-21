@@ -91,7 +91,8 @@ class DiscoveryTest(unittest.TestCase):
                                 (current['asg_instance_id'],json.dumps(legacy)))
             sent=[]
             endpoint.request=lambda _agent,_path,body:(sent.append(json.loads(body)),
-                {'agent_id':'asg-asset-card','api_key':'test-key'})[1]
+                {'agent_id':'asg-asset-card','api_key':'test-key',
+                 'asset_id':json.loads(body)['asset_id']})[1]
             with patch('integrations.soc_inventory.discovery.build_opener') as opener, \
                  patch('integrations.soc_inventory.discovery.confirmed',return_value=iter([current])):
                 opener.return_value.open.side_effect=OSError('ASG unavailable')
@@ -102,6 +103,7 @@ class DiscoveryTest(unittest.TestCase):
                 (current['asg_instance_id'],)).fetchone()[0])
             self.assertEqual(saved['agent_id'],'asg-asset-card')
             self.assertEqual(saved['asset_id'],durable_asset_id(current))
+            self.assertEqual(saved['enrollment_scope'],'asset')
             endpoint.db.close()
     def test_reused_pid_rejected(self):
         process=Mock();process.create_time.return_value=124
