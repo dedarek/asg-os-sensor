@@ -283,7 +283,9 @@ class Discovery:
                 if not registered:continue
                 row=self.endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',(instance,)).fetchone()
                 prior=json.loads(row[0]) if row else None
-                installed=prior and prior.get('status') in ('installed','already_installed')
+                installed=prior and prior.get('status') in (
+                    'installed','already_installed','installed_waiting_activation',
+                    'activation_verified')
                 if installed and not request_investigation:continue
                 # Keep durable lifecycle markers when merging a fresh install pass
                 # result; a later needs_investigation must not erase the record that
@@ -302,8 +304,20 @@ class Discovery:
                         if (current_choice and current_choice['checksum']==prior.get('checksum')
                                 and current_choice['id']==prior.get('artifact_id')
                                 and integrity(self.endpoint,registered,prior)):
-                            # Same catalog artifact and the installed bytes still match
-                            # the receipt: no write, no model call, no status churn.
+                            # A verified install is stable. A package that is still
+                            # waiting for its first callback must be re-verified on
+                            # later scans, but the idempotent installer will not
+                            # rewrite unchanged files. This closes the gap where a
+                            # restarted/hot-reloaded target could stay "waiting"
+                            # forever after it had actually loaded the Hook.
+                            if prior.get('status')!='installed_waiting_activation':
+                                continue
+                            fresh=install(self.endpoint,registered,process.exe(),
+                                          execute=True,selected=current_choice)
+                            result.update(fresh)
+                            with self.endpoint.db:self.endpoint.db.execute(
+                                'INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',
+                                (instance,json.dumps(result)))
                             continue
                         if (not prior.get('drift_investigation_requested')
                                 and current_choice is None and prior.get('transport')=='soc-direct-v1'

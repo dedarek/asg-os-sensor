@@ -67,4 +67,44 @@ class DiscoveryTest(unittest.TestCase):
         process=Mock();process.create_time.return_value=124
         with patch('psutil.Process',return_value=process):self.assertEqual(list(confirmed({'agents':[self.target()]})),[])
 
+    def test_waiting_activation_is_reverified_without_upgrade(self):
+        import tempfile,json
+        from pathlib import Path
+        from .endpoint import Endpoint
+        from .discovery import Discovery
+        with tempfile.TemporaryDirectory() as directory:
+            cfg={'backend_url':'http://127.0.0.1:1','state_dir':directory,
+                 'agents':[],'soc_installation':True,
+                 'discovery':{'application_key_file':'unused'}}
+            endpoint=Endpoint(cfg);discovery=Discovery(endpoint)
+            key=Path(directory)/'key';key.write_text('test-key')
+            agent={'name':'Example','asg_instance_id':'42:123.5',
+                   'platform':'example','workspace':directory,
+                   'agent_id':'asg-example','key_file':str(key)}
+            endpoint.agents[agent['agent_id']]=agent
+            endpoint.db.execute('INSERT INTO enrolled VALUES(?,?)',
+                                (agent['asg_instance_id'],json.dumps(agent)))
+            prior={'status':'installed_waiting_activation','artifact_id':'a1',
+                   'checksum':'c1','transport':'soc-direct-v1'}
+            endpoint.db.execute('INSERT INTO soc_onboarding VALUES(?,?)',
+                                (agent['asg_instance_id'],json.dumps(prior)))
+            process=Mock();process.create_time.return_value=123.5
+            process.exe.return_value='/bin/sh'
+            choice={'id':'a1','checksum':'c1','transport':'soc-direct-v1'}
+            with patch('integrations.soc_inventory.discovery.confirmed',return_value=iter([agent])), \
+                 patch('psutil.Process',return_value=process), \
+                 patch('integrations.soc_inventory.soc_onboarding.select',return_value=choice), \
+                 patch('integrations.soc_inventory.soc_onboarding.integrity',return_value=True), \
+                 patch('integrations.soc_inventory.soc_onboarding.install',return_value={
+                     'status':'activation_verified','artifact_id':'a1','checksum':'c1',
+                     'transport':'soc-direct-v1'}) as install:
+                discovery.refresh()
+            install.assert_called_once_with(endpoint,agent,'/bin/sh',execute=True,
+                                            selected=choice)
+            saved=json.loads(endpoint.db.execute(
+                'SELECT result FROM soc_onboarding WHERE instance=?',
+                (agent['asg_instance_id'],)).fetchone()[0])
+            self.assertEqual(saved['status'],'activation_verified')
+            endpoint.db.close()
+
 if __name__=='__main__':unittest.main()
