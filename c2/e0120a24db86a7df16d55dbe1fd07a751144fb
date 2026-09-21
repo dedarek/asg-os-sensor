@@ -1,0 +1,22 @@
+test_release_fingerprint_seed.py
+  s_7a5b8096b41d01::t_670aa9dd8ac051 1-50
+release/asgctl.py
+  s_7a5b8096b41d01::t_670aa9dd8ac051 429-466,552-558,964-975,979-981,984,986,999,1011
+  s_7a5b8096b41d01::t_3fdaf7fce44b84 506-511,982-983,985
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c2e0120a24db86a7df16d55dbe1fd07a751144fb",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
