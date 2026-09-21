@@ -1,0 +1,23 @@
+docs/stage1/CORRECTION_REVIEW_20260921.md
+  s_7a5b8096b41d01::t_c3a15d03f60a2c 32
+docs/stage1/evidence/terminal_lifecycle_0_9_6_protocol_soc_report.json
+  s_7a5b8096b41d01::t_c3a15d03f60a2c 1-34
+docs/stage1/TERMINAL_LIFECYCLE_ACCEPTANCE_20260921.md
+  s_7a5b8096b41d01::t_c3a15d03f60a2c 244-259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "279fcc5469358e2f929be56b60c41b871e47462e",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
