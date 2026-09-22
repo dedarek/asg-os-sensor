@@ -1,0 +1,24 @@
+test_discovery.py
+  s_7a5b8096b41d01::t_d1b3f343cfd467 8-9,16,261-266
+  s_7a5b8096b41d01::t_4ffccc20d041a6 267
+runtime/identity.py
+  s_7a5b8096b41d01::t_9d736275378db0 6-9,181-230,240
+asg_os_sensor.py
+  s_7a5b8096b41d01::t_9d736275378db0 23,208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "09c9d149c5cb87e3664f3d4d5abd20a93b07c9b0",
+  "prompts": {},
+  "sessions": {
+    "s_7a5b8096b41d01": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f0c-6eae-7900-859a-5dbaa684d906",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
