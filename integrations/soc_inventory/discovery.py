@@ -136,6 +136,26 @@ def learned_mcp_sources(value):
 
 
 
+def _fingerprint_asset_paths(fingerprint_id):
+    """Read asset paths settled by a completed Goose investigation.
+
+    matcher.remember_verified stores skill_roots/mcp_configs on the fingerprint
+    entry. Returning them here lets the inventory layer scan those roots
+    directly on later sightings of the same agent family - no model call.
+    """
+    if not fingerprint_id or not isinstance(fingerprint_id, str):
+        return {}
+    try:
+        from runtime import matcher
+        db = matcher.load()
+    except Exception:
+        return {}
+    for entry in db.get('fingerprints', []):
+        if entry.get('id') == fingerprint_id:
+            return entry.get('asset_paths') or {}
+    return {}
+
+
 def confirmed(state):
     for target in state.get('agents',[]):
         adapter=target.get('adapter') or {}
@@ -205,6 +225,21 @@ def confirmed(state):
                     p=Path(path);agent['learned_skill_roots'].append(str(p.parent if p.name=='SKILL.md' else p))
         mcp=(assets.get('registered_tools_and_mcp') or assets.get('mcp') or {}).get('value') or {}
         if isinstance(mcp,dict):agent['learned_mcp_configs']=learned_mcp_sources(mcp)
+        # Goose 沉淀闭环：配方调查成功后保存的资产路径，在下一次发现同族 Agent
+        # 时直接成为采集根，不再要求重新调查。只作补充，不覆盖本次调查结果。
+        settled=_fingerprint_asset_paths(agent.get('hook_fingerprint'))
+        for root_path in settled.get('skill_roots') or []:
+            if root_path not in agent['learned_skill_roots']:
+                agent['learned_skill_roots'].append(root_path)
+        known={item.get('path') for item in agent['learned_mcp_configs']}
+        from .protocol import config as _parse_config
+        for config_path in settled.get('mcp_configs') or []:
+            if config_path in known:continue
+            try:
+                field=first_mcp_field(_parse_config(Path(config_path)))
+            except Exception:
+                continue
+            if field:agent['learned_mcp_configs'].append({'path':config_path,'field':field});known.add(config_path)
         yield agent
 
 
