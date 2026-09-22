@@ -1,0 +1,14 @@
+integrations/soc_inventory/protocol.py
+  h_cc496700febce9 91-124,128-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c7b6157ce3e4a680ac5b82504067248dd6449f1d",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
