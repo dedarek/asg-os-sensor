@@ -115,7 +115,13 @@ def main():
     def child_env(engine):
         env = {k: v for k, v in os.environ.items() if not k.startswith('ASG_')}
         env['PYTHONUTF8'] = '1'
-        env['PATH'] = str(current / 'python' / 'bin') + os.pathsep + env.get('PATH', '')
+        # launchd supplies a minimal PATH; keep standard tool locations
+        # so the engine can resolve goose and other CLIs.
+        base_path = env.get('PATH', '')
+        for extra_dir in ('/opt/homebrew/bin', '/usr/local/bin'):
+            if extra_dir not in base_path.split(os.pathsep):
+                base_path = base_path + os.pathsep + extra_dir if base_path else extra_dir
+        env['PATH'] = str(current / 'python' / 'bin') + os.pathsep + base_path
         env['PYTHONPATH'] = str(app) + os.pathsep + env.get('PYTHONPATH', '')
         extra = config.get('engine_env') or {}
         if engine:
