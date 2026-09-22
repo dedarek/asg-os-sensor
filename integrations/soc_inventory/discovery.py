@@ -137,13 +137,20 @@ def confirmed(state):
         try:
             pid,created=instance.split(':',1);process=psutil.Process(int(pid))
             if int(pid)!=target['pid']:continue
-            if abs(process.create_time()-float(created))>0.01:
+            create_time_delta=abs(process.create_time()-float(created))
+            if create_time_delta>0.01:
                 evidence=(target.get('identity') or {}).get('evidence')
                 # Re-discover the current process, never reuse the old identity or its Hook verdict.
                 if not isinstance(evidence,str) or evidence not in [process.exe(),*process.cmdline()]:continue
-                instance=f'{pid}:{process.create_time()}';changed=True
-                classification={'status':'pending','roles':[]}
-                adapter={} 
+                # macOS can report the same live process start one second apart
+                # through different process APIs.  Keep the sensor's canonical
+                # instance stamp when the entrypoint still proves it is the same
+                # process; otherwise the runtime bridge cannot bind this live
+                # process to its durable SOC asset.
+                if create_time_delta>2.0:
+                    instance=f'{pid}:{process.create_time()}';changed=True
+                    classification={'status':'pending','roles':[]}
+                    adapter={}
             workspace=process.cwd()
             environment={k:v for k,v in process.environ().items() if k in ENV_PATHS}
         except (ValueError,KeyError,psutil.Error):continue

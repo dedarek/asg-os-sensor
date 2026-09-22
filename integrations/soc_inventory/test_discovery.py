@@ -109,6 +109,17 @@ class DiscoveryTest(unittest.TestCase):
         process=Mock();process.create_time.return_value=124
         with patch('psutil.Process',return_value=process):self.assertEqual(list(confirmed({'agents':[self.target()]})),[])
 
+    def test_macos_create_time_flap_preserves_sensor_instance(self):
+        target=self.target();target['identity']['evidence']='/Applications/Example.app/example'
+        process=Mock();process.create_time.return_value=124.5
+        process.exe.return_value='/Applications/Example.app/example'
+        process.cmdline.return_value=['/Applications/Example.app/example']
+        process.cwd.return_value='/workspace';process.environ.return_value={}
+        with patch('psutil.Process',return_value=process):items=list(confirmed({'agents':[target]}))
+        self.assertEqual(len(items),1)
+        self.assertEqual(items[0]['asg_instance_id'],'42:123.5')
+        self.assertFalse(items[0]['identity_refreshed'])
+
     def test_waiting_activation_is_reverified_without_upgrade(self):
         import tempfile,json
         from pathlib import Path
