@@ -88,8 +88,64 @@ def roots(platform, cwd, home=None, env=None):
         if base.resolve()==(home/'.openclaw').resolve():skill.append(home/'.agents/skills')
         skill.extend(Path(p).expanduser() for p in data.get('skills',{}).get('load',{}).get('extraDirs',[]))
         mcps=[(p,'mcp.servers')]
-    else:pass  # Unrecognized platforms use only explicitly learned paths below.
+    else:
+        # Unknown platform: generic evidence-based root discovery. Only dirs/files
+        # the agent itself actually uses qualify - never a blind home sweep.
+        # 1) Generic cross-agent conventions (shared dirs, not brand-specific).
+        # 2) Explicit env vars declared by collection_environment (ZCODE_HOME etc.).
+        # 3) Workspace project dirs: .agents/skills, .claude/skills under the chain.
+        for p in chain:
+            skill.extend([p/'.agents/skills', p/'.claude/skills'])
+        skill.append(home/'.agents/skills')
+        # Env-declared roots: any *_HOME/*_CONFIG_DIR/*_CONFIG_PATH the process
+        # exported. We look for skills/config below each declared root.
+        declared=[]
+        for key,value in env.items():
+            if not value or key=='PATH':continue
+            if key in ('HOME','USERPROFILE') or key.endswith(('_HOME','_CONFIG_DIR','_CONFIG_PATH')):
+                try:candidate=Path(value).expanduser()
+                except (OSError,RuntimeError):continue
+                if candidate.is_absolute() and candidate.is_dir():
+                    declared.append(candidate)
+        for base in declared[:8]:
+            skill.append(base/'skills')
+            for name in ('config.toml','config.json','config.jsonc','settings.json','settings.toml'):
+                f=base/name
+                if f.is_file():
+                    # Discover the MCP servers block by structure, not by key name.
+                    # Generic unknown platforms can't rely on a fixed field name.
+                    data=read(f)
+                    field=_first_mcp_field(data)
+                    if field: mcps.append((f,field))
+        # Workspace config files (generic names only, never brand-specific paths).
+        for name in ('config.toml','config.json','settings.json','mcp.json'):
+            f=cwd/name
+            if f.is_file():mcps.append((f,'mcp_servers'))
+
     return list(dict.fromkeys(p.resolve() for p in skill)),list(dict.fromkeys((p.resolve(),k) for p,k in mcps)),settings,errors
+
+
+def _first_mcp_field(data, prefix=()):
+    """Locate the MCP servers block by declaration structure, not brand paths."""
+    if not isinstance(data, dict):
+        return None
+    server_keys = ('mcpServers', 'mcp_servers', 'mcp', 'servers')
+    for key, value in data.items():
+        if key in server_keys:
+            if isinstance(value, dict) and any(
+                isinstance(d, dict) and any(k in d for k in ('command', 'url', 'transport', 'type'))
+                for d in value.values()
+            ):
+                return '.'.join((*prefix, key))
+            if isinstance(value, dict) and isinstance(value.get('servers'), dict) and any(
+                isinstance(d, dict) and any(k in d for k in ('command', 'url', 'transport', 'type'))
+                for d in value['servers'].values()
+            ):
+                return '.'.join((*prefix, key, 'servers'))
+        found = _first_mcp_field(value, (*prefix, key))
+        if found:
+            return found
+    return None
 
 
 def skill_scope(root, platform, settings, deadline):
