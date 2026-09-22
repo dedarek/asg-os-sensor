@@ -1,11 +1,16 @@
 import unittest
 from unittest.mock import patch, Mock
-from .discovery import confirmed,platform_id
+from .discovery import confirmed,platform_id,canonical_asset_instances
 
 class DiscoveryTest(unittest.TestCase):
     def test_package_identity_becomes_portable_platform_id(self):
         self.assertEqual(platform_id({'id':'package:/Users/a/.npm/node_modules/@deepseek-ai/dsh'}),'deepseek-ai-dsh')
         self.assertEqual(platform_id({'id':'OpenCode'}),'opencode')
+    def test_short_lived_helper_does_not_replace_long_lived_asset_instance(self):
+        older={'asset_id':'asset-1','asg_instance_id':'41:100.0','classification':'pending'}
+        helper={'asset_id':'asset-1','asg_instance_id':'99:200.0','classification':'pending'}
+        other={'asset_id':'asset-2','asg_instance_id':'77:150.0','classification':'confirmed_agent'}
+        self.assertEqual(canonical_asset_instances([older,helper,other]),[older,other])
     def target(self,status='confirmed_agent',role='agent',score=50):
         return {'pid':42,'instance_id':'42:123.5','name':'Example','score':score,'identity':{'id':'unknown-runtime'},'adapter':{'agent_classification':{'status':status,'roles':[role]},'assets':{}}}
     def test_pending_and_confirmed_live_instances_without_infrastructure(self):

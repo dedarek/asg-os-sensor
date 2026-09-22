@@ -64,6 +64,30 @@ def same_asset(prior, current):
             ==(current.get('hook_workspace') or current.get('workspace')))
 
 
+def canonical_asset_instances(agents):
+    """Choose one live process to represent each installed Agent asset.
+
+    Desktop Agents can spawn short-lived helper processes with the same binary
+    and profile.  Those helpers must not replace the long-lived app-server in
+    the single current-runtime row and make the SOC card flap between proven
+    and empty states.  Prefer a confirmed identity, then an older live process;
+    when the old process exits, the surviving new instance is selected on the
+    next refresh.
+    """
+    selected={};order=[]
+    for agent in agents:
+        key=agent.get('asset_id') or agent.get('asg_instance_id')
+        if key not in selected:
+            selected[key]=agent;order.append(key);continue
+        def rank(value):
+            confirmed_rank=1 if value.get('classification')=='confirmed_agent' else 0
+            try:created=float(str(value.get('asg_instance_id','')).split(':',1)[1])
+            except (ValueError,IndexError):created=float('inf')
+            return confirmed_rank,-created
+        if rank(agent)>rank(selected[key]):selected[key]=agent
+    return [selected[key] for key in order]
+
+
 def _servers_map(value):
     if not isinstance(value,dict) or not value:return False
     return any(isinstance(d,dict) and any(k in d for k in ('command','url','transport','type')) for d in value.values())
@@ -232,7 +256,7 @@ class Discovery:
         try:
             with build_opener(ProxyHandler({})).open(self.base+'/api/state',timeout=15) as r:state=json.load(r)
         except OSError:state={'agents':[]}
-        found=[];current=list(confirmed(state))
+        found=[];current=canonical_asset_instances(list(confirmed(state)))
         # Capture before the first network enrollment. An exited instance's
         # retained snapshot remains historical evidence, never a live heartbeat.
         for agent in current:
