@@ -1,0 +1,14 @@
+integrations/soc_inventory/discovery.py
+  h_cc496700febce9 139-158,228-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ca3bb0a0fcbe57a6d8f58ed2e6f66f3fb04c14ce",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
