@@ -1,0 +1,14 @@
+release/service_main.py
+  h_c6bfc5197c52f3 118-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9fb2637c4996eaff5134f4443a1cd2aa4259d127",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
