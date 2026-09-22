@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from .event_spool import EventSpool
 from .package_runtime.soc_client import exchange
-from .runtime_bridge import RuntimeBridge
+from .runtime_bridge import RuntimeBridge, fingerprints_for_target
 from .soc_onboarding import compatible
 
 
@@ -93,6 +93,21 @@ class BudgetTests(unittest.TestCase):
             onboarding=payload['agent']['adapter']['onboarding']
             self.assertEqual(onboarding['install']['status'],'installed')
             self.assertEqual(onboarding['soc_install']['status'],'activation_verified')
+
+    def test_runtime_report_contains_only_the_current_agent_fingerprint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge, sent = self._bridge(tmp)
+            bridge.local = lambda path, body=None: {'records':[]} if path.startswith('/api/hook-data') else {'commands':[]}
+            agent = {'agent_id':'a','asg_instance_id':'1:9','name':'Codex'}
+            target = {'instance_id':'1:9','pid':1,'adapter':{'harness_id':'codex-fp'}}
+            fingerprints = [{'id':'codex-fp','name':'Codex'},
+                            {'id':'other-fp','name':'Other Agent'}]
+            bridge._runtime_cycle(agent,{'agents':[target]}, {}, {}, fingerprints)
+            payload=next(body for path,body in sent if path=='/api/asg/runtime')['payload']
+            self.assertEqual(payload['fingerprints'],[{'id':'codex-fp','name':'Codex'}])
+
+    def test_fingerprint_filter_is_empty_without_a_matched_harness(self):
+        self.assertEqual(fingerprints_for_target([{'id':'other'}], {'adapter':{}}), [])
 
     def test_one_failing_agent_does_not_strand_the_others(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -40,6 +40,19 @@ def fingerprint_summary(rows):
                                'hook_count': len(hooks) if hooks is not None else (1 if recipe.get('hook') else 0)}})
     return out
 
+
+def fingerprints_for_target(rows, target):
+    """Return only the fingerprint that actually matched this target.
+
+    The endpoint fingerprint store is global.  A per-Agent runtime report must
+    never make unrelated Agent recipes look like assets owned by this Agent.
+    """
+    adapter = target.get('adapter') if isinstance(target, dict) else None
+    harness_id = adapter.get('harness_id') if isinstance(adapter, dict) else None
+    if not harness_id or not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict) and row.get('id') == harness_id]
+
 class RuntimeBridge:
     def __init__(self,endpoint):
         self.endpoint=endpoint
@@ -148,7 +161,8 @@ class RuntimeBridge:
             self.events.flush(agent)
             if target is None:return
             revision=int(time.time_ns())
-            payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust'),'fingerprints':fingerprints}
+            target_fingerprints = fingerprints_for_target(fingerprints, target)
+            payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust'),'fingerprints':target_fingerprints}
             records=hooks.get('records') or []
             total_records=len(records)
             while len(canonical({'instance_id':instance,'revision':revision,'payload':payload}))>self.REPORT_BUDGET and records:
@@ -179,8 +193,15 @@ class RuntimeBridge:
                                 arguments=command.get('arguments') or {}
                                 if isinstance(arguments,str):arguments=json.loads(arguments)
                                 if command['operation']=='fingerprints':
-                                    # Export is a read-only GET; the requested id is part of the query.
-                                    result=self.local(path+'?'+urlencode({'fingerprint_id':str(arguments.get('fingerprint_id') or '')}))
+                                    # Agent details may export only the recipe that
+                                    # matched this exact target.  Global recipe
+                                    # administration belongs outside this resource.
+                                    requested=str(arguments.get('fingerprint_id') or '')
+                                    matched=str(((target.get('adapter') or {}).get('harness_id')) or '')
+                                    if not requested or requested != matched:
+                                        result={'error':'fingerprint_not_matched_to_target'}
+                                    else:
+                                        result=self.local(path+'?'+urlencode({'fingerprint_id':requested}))
                                 else:
                                     if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings'):path+='?'+urlencode({'pid':target['pid']})
                                     result=self.local(path,arguments)
