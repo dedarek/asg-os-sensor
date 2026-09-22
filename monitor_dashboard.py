@@ -553,6 +553,49 @@ def _partial_asset_collections(partial: dict[str, Any] | None) -> dict[str, dict
     return result
 
 
+def _asset_paths_from_findings(run_dir: Path | None) -> dict[str, list[str]]:
+    """Goose 调查证据里的资产路径（skill 根目录、MCP 配置文件），用于指纹沉淀。
+
+    只接受结构化 findings 里的绝对路径，不从自由文本抽取；无 findings 时为空。
+    """
+    result = {'skill_roots': [], 'mcp_configs': []}
+    if not run_dir:
+        return result
+    candidate = Path(run_dir) / 'findings.json'
+    if not candidate.is_file():
+        matches = sorted(Path(run_dir).glob('**/findings*.json'))
+        candidate = matches[0] if matches else candidate
+    try:
+        document = json.loads(candidate.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return result
+    assets = (document.get('findings') or {}).get('assets') or {}
+
+    def items_of(key):
+        record = assets.get(key) or {}
+        value = record.get('value') or {}
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                return []
+        items = value.get('items') if isinstance(value, dict) else None
+        return items if isinstance(items, list) else []
+
+    for item in items_of('skills'):
+        path = item.get('path') if isinstance(item, dict) else None
+        if isinstance(path, str) and Path(path).is_absolute():
+            p = Path(path)
+            result['skill_roots'].append(str(p.parent if p.name == 'SKILL.md' else p))
+    for item in items_of('registered_tools_and_mcp') + items_of('mcp'):
+        path = None
+        if isinstance(item, dict):
+            path = item.get('config_path') or item.get('source_path') or item.get('path')
+        if isinstance(path, str) and Path(path).is_absolute():
+            result['mcp_configs'].append(path)
+    return result
+
+
 def _agent_classification(partial_identity: Any) -> dict[str, Any]:
     """角色三态分类：confirmed_agent / infrastructure / pending（候选·待确认）。
 
@@ -1259,7 +1302,9 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                     current = analyzer.analyze(pid)
                     if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
                         raise ValueError('Target changed during investigation')
-                    entry = matcher.remember_verified(struct, recipe, evidence, elapsed_ms, source='goose')
+                    entry = matcher.remember_verified(
+                        struct, recipe, evidence, elapsed_ms, source='goose',
+                        asset_paths=_asset_paths_from_findings(run_dir))
                     target = {'pid': pid, 'create_time': create_time}
                     onboarding_plan = onboarding.record_investigation(
                         target, struct, recipe, evidence, entry, match_status='miss',
@@ -2250,9 +2295,20 @@ def _enriched_snapshot():
             adapter.setdefault('assets', {}).update(_partial_asset_collections(partial))
         local = local_assets.current(agent['pid'], created, ((adapter.get('onboarding') or {}).get('plan') or {}).get('workspace'))
         adapter['asset_refresh'] = {k: v for k, v in local.items() if k != 'assets'}
+        layer1_collected = 0
         for field, value in local.get('assets', {}).items():
             if value.get('status') == 'collected':
                 adapter.setdefault('assets', {})[field] = value
+                if str(value.get('source') or '').startswith('convention-scan:'):
+                    layer1_collected += 1
+        # 第 1 层（无模型约定扫描）已拿到资产时，不再显示"未调度"：调查状态
+        # 升级为资产初查完成。深度调查仍可由用户手动触发，本行不冒充 Goose 结果。
+        if layer1_collected and adapter['investigation'].get('status') == 'not_scheduled':
+            adapter['investigation'] = {
+                'status': 'assets_collected', 'label': '资产初查完成',
+                'message': f'第 1 层无模型扫描已获得 {layer1_collected} 类资产；深度调查可手动触发',
+                'source': 'convention-scan', 'can_request': True,
+            }
     refresh_hook_observations(snapshot)
     trust, serving = _native_trust_view(), _serving_view()
     attach_capability(snapshot, trust=trust, serving=serving)

@@ -126,7 +126,7 @@ def skill_scope(root, platform, settings, deadline):
                         if q and Path(q).expanduser().resolve() in (folder.resolve(),entry.resolve()) and item.get('enabled') is False:enabled=False
                 if platform=='openclaw' and setting.get('skills',{}).get('entries',{}).get(info.get('name',folder.name),{}).get('enabled') is False:enabled=False
             result['items'].append({**info,'name':info.get('name',folder.name),'validation_status':info.get('validation_status','invalid'),
-                'relative_path':relative,'installation_key':installation,'identity_key':'local:'+platform+':'+installation,
+                'relative_path':relative,'installation_key':installation,'identity_key':'path:'+installation,
                 'identity_status':'unverified','manifest_digest':h.hexdigest(),'fingerprint_version':'skill-md-v1',
                 'enabled':enabled,'content_status':'metadata_only'})
             return
@@ -158,7 +158,7 @@ def mcp_scope(path, field):
             # Arguments can embed arbitrary credentials: report explicit redaction.
             safe['args']=[];safe['args_redacted']=bool(definition.get('args') or isinstance(definition.get('command'),list))
             installation=key+'/'+name
-            result['items'].append({**safe,'name':name,'installation_key':installation,'identity_key':'local:'+installation,
+            result['items'].append({**safe,'name':name,'installation_key':installation,'identity_key':'path:'+installation,
                 'definition_digest':sha(canonical(safe)),'fingerprint_version':'mcp-config-v1'})
     except Exception:result.update(status='failed',error_code='INVENTORY_SCOPE_PARSE_FAILED')
     result['expected_count']=len(result['items']);return result

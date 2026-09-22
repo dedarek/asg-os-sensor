@@ -336,7 +336,7 @@ def _family_identity_matches(observed, prior) -> bool:
     return False
 
 
-def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose'):
+def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asset_paths=None):
     """Supervisor-only entry: evidence validated before a revision may be reusable.
 
     演进（evolves_prior_harness）必须通过入口/包身份证据门禁：先比较可执行文件 digest
@@ -385,6 +385,16 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose'):
                                   'validated_at_ns': time.time_ns(),
                                   'compatibility': deepcopy(struct['compatibility']), 'evidence': deepcopy(evidence),
                                   'status': 'recipe_validated_hook_unverified', 'source': recipe_source})
+        # 资产路径沉淀：只收绝对路径（skill 根目录、MCP 配置文件），让下次
+        # 同类构建在第 1 层就能直接命中，不再依赖 Goose。凭据/内容不入库。
+        if asset_paths:
+            safe_skills = sorted({str(p) for p in (asset_paths.get('skill_roots') or [])
+                                  if isinstance(p, str) and Path(p).is_absolute()})[:50]
+            safe_mcps = sorted({str(p) for p in (asset_paths.get('mcp_configs') or [])
+                                if isinstance(p, str) and Path(p).is_absolute()})[:50]
+            if safe_skills or safe_mcps:
+                entry['asset_paths'] = {'skill_roots': safe_skills, 'mcp_configs': safe_mcps,
+                                        'source': 'goose-investigation'}
         entry.update(name=stored_recipe['agent_identity_name'], hook_recipe=deepcopy(stored_recipe), revision=revision,
                      investigation_verified=True, hook_verified=False, mount_ms=mount_ms,
                      recipe_source=recipe_source)

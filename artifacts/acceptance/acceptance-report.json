@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-20T22:27:43+0800",
+  "generated_at": "2026-09-21T08:09:45+0800",
   "regression": {
-    "modules": 78,
-    "ran": 497,
+    "modules": 79,
+    "ran": 499,
     "ok": true,
     "failed": null
   },
@@ -10,7 +10,7 @@
     "dashboard_reachable": true,
     "native_trust": {
       "status": "probed",
-      "probed_at": "2026-09-20T14:27:06.227547+00:00",
+      "probed_at": "2026-09-21T00:09:32.934918+00:00",
       "source": {
         "kind": "codex-app-server",
         "method": "hooks/list",
@@ -371,8 +371,8 @@
         "信任状态是探测时刻的磁盘定义；目标内存中的旧配置可能不同",
         "其他运行时的准入机制不同，此结论不能外推到它们"
       ],
-      "duration_ms": 223,
-      "age_seconds": 37.184844,
+      "duration_ms": 238,
+      "age_seconds": 12.994134,
       "stale": false
     },
     "hook_runtime": {
@@ -380,6 +380,18 @@
       "reason": "no_runtime_record"
     },
     "instances": [
+      {
+        "pid": 76863,
+        "name": "OpenCode",
+        "instance_id": "76863:1789945784.860049",
+        "proven": 2,
+        "total": 10,
+        "controlling": "unsupported",
+        "loaded": "not_reached",
+        "observing": "not_reached",
+        "serving": "not_reached",
+        "trusted": "unknown"
+      },
       {
         "pid": 43921,
         "name": "OpenCodex",
@@ -396,23 +408,11 @@
         "pid": 41158,
         "name": "Codex",
         "instance_id": "41158:1789882843.33201",
-        "proven": 2,
+        "proven": 5,
         "total": 10,
         "controlling": "unsupported",
-        "loaded": "not_reached",
-        "observing": "unknown",
-        "serving": "not_reached",
-        "trusted": "unknown"
-      },
-      {
-        "pid": 57879,
-        "name": "OpenCode",
-        "instance_id": "57879:1789830410.756945",
-        "proven": 3,
-        "total": 10,
-        "controlling": "unsupported",
-        "loaded": "pending",
-        "observing": "unknown",
+        "loaded": "proven",
+        "observing": "proven",
         "serving": "not_reached",
         "trusted": "unknown"
       },
@@ -425,6 +425,18 @@
         "controlling": "not_reached",
         "loaded": "not_reached",
         "observing": "not_reached",
+        "serving": "not_reached",
+        "trusted": "unknown"
+      },
+      {
+        "pid": 70828,
+        "name": "@deepseek-ai/dsh",
+        "instance_id": "70828:1789918756.081659",
+        "proven": 6,
+        "total": 10,
+        "controlling": "unsupported",
+        "loaded": "proven",
+        "observing": "proven",
         "serving": "not_reached",
         "trusted": "unknown"
       }
@@ -596,7 +608,7 @@
         }
       ],
       "evidence": [
-        "回归：78 个测试模块，Ran 497，OK"
+        "回归：79 个测试模块，Ran 499，OK"
       ]
     },
     {

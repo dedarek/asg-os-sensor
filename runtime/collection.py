@@ -6,11 +6,154 @@ JSON 配置文件，并按白名单提取字段名/名称。本地读取与脱�
 """
 from pathlib import Path
 import json
+import os
 import psutil
 from runtime.identity import metadata_identity
 
 _JSON_KEYS = ('config', 'setting', 'mcp')
 _CWD_FILES = ('config.json', 'settings.json', 'AGENTS.md', 'CLAUDE.md')
+
+
+def _declared_config_roots(p, info):
+    """Config roots for the convention scan, strongest evidence first.
+
+    1. Environment-declared roots: *_HOME / *_CONFIG_DIR / *_CONFIG_PATH the
+       process itself exports. A relocated HOME applies; the real user home
+       alone never qualifies.
+    2. Home fallback: ONLY when the process entry matched the local identity
+       catalog (identities.yaml), scan the catalog-matching dot-directory
+       under HOME (codex -> ~/.codex). This mirrors the SOC collection
+       contract, which already derives these roots the same way; unidentified
+       processes get no fallback, keeping zero-prior discovery brand-free.
+    """
+    roots, declared = [], []
+    try:
+        environ = p.environ()
+    except (psutil.AccessDenied, psutil.NoSuchProcess, TypeError):
+        return roots, declared
+    if not isinstance(environ, dict):
+        return roots, declared
+    home = None
+    for key, value in environ.items():
+        if not value or key == 'PATH':
+            continue
+        if key in ('HOME', 'USERPROFILE'):
+            candidate = Path(value).expanduser()
+            if candidate.is_absolute() and candidate.is_dir():
+                home = candidate
+        relocated = key in ('HOME', 'USERPROFILE')
+        if not (relocated or key.endswith(('_HOME', '_CONFIG_DIR', '_CONFIG_PATH'))):
+            continue
+        path = Path(value).expanduser()
+        if not path.is_absolute() or (relocated and path == Path.home()):
+            continue
+        if path.is_dir() and path not in roots:
+            roots.append(path)
+            declared.append(str(path))
+    if home is not None:
+        from runtime.identity import identify, load_catalog
+        identity_id = (identify(info, load_catalog()) or {}).get('id')
+        if identity_id:
+            fallback = home / ('.' + identity_id)
+            if fallback.is_dir() and fallback not in roots:
+                roots.append(fallback)
+    return roots[:8], declared
+
+
+def _skill_folder_entries(skills_dir, limit=200):
+    """List installed skill folders: every child directory holding SKILL.md."""
+    entries = []
+    try:
+        children = sorted(skills_dir.iterdir())
+    except OSError:
+        return entries, 'unreadable'
+    for child in children[:limit]:
+        if child.is_symlink() or not child.is_dir():
+            continue
+        manifest = child / 'SKILL.md'
+        try:
+            if not manifest.is_file() or manifest.stat().st_size > 262144:
+                continue
+        except OSError:
+            continue
+        name = child.name
+        try:
+            head = manifest.read_text(encoding='utf-8', errors='replace')[:8192]
+            if head.startswith('---'):
+                for line in head.split('---', 2)[1].splitlines():
+                    if line.startswith('name:'):
+                        name = line.split(':', 1)[1].strip() or name
+                        break
+        except OSError:
+            pass
+        entries.append({'name': name, 'path': str(manifest)})
+    return entries, None
+
+
+def _convention_config_files(root):
+    """Well-known config filenames below an environment-declared root."""
+    names = ('config.toml', 'config.json', 'config.jsonc', 'settings.json', 'settings.toml')
+    return [(root / name) for name in names if (root / name).is_file()]
+
+
+def _collect_convention_assets(p, info):
+    """Layer-1 convention scan: skills folders and MCP declarations.
+
+    Emits the same field keys the investigation layer uses so downstream SOC
+    registration keeps working unchanged. Values carry names and paths only;
+    file contents stay local.
+    """
+    found = {}
+    skill_items, mcp_names = [], []
+    mcp_files = []
+    roots, declared = _declared_config_roots(p, info)
+    if not roots:
+        return found
+    source = ('convention-scan:env-declared-roots' if declared and roots[0] in [Path(d) for d in declared]
+              else 'convention-scan:home-fallback')
+    for root in roots:
+        entries, _ = _skill_folder_entries(root / 'skills')
+        skill_items.extend(entries)
+        mcp_files.extend(_convention_config_files(root))
+    for path in mcp_files[:24]:
+        try:
+            if path.stat().st_size > 262144:
+                continue
+            text = path.read_text(encoding='utf-8', errors='replace')
+            if path.suffix == '.toml':
+                try:
+                    import tomllib
+                    data = tomllib.loads(text)
+                except ImportError:
+                    import tomlkit
+                    data = tomlkit.parse(text)
+            elif path.suffix == '.jsonc':
+                import json5
+                data = json5.loads(text)
+            else:
+                data = json.loads(text)
+        except (OSError, ValueError, ImportError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for key in ('mcp_servers', 'mcpServers', 'mcp'):
+            block = data.get(key)
+            servers = block.get('servers') if isinstance(block, dict) and isinstance(block.get('servers'), dict) else block
+            if isinstance(servers, dict):
+                for name, definition in servers.items():
+                    if isinstance(definition, dict):
+                        mcp_names.append({'name': str(name), 'config_path': str(path)})
+    if skill_items:
+        found['skills'] = {'status': 'collected',
+                           'value': {'items': skill_items, 'count': len(skill_items)},
+                           'source': source,
+                           'message': '按进程环境声明的配置目录扫描 skills 目录；仅名称与路径，未验证当前会话加载'}
+    if mcp_names:
+        found['registered_tools_and_mcp'] = {'status': 'collected',
+                                             'value': {'items': mcp_names, 'count': len(mcp_names)},
+                                             'source': source,
+                                             'message': '按进程环境声明的配置文件解析 MCP 声明；仅名称与配置文件路径'}
+    return found
 
 
 def collect(p, workspace=None):
@@ -80,6 +223,18 @@ def collect(p, workspace=None):
             assets[key] = {'status': 'collected', 'value': obs['value'], 'source': obs['source'], 'message': msg}
         elif isinstance(obs['value'], list):
             assets[key]['value'] += obs['value']
+    # Layer 1: platform-convention scan (no model). Roots come only from
+    # environment-declared config dirs (CODEX_HOME etc.); processes without a
+    # declared root are untouched, keeping zero-prior discovery brand-free.
+    for key, value in _collect_convention_assets(p, info).items():
+        assets.setdefault(key, value)
+    # 第 1 层：平台约定路径扫描（无模型）。配置根目录只来自进程环境声明
+    # （CODEX_HOME 等 *_HOME/*_CONFIG_DIR 变量），绝不盲扫用户 home；
+    # 查不到的进程完全不进入本层，保持零先验发现不为品牌改规则。
+    convention = _collect_convention_assets(p, info)
+    for key, value in convention.items():
+        if key not in assets:
+            assets[key] = value
     # 局部失败：保留已采集成功项，仅在 message 中说明；全部失败才 failed
     if cfg_failures:
         partial = '部分配置解析失败: ' + ', '.join(sorted(set(cfg_failures))[:8])
