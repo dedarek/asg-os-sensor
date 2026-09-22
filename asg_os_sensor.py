@@ -20,7 +20,8 @@ import os
 import re
 import sys
 import time
-from runtime.identity import identify, load_catalog, metadata_identity, structural_score
+from runtime.identity import (identify, load_catalog, metadata_identity,
+                              structural_score, discovery_probe_allowed)
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -196,6 +197,14 @@ class Sensor:
             return -1, ["排除MCP工具服务端(非主动Agent编排器)"]
 
         identity = identify(info, self.identity_catalog)
+        if identity:
+            # Known executable identity is sufficient for discovery. Avoid
+            # repeated package/open-file/network probes on every scan.
+            return int(self.identity_catalog.get('identity_score', 70)), [
+                "本地入口身份: " + identity['name'] + " (身份分，非风险分)"
+            ]
+        if not discovery_probe_allowed(info):
+            return 0, ["系统/非用户软件路径，跳过深度进程探针"]
         metadata = metadata_identity(info)
         child_infos = []
         try:
@@ -216,12 +225,6 @@ class Sensor:
         structure_points, structure_reasons = structural_score(info, child_infos, metadata)
         if structure_points >= self.threshold:
             return structure_points, structure_reasons
-        if identity:
-            # Optional identity evidence covers idle or opaque native runtimes.
-            return int(self.identity_catalog.get('identity_score', 70)), [
-                "本地入口身份: " + identity['name'] + " (身份分，非风险分)"
-            ]
-
         # 严禁“参数+网络+子进程盲凑50分”误判：必须前置具备核心意图门禁 (Intent)
         # 严格检查：是真正的 Agent 模块/脚本/入口，而不是由于系统目录刚好在 AppData/Local/hermes 路径内被误匹配
         has_agent_intent = False

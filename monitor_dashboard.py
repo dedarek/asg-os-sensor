@@ -39,7 +39,8 @@ from runtime.status import presentation, DISABLED_REASON
 from runtime.learned_presentation import hook_state as learned_hook_state
 from runtime.tool_transport_health import ToolTransportHealth
 from runtime.recipe_validation import validate as validate_recipe
-from runtime.identity import identify, ownership, metadata_identity, runtime_discovery_candidate
+from runtime.identity import (identify, ownership, metadata_identity,
+                              runtime_discovery_candidate, discovery_probe_allowed)
 from runtime import discovery_sticky
 from runtime.stream_parser import redact
 from runtime.llm_config import analyst_key as load_analyst_key
@@ -1558,7 +1559,9 @@ def _scan_agents_once():
 
             w = sensor.wrap_pid(pid)
             score, reasons = sensor.agent_score(w)
-            discovery = runtime_discovery_candidate(pinfo, proc) if 0 <= score < threshold else {}
+            discovery = (runtime_discovery_candidate(pinfo, proc)
+                         if 0 <= score < threshold and discovery_probe_allowed(pinfo)
+                         else {})
             if 0 <= score < threshold:
                 # Bursty agents connect only while reasoning; instance-bound
                 # evidence collected moments ago stays presentable briefly.

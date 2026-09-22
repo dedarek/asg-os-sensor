@@ -35,6 +35,42 @@ def entrypoints(info):
     return [v.replace('\\', '/') for v in values if v]
 
 
+def discovery_probe_allowed(info):
+    """Limit expensive probes to plausible user-installed software.
+
+    A full process table includes hundreds of OS daemons. Reading package
+    manifests, open files, children, and sockets for all of them means one slow
+    filesystem path can stall the complete inventory. This gate uses paths and
+    generic protocol flags only; it contains no Agent product names.
+    """
+    argv = info.get('cmdline') or []
+    flags = {str(arg).split('=', 1)[0] for arg in argv[1:]
+             if isinstance(arg, str) and arg.startswith('-')}
+    if flags & {
+        '--model', '--model-provider', '--provider', '--api-base', '--base-url',
+        '--prompt', '--system-prompt', '--task', '--instructions',
+        '--allowed-tools', '--disallowed-tools', '--permission-mode',
+        '--approval-mode', '--max-turns', '--mcp-config', '--jsonl',
+    }:
+        return True
+
+    values = entrypoints(info)
+    if not values:
+        return True
+    home = str(Path.home()).replace('\\', '/').rstrip('/') + '/'
+    user_roots = (
+        home, '/Applications/', '/opt/', '/usr/local/', '/private/var/folders/',
+        '/var/folders/',
+    )
+    windows_markers = ('/users/', '/program files/', '/appdata/', '/local programs/')
+    for value in values:
+        normalized = str(value).replace('\\', '/')
+        lower = normalized.lower()
+        if normalized.startswith(user_roots) or any(marker in lower for marker in windows_markers):
+            return True
+    return False
+
+
 def identify(info, catalog):
     for rule in catalog.get('agents', []):
         for value in entrypoints(info):

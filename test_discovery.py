@@ -11,7 +11,8 @@ from pathlib import Path
 from asg_os_sensor import Sensor, load_policies
 from runtime.identity import (identify, load_catalog, ownership, metadata_identity,
                               structural_score, desktop_discovery_candidate,
-                              runtime_discovery_candidate, declares_protocol_ecosystem)
+                              runtime_discovery_candidate, declares_protocol_ecosystem,
+                              discovery_probe_allowed)
 
 
 class Process:
@@ -237,6 +238,24 @@ class DiscoveryTests(unittest.TestCase):
         p = Process('python3', ['python3', 'report.py', 'inspect opencode and claude-code'])
         self.assertFalse(identify(p.info, load_catalog()))
         self.assertEqual(Sensor(load_policies()).agent_score(p)[0], 0)
+
+    def test_system_daemon_skips_expensive_discovery_probes(self):
+        p = Mock()
+        p.info = {'pid': 99, 'name': 'ordinaryd', 'exe': '/usr/libexec/ordinaryd',
+                  'cmdline': ['/usr/libexec/ordinaryd']}
+        p.children.side_effect = AssertionError('system daemon must not be deeply probed')
+        self.assertFalse(discovery_probe_allowed(p.info))
+        self.assertEqual(Sensor(load_policies()).agent_score(p)[0], 0)
+
+    def test_user_installed_and_protocol_flagged_entries_are_probeable(self):
+        self.assertTrue(discovery_probe_allowed({
+            'exe': '/Applications/Unknown.app/Contents/MacOS/Unknown',
+            'cmdline': ['/Applications/Unknown.app/Contents/MacOS/Unknown'],
+        }))
+        self.assertTrue(discovery_probe_allowed({
+            'exe': '/usr/bin/python3',
+            'cmdline': ['/usr/bin/python3', 'worker.py', '--model', 'local'],
+        }))
 
     def test_unknown_behavior_still_detected(self):
         p = Process('python3', ['python3', 'novel.py', '--model', 'local', '--system-prompt', 'inspect'])
