@@ -20,7 +20,7 @@ import os
 import re
 import sys
 import time
-from runtime.identity import (identify, load_catalog, metadata_identity,
+from runtime.identity import (identify, load_catalog, metadata_identity_bounded,
                               structural_score, discovery_probe_allowed)
 from datetime import datetime, timezone
 from pathlib import Path
@@ -205,7 +205,7 @@ class Sensor:
             ]
         if not discovery_probe_allowed(info):
             return 0, ["系统/非用户软件路径，跳过深度进程探针"]
-        metadata = metadata_identity(info)
+        metadata = metadata_identity_bounded(info)
         child_infos = []
         try:
             for child in proc.children(recursive=True):

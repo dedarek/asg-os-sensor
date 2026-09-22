@@ -3,6 +3,10 @@ import re
 import json
 import plistlib
 import os
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 import yaml
@@ -174,6 +178,56 @@ def metadata_identity(info):
     return {}
 
 
+_METADATA_CACHE = {}
+_METADATA_CACHE_LOCK = threading.Lock()
+_METADATA_CACHE_TTL = 60.0
+
+
+def metadata_identity_bounded(info, timeout=1.0):
+    """Read package ownership in a killable helper process.
+
+    macOS can leave a regular-file ``open`` blocked indefinitely while a
+    package tree is being changed or inspected by another filesystem filter.
+    A Python thread cannot cancel that syscall.  Keeping the read in a helper
+    process gives the inventory a real deadline without weakening unknown
+    Agent discovery or hard-coding package names.
+    """
+    safe_info = {
+        'pid': info.get('pid'),
+        'name': str(info.get('name') or '')[:1024],
+        'exe': str(info.get('exe') or '')[:4096],
+        'cmdline': [str(value)[:4096] for value in (info.get('cmdline') or [])[:16]],
+    }
+    key = tuple(entrypoints(safe_info))
+    now = time.monotonic()
+    with _METADATA_CACHE_LOCK:
+        cached = _METADATA_CACHE.get(key)
+        if cached and now - cached[0] <= _METADATA_CACHE_TTL:
+            return dict(cached[1])
+    code = (
+        'import json,sys; from runtime.identity import metadata_identity; '
+        'print(json.dumps(metadata_identity(json.load(sys.stdin))))'
+    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, '-c', code],
+            input=json.dumps(safe_info), text=True, capture_output=True,
+            timeout=max(0.05, float(timeout)), cwd=str(Path(__file__).parents[1]),
+            check=True,
+        )
+        result = json.loads(completed.stdout)
+        if not isinstance(result, dict):
+            result = {}
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError, json.JSONDecodeError):
+        result = {}
+    with _METADATA_CACHE_LOCK:
+        if len(_METADATA_CACHE) >= 512:
+            oldest = min(_METADATA_CACHE, key=lambda item: _METADATA_CACHE[item][0])
+            _METADATA_CACHE.pop(oldest, None)
+        _METADATA_CACHE[key] = (now, dict(result))
+    return result
+
+
 def runtime_discovery_candidate(info, process):
     """Independent evidence families admit investigation, never assert a role."""
     signals = []
@@ -183,7 +237,7 @@ def runtime_discovery_candidate(info, process):
         if not any(s['source'] == kind for s in signals):
             signals.append({'source': kind, 'evidence': evidence, 'reason': reason})
 
-    metadata = metadata_identity(info)
+    metadata = metadata_identity_bounded(info)
     if metadata.get('ownership') == 'bin-mapping':
         add('package-bin-mapping', metadata['evidence'], '入口与安装包 bin 声明一致')
     if metadata.get('model_sdk'):

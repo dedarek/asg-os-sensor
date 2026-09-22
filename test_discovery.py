@@ -5,14 +5,15 @@ import tempfile
 import uuid
 import plistlib
 import psutil
-from unittest.mock import Mock
+import subprocess
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from asg_os_sensor import Sensor, load_policies
 from runtime.identity import (identify, load_catalog, ownership, metadata_identity,
                               structural_score, desktop_discovery_candidate,
                               runtime_discovery_candidate, declares_protocol_ecosystem,
-                              discovery_probe_allowed)
+                              discovery_probe_allowed, metadata_identity_bounded)
 
 
 class Process:
@@ -256,6 +257,13 @@ class DiscoveryTests(unittest.TestCase):
             'exe': '/usr/bin/python3',
             'cmdline': ['/usr/bin/python3', 'worker.py', '--model', 'local'],
         }))
+
+    def test_metadata_probe_timeout_fails_closed_without_stalling_scan(self):
+        info = {'pid': 123456, 'name': 'node', 'exe': '/Users/example/node',
+                'cmdline': ['/Users/example/node', '/Users/example/unique-agent.js']}
+        with patch('runtime.identity.subprocess.run',
+                   side_effect=subprocess.TimeoutExpired('metadata-probe', 0.01)):
+            self.assertEqual(metadata_identity_bounded(info, timeout=0.01), {})
 
     def test_unknown_behavior_still_detected(self):
         p = Process('python3', ['python3', 'novel.py', '--model', 'local', '--system-prompt', 'inspect'])
