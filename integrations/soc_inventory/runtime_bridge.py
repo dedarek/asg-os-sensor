@@ -165,11 +165,20 @@ class RuntimeBridge:
             payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'scan_enabled':state.get('scan_enabled',False),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust'),'fingerprints':target_fingerprints}
             records=hooks.get('records') or []
             total_records=len(records)
-            while len(canonical({'instance_id':instance,'revision':revision,'payload':payload}))>self.REPORT_BUDGET and records:
-                drop=max(1,len(records)//4)
-                records=records[drop:]
-                hooks['records']=records
-                hooks['records_trimmed']=total_records-len(records)
+            if records:
+                # crazytest B12: measure the trimming dimension (the record
+                # array) against the headroom left by the rest of the payload
+                # instead of re-serializing the whole report every retry.
+                skeleton=dict(payload)
+                skeleton_hooks=dict(hooks)
+                skeleton_hooks['records']=[]
+                skeleton['hook_data']=skeleton_hooks
+                base=len(canonical({'instance_id':instance,'revision':revision,'payload':skeleton}))+128
+                while records and base+len(canonical(records))>self.REPORT_BUDGET:
+                    drop=max(1,len(records)//4)
+                    records=records[drop:]
+                    hooks['records']=records
+                    hooks['records_trimmed']=total_records-len(records)
             if len(records)<total_records:
                 coverage=hooks.get('coverage') or {}
                 limitations=coverage.get('limitations') or []
