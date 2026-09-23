@@ -1,0 +1,20 @@
+integrations/soc_inventory/test_g07_investigation_lifecycle.py
+  h_c6bfc5197c52f3 47
+runtime/hook_data.py
+  h_c6bfc5197c52f3 1057-1062,1073-1076,1091-1093,1095-1096
+test_adapter_stage1.py
+  h_c6bfc5197c52f3 89-91
+tools/soc_collector_service.py
+  h_c6bfc5197c52f3 52-55,63,70,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fa4325dbb4b1b621c2a29f3613ad310bf46c16f9",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
