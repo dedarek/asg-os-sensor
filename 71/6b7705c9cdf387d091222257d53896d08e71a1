@@ -1,0 +1,88 @@
+artifacts/acceptance/acceptance-report.json
+  h_c6bfc5197c52f3 1-1124
+artifacts/acceptance/current-normal-conversation.json
+  h_c6bfc5197c52f3 1-19
+artifacts/acceptance/discovery-matrix-20260921.json
+  h_c6bfc5197c52f3 1-110
+artifacts/acceptance/io-batch.json
+  h_c6bfc5197c52f3 1-857
+artifacts/acceptance/io-extra.json
+  h_c6bfc5197c52f3 1-142
+artifacts/acceptance/native-direct-e2e/report.json
+  h_c6bfc5197c52f3 1-40
+artifacts/acceptance/normal-conversation-9601.json
+  h_c6bfc5197c52f3 1-124
+artifacts/acceptance/normal-conversation-summary.json
+  h_c6bfc5197c52f3 1-77
+e2e/artifacts/unknown-runtime/execution_manifest.json
+  h_c6bfc5197c52f3 1-82
+e2e/artifacts/unknown-runtime/first/analyst_command.json
+  h_c6bfc5197c52f3 1-32
+e2e/artifacts/unknown-runtime/first/analyst_stdout.jsonl
+  h_c6bfc5197c52f3 1-4272
+e2e/artifacts/unknown-runtime/first/analyst_tool_calls.jsonl
+  h_c6bfc5197c52f3 1-12
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771165205-61d9f22626.json
+  h_c6bfc5197c52f3 1-36
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771165208-9a22a6c921.json
+  h_c6bfc5197c52f3 1-16
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771165319-e26a88987f.json
+  h_c6bfc5197c52f3 1-77
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771165506-7371ee5201.json
+  h_c6bfc5197c52f3 1-63
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771171565-bf21a9e8fb.json
+  h_c6bfc5197c52f3 1-10
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771171577-ce9fa38bd6.json
+  h_c6bfc5197c52f3 1-36
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771175753-bf21a9e8fb.json
+  h_c6bfc5197c52f3 1-10
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771175755-ce9fa38bd6.json
+  h_c6bfc5197c52f3 1-36
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771177542-bf21a9e8fb.json
+  h_c6bfc5197c52f3 1-10
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771177545-bf21a9e8fb.json
+  h_c6bfc5197c52f3 1-10
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771180887-ce9fa38bd6.json
+  h_c6bfc5197c52f3 1-36
+e2e/artifacts/unknown-runtime/first/evidence/ev-1788771202570-33a5de0ec4.json
+  h_c6bfc5197c52f3 1-138
+e2e/artifacts/unknown-runtime/first/phase.json
+  h_c6bfc5197c52f3 1-413
+e2e/artifacts/unknown-runtime/first/recipes/candidate.json
+  h_c6bfc5197c52f3 1-66
+e2e/artifacts/unknown-runtime/first/recipes/committed.json
+  h_c6bfc5197c52f3 1-66
+e2e/artifacts/unknown-runtime/first/semantic_events.jsonl
+  h_c6bfc5197c52f3 1-3
+e2e/artifacts/unknown-runtime/first/sensor_events.jsonl
+  h_c6bfc5197c52f3 1-23
+e2e/artifacts/unknown-runtime/first/target_stream.jsonl
+  h_c6bfc5197c52f3 1-3
+e2e/artifacts/unknown-runtime/run_report.json
+  h_c6bfc5197c52f3 1-499
+e2e/artifacts/unknown-runtime/second/phase.json
+  h_c6bfc5197c52f3 1-71
+e2e/artifacts/unknown-runtime/second/semantic_events.jsonl
+  h_c6bfc5197c52f3 1
+e2e/artifacts/unknown-runtime/second/sensor_events.jsonl
+  h_c6bfc5197c52f3 1-15
+e2e/artifacts/unknown-runtime/second/target_stream.jsonl
+  h_c6bfc5197c52f3 1
+e2e/data/note.txt
+  h_c6bfc5197c52f3 1
+e2e/data/note2.txt
+  h_c6bfc5197c52f3 1
+tmp/good_agent_note.txt
+  h_c6bfc5197c52f3 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "716b7705c9cdf387d091222257d53896d08e71a1",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
