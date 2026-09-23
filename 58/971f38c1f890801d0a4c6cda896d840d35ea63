@@ -1,0 +1,14 @@
+integrations/soc_inventory/runtime_bridge.py
+  h_c6bfc5197c52f3 168-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "58971f38c1f890801d0a4c6cda896d840d35ea63",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
