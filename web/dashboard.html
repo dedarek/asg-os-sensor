@@ -884,10 +884,12 @@ function renderHookData(data) {
   }
   if (container.dataset.renderedHtml === html) return;
   const scrollTop = container.scrollTop;
-  const expanded = new Set(Array.from(container.querySelectorAll('details')).filter(d=>d.open).map((d)=>d.dataset.recordKey || d.querySelector('summary')?.textContent));
+  const allDetails = Array.from(container.querySelectorAll('details'));
+  const expandKey = (d,i)=>d.dataset.recordKey || ('pos'+i+':'+(d.querySelector('summary')?.textContent || ''));  // crazytest B20: index-qualified fallback so duplicate titles never toggle together
+  const expanded = new Set(allDetails.filter(d=>d.open).map(expandKey));
   container.innerHTML = html;
   container.dataset.renderedHtml = html;
-  container.querySelectorAll('details').forEach(d=>{d.open = expanded.has(d.dataset.recordKey || d.querySelector('summary')?.textContent);});
+  container.querySelectorAll('details').forEach((d,i)=>{d.open = expanded.has(expandKey(d,i));});
   container.scrollTop = scrollTop;
 }
 
