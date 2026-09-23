@@ -494,7 +494,20 @@ class Discovery:
                                               'installation':'not_attributed_to_soc_package'})))
                     continue
                 if prior and prior.get('status')=='existing_hook_observed':
-                    continue
+                    # Crazytest B5: an observed foreign hook must not veto a
+                    # SOC package forever. If the catalog later gains a
+                    # compatible artifact for this agent, fall through to the
+                    # normal selection/install pass (the installer is
+                    # idempotent and merge-safe); otherwise keep waiting.
+                    from .soc_onboarding import select as _select
+                    try:
+                        _pid,_started=instance.split(':')
+                        _proc=psutil.Process(int(_pid))
+                        pending_artifact=_select(self.endpoint,registered,_proc.exe())
+                    except Exception:
+                        pending_artifact=None
+                    if pending_artifact is None:
+                        continue
                 installed=prior and prior.get('status') in (
                     'installed','already_installed','installed_waiting_activation',
                     'activation_verified')

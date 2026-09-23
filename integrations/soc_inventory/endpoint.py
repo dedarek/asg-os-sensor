@@ -82,6 +82,8 @@ class Endpoint:
         CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY,body BLOB NOT NULL);
         CREATE TABLE IF NOT EXISTS known_scopes(id TEXT,scope TEXT,PRIMARY KEY(id,scope));
         CREATE TABLE IF NOT EXISTS packages(agent TEXT,installation TEXT,digest TEXT,PRIMARY KEY(agent,installation));
+        CREATE TABLE IF NOT EXISTS dead_letter(id INTEGER,body BLOB NOT NULL,path TEXT,reason TEXT,at TEXT);
+        CREATE TABLE IF NOT EXISTS poison_attempts(id INTEGER PRIMARY KEY,n INTEGER NOT NULL);
         ''')
         self.db.execute('CREATE TABLE IF NOT EXISTS collection_requests(id INTEGER PRIMARY KEY AUTOINCREMENT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS pending_discoveries(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL,envelope BLOB NOT NULL)')
@@ -174,7 +176,27 @@ class Endpoint:
                 identifier,path,method,body=row
                 try:self.request(agent,path,body,method)
                 except HTTPError as e:
-                    LOG.warning('SOC report retained: status=%s route=%s',e.code,path);break
+                    # Crazytest B10: a message the platform keeps rejecting
+                    # (4xx permanent refusal) must not block every newer report
+                    # for this agent forever. Count refusals; after three, move
+                    # the poison message to dead_letter (kept for audit) and
+                    # continue with the rest of the queue. 5xx and network
+                    # errors stay head-of-line: those are transient.
+                    if 400 <= int(e.code) < 500 and e.code not in (408, 429):
+                        with self.db:
+                            n = (self.db.execute('SELECT n FROM poison_attempts WHERE id=?',(identifier,)).fetchone() or (0,))[0] + 1
+                            if n >= 3:
+                                self.db.execute('INSERT OR REPLACE INTO dead_letter VALUES(?,?,?,?,?)',
+                                                (identifier, body, path, 'http_' + str(e.code), time.strftime('%Y-%m-%dT%H:%M:%S')))
+                                self.db.execute('DELETE FROM queue WHERE id=?',(identifier,))
+                                self.db.execute('DELETE FROM poison_attempts WHERE id=?',(identifier,))
+                                LOG.warning('SOC report dead-lettered after %s refusals: status=%s route=%s', n, e.code, path)
+                                continue
+                            self.db.execute('INSERT OR REPLACE INTO poison_attempts VALUES(?,?)',(identifier,n))
+                        LOG.warning('SOC report retained (%s/3): status=%s route=%s', n, e.code, path)
+                    else:
+                        LOG.warning('SOC report retained: status=%s route=%s',e.code,path)
+                    break
                 except OSError as e:LOG.warning('SOC report retained: %s',type(e).__name__);break
                 with self.db:self.db.execute('DELETE FROM queue WHERE id=?',(identifier,))
     def enqueue_cached_drafts(self):
