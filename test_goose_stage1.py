@@ -44,7 +44,7 @@ class GooseStageTests(unittest.TestCase):
               'target': dict(target or self.TARGET)}
         (self.root / 'ev-1-0123456789.json').write_text(json.dumps(ev))
 
-    # ---------- 原生二进制：不强制 entry_token；changed 后只能 similar ----------
+    # ---------- 原生二进制：不强制 entry_token；changed 后只能 trial 调查 ----------
     def test_native_exact_readonly_and_changed_binary_similar(self):
         evidence = [dict(e, target=dict(self.TARGET)) for e in self.evidence]
         entry = matcher.remember_verified(self.struct, self.recipe, evidence)
@@ -53,8 +53,58 @@ class GooseStageTests(unittest.TestCase):
         self.assertEqual(matcher.db_path().stat().st_mtime_ns, before)  # 纯读
         self.exe.write_bytes(b'native build two changed')
         changed = dict(self.struct, compatibility=observe(str(self.exe), [str(self.exe)], str(self.root)))
-        self.assertEqual(matcher.classify(changed)['status'], 'similar')
+        self.assertEqual(matcher.classify(changed)['status'], 'trial')
         self.assertFalse(entry['hook_verified'])
+
+    def test_changed_build_trial_promotes_only_after_instance_callbacks(self):
+        first = dict(self.struct)
+        first_recipe = dict(self.recipe)
+        original = matcher.remember_verified(first, first_recipe, self.evidence)
+        self.exe.write_bytes(b'native build two changed')
+        changed = dict(first, compatibility=observe(str(self.exe), [str(self.exe)], str(self.root)))
+        trial = matcher.classify(changed)
+        self.assertEqual(trial['status'], 'trial')
+        self.assertEqual(trial['entry']['id'], original['id'])
+        self.assertEqual(matcher.load()['fingerprints'][0]['revision'], 1)
+        self.assertEqual(matcher.classify(first)['status'], 'exact')
+
+        new_recipe = dict(first_recipe, match_features={'evolves_prior_harness': original['id']})
+        with self.assertRaisesRegex(ValueError, 'paired callback'):
+            matcher.remember_verified(changed, new_recipe, self.evidence, source='trial',
+                                      trial_verification={'status': 'loaded', 'valid_events': 1})
+        self.assertEqual(matcher.load()['fingerprints'][0]['revision'], 1)
+        promoted = matcher.remember_verified(changed, new_recipe, self.evidence, source='trial',
+            trial_verification={'status': 'observing', 'observing': True,
+                                'loaded_observed': True, 'valid_events': 2})
+        self.assertEqual(promoted['id'], original['id'])
+        self.assertEqual(promoted['revision'], 2)
+        self.assertEqual(matcher.classify(changed)['status'], 'exact')
+        self.assertEqual(matcher.classify(first)['status'], 'exact')
+        matcher.record_hit(original['id'], 2)
+        revisions = matcher.load()['fingerprints'][0]['revisions']
+        self.assertEqual(revisions[0].get('exact_hits', 0), 0)
+        self.assertEqual(revisions[1]['exact_hits'], 1)
+        self.assertEqual(revisions[1]['status'], 'runtime_observed')
+
+    def test_trial_rejects_other_family_and_ambiguous_reference(self):
+        original_recipe = dict(self.recipe)
+        original = matcher.remember_verified(self.struct, original_recipe, self.evidence)
+        self.exe.write_bytes(b'native build changed')
+        changed = dict(self.struct, compatibility=observe(str(self.exe), [str(self.exe)], str(self.root)))
+        matcher.remember_verified(self.struct, original_recipe, self.evidence)
+        # Two independently registered families with the same apparent identity
+        # are ambiguous; do not select a trial recipe by insertion order.
+        db = matcher.load()
+        duplicate = dict(db['fingerprints'][0], id='harness-another')
+        db['fingerprints'].append(duplicate)
+        matcher.save(db)
+        self.assertEqual(matcher.classify(changed)['status'], 'similar')
+        bad = dict(original_recipe, match_features={'evolves_prior_harness': 'harness-another'})
+        other = dict(changed, compatibility=dict(changed['compatibility'], entry_path='/another.app/Contents/MacOS/x'))
+        with self.assertRaisesRegex(ValueError, 'family identity'):
+            matcher.remember_verified(other, bad, self.evidence, source='trial',
+                trial_verification={'status': 'observing', 'observing': True,
+                                    'loaded_observed': True, 'valid_events': 2})
 
     def test_packaged_native_app_restart_ignores_only_inherited_cwd_drift(self):
         app_path = '/Applications/Fixture Agent.app/Contents/MacOS/Electron'
@@ -76,7 +126,7 @@ class GooseStageTests(unittest.TestCase):
 
         changed_bundle = dict(restarted, compatibility=dict(restarted['compatibility'],
                                                              **{'Contents/Resources/app.asar': 'changed'}))
-        self.assertEqual(matcher.classify(changed_bundle)['status'], 'similar')
+        self.assertEqual(matcher.classify(changed_bundle)['status'], 'trial')
 
         unbundled = dict(struct, compatibility=dict(base,
                            entry_path='/usr/local/bin/electron', launch='cwd-c'))

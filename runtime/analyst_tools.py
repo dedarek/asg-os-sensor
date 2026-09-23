@@ -985,10 +985,11 @@ def load_prior() -> dict[str, Any]:
     # An explicitly isolated fingerprint DB must not be combined with a default
     # committed recipe file. A caller may still opt into an isolated committed
     # recipe by setting ASG_RECIPE_DIR alongside ASG_FINGERPRINT_DB.
-    candidates = []
+    # The runtime fingerprint store is authoritative for family/revision
+    # evolution. A stale committed export is only a backwards-compatible fallback.
+    candidates = [_prior_db()]
     if os.environ.get("ASG_RECIPE_DIR", "").strip() or not os.environ.get("ASG_FINGERPRINT_DB", "").strip():
         candidates.append(RECIPE_DIR / "committed.json")
-    candidates.append(_prior_db())
     for path in candidates:
         try:
             value = json.loads(path.read_text(encoding="utf-8"))

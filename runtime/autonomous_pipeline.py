@@ -93,8 +93,9 @@ def verify_installed(instance_id):
             health=snap.get('health') or {}
             pairs=snap.get('paired_calls') or []
             alive=snap.get('target_alive')
-            result={'status':'observing' if pairs and alive else 'loaded' if health.get('loaded_observed') and alive else 'awaiting_activation' if alive else 'target_exited',
-                    'observing':bool(pairs and alive),'control_verified':False,
+            loaded=bool(health.get('loaded_observed') and alive)
+            result={'status':'observing' if pairs and loaded else 'loaded' if loaded else 'awaiting_activation' if alive else 'target_exited',
+                    'observing':bool(pairs and loaded),'loaded_observed':loaded,'control_verified':False,
                     'reason':'真实工具调用前后事件已配对' if pairs and alive else '等待重启／新会话加载后产生真实活动' if alive else '目标实例已退出，等待新实例重新绑定',
                     'valid_events':(snap.get('events') or {}).get('valid',0),
                     'invalid_events':(snap.get('events') or {}).get('invalid',0)}

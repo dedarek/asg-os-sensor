@@ -51,15 +51,24 @@ class EventSpool:
                 self.endpoint.db.execute('INSERT OR IGNORE INTO event_outbox VALUES(?,?,?)',(event['event_id'],agent['agent_id'],canonical(event)))
             self.endpoint.db.execute('INSERT OR REPLACE INTO event_offsets VALUES(?,?)',(source,end))
     def flush(self,agent):
-        rows=self.endpoint.db.execute('SELECT id,body FROM event_outbox WHERE agent=? ORDER BY rowid LIMIT 50',(agent['agent_id'],)).fetchall()
-        # Bound each request including large model/tool records.
-        selected=[];size=0
+        # Batches are grouped by the instance that produced each event, not the
+        # currently live instance: a restart must never strand older events of
+        # the same agent behind an envelope mismatch.
+        rows=self.endpoint.db.execute('SELECT id,body,json_extract(CAST(body AS TEXT),\'$.instance_id\') FROM event_outbox WHERE agent=? ORDER BY rowid LIMIT 200',(agent['agent_id'],)).fetchall()
+        if not rows:return
+        groups={}
         for row in rows:
-            if selected and size+len(row[1])>1024*1024:break
-            selected.append(row);size+=len(row[1])
-        if not selected:return
-        try:
-            receipt=self.endpoint.request(agent,'/api/asg/events',canonical({'instance_id':agent['asg_instance_id'],'events':[json.loads(r[1]) for r in selected]}))
-            if receipt.get('accepted') is not True:return
-        except OSError:return
-        with self.endpoint.db:self.endpoint.db.executemany('DELETE FROM event_outbox WHERE id=?',[(r[0],) for r in selected])
+            instance=row[2] if len(row)>2 and row[2] else agent['asg_instance_id']
+            groups.setdefault(instance,[]).append(row)
+        for instance,group in groups.items():
+            # Bound each request including large model/tool records.
+            selected=[];size=0
+            for row in group:
+                if selected and size+len(row[1])>1024*1024:break
+                selected.append(row);size+=len(row[1])
+            if not selected:return
+            try:
+                receipt=self.endpoint.request(agent,'/api/asg/events',canonical({'instance_id':instance,'events':[json.loads(r[1]) for r in selected]}))
+                if receipt.get('accepted') is not True:return
+            except OSError:return
+            with self.endpoint.db:self.endpoint.db.executemany('DELETE FROM event_outbox WHERE id=?',[(r[0],) for r in selected])

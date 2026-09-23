@@ -116,6 +116,29 @@ class OnboardingPipelineTests(unittest.TestCase):
         self.assertEqual(result["status"], "unsupported")
         self.assertFalse((self.root / ".opencode" / "plugins" / "asg-observe.js").exists())
 
+    def test_trial_only_exposes_investigation_until_new_build_is_verified(self):
+        import copy
+        entry = matcher.remember_verified(
+            self.struct, self.recipe,
+            [{"evidence_id": "ev-1-0123456789", "tool": "get_target_context"}],
+        )
+        trial_recipe = copy.deepcopy(self.recipe)
+        trial_recipe['hook']['method'] = 'file_plan'
+        db = matcher.load()
+        db['fingerprints'][0]['revisions'][0]['recipe'] = trial_recipe
+        matcher.save(db)
+        changed = dict(self.struct, compatibility=dict(self.struct['compatibility'], executable='new-digest'))
+        match = matcher.classify(changed)
+        self.assertEqual(match['status'], 'trial')
+        plan = onboarding.plan_from_match(changed, match)
+        self.assertEqual(plan['status'], 'investigation_required')
+        self.assertEqual(plan['action'], 'goose_investigate')
+        self.assertEqual(plan['fingerprint_id'], entry['id'])
+        self.assertNotIn('reuse_recipe', plan)
+        self.assertNotIn('install_plan', plan)
+        self.assertEqual(onboarding.execute_install(plan, self.target, {'approved': True})['status'],
+                         'investigation_required')
+
     @unittest.skipUnless(NODE, "node unavailable; set ASG_TEST_NODE")
     def test_install_and_real_plugin_events_then_persist_experience(self):
         ready = self.root / "ready"

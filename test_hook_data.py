@@ -66,6 +66,56 @@ class HookDataTests(unittest.TestCase):
         self.assertIn("pid_mismatch", result["bindings"][0]["coverage"]["filtered_reasons"])
         self.assertIn("create_time_mismatch", result["bindings"][0]["coverage"]["filtered_reasons"])
 
+    def test_capture_matrix_does_not_promote_model_metadata_or_transcript_path(self):
+        self.append(
+            self.event('user.input', event_id='input-1',
+                       content={'prompt': 'hello', 'model': 'm-1', 'transcript_path': '/tmp/history'}),
+            self.event('assistant.output', event_id='output-1',
+                       content={'text': 'hi'}),
+            self.event('tool.execute.before', event_id='before-1',
+                       tool='mcp__files__read', content={'tool_input': {'path': '/tmp/example'}}),
+            self.event('model.request', event_id='model-1', content={'model': 'm-1'}),
+        )
+        matrix = hook_data.snapshot(self.root)['coverage']['capture_matrix']['items']
+        self.assertEqual(matrix['user_input']['evidence'][0]['event_id'], 'input-1')
+        self.assertEqual(matrix['assistant_output']['status'], 'observed')
+        self.assertEqual(matrix['tool_before']['status'], 'observed')
+        self.assertEqual(matrix['mcp_use']['status'], 'metadata_only')
+        self.assertEqual(matrix['tool_after']['status'], 'not_observed')
+        self.assertEqual(matrix['model_request']['status'], 'metadata_only')
+        self.assertEqual(matrix['model_used']['status'], 'metadata_only')
+        self.assertEqual(matrix['model_used']['model'], 'm-1')
+        self.assertEqual(matrix['history_context']['status'], 'not_observed')
+        self.assertEqual(matrix['skill_use']['status'], 'not_observed')
+
+    def test_capture_matrix_requires_prior_messages_for_history(self):
+        self.append(self.event('model.request', event_id='history-1',
+            content={'messages': [{'role': 'user', 'content': 'earlier'},
+                                  {'role': 'user', 'content': 'now'}]}))
+        matrix = hook_data.snapshot(self.root)['coverage']['capture_matrix']['items']
+        self.assertEqual(matrix['model_request']['status'], 'observed')
+        self.assertEqual(matrix['history_context']['evidence'][0]['event_id'], 'history-1')
+
+    def test_capture_matrix_explains_control_failure_and_unsupported_model_io(self):
+        self.append(self.event('user.input', content={'prompt':'hi','transcript_path':'/tmp/history'}),
+                    self.event('tool.execute.before', tool='Bash', content={'tool_input':{'command':'pwd'}}),
+                    self.event('control.applied', content={'decision':'deny','control_error':'offline'}),
+                    self.event('io.turn.end', unsupported_capture=['model.request','model.response']))
+        items=hook_data.snapshot(self.root)['coverage']['capture_matrix']['items']
+        self.assertEqual(items['tool_after']['reason'],'control_error_before_execution')
+        self.assertEqual(items['model_request']['reason'],'producer_declared_unsupported')
+        self.assertEqual(items['model_response']['reason'],'producer_declared_unsupported')
+        self.assertEqual(items['history_context']['reason'],'transcript_path_only')
+
+    def test_capture_matrix_uses_shared_message_parser_for_nested_parts(self):
+        self.append(self.event('user.input', detail={'parts':[{'type':'text','text':'hello'}]}),
+                    self.event('assistant.output', detail={'parts':[{'type':'text','text':'world'}]}),
+                    self.event('tool.execute.before', tool='read', detail={'args':{'path':'a'}}),
+                    self.event('tool.execute.after', tool='read', detail={'result':'done'}))
+        items=hook_data.snapshot(self.root)['coverage']['capture_matrix']['items']
+        for key in ('user_input','assistant_output','tool_before','tool_after'):
+            self.assertEqual(items[key]['status'],'observed',key)
+
     def test_refresh_reads_appended_records_and_missing_types_are_explicit(self):
         self.append(self.event("hook.loaded"))
         first = hook_data.snapshot(self.root, pid=self.pid)

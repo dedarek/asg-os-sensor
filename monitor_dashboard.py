@@ -103,6 +103,9 @@ def _env_optional_positive_float(name: str) -> float | None:
 SCAN_INTERVAL_S = _env_int("ASG_SCAN_INTERVAL", 30)
 SCAN_TIMER_CONDITION = threading.Condition()
 SCAN_TIMER_REVISION = 0
+# Periodic discovery is opt-in: page scans and SOC commands drive the engine
+# by default, so an idle endpoint never keeps re-scanning the process table.
+SCAN_ENABLED = False
 
 
 def _scan_settings_path():
@@ -119,24 +122,49 @@ try:
     SCAN_INTERVAL_S = _validate_scan_interval(json.loads(_scan_settings_path().read_text())['scan_interval'])
 except (OSError, ValueError, KeyError, TypeError):
     pass
+try:
+    SCAN_ENABLED = bool(json.loads(_scan_settings_path().read_text())['scan_enabled'])
+except (OSError, ValueError, KeyError, TypeError):
+    pass
 
 
 def set_scan_interval(value):
-    global SCAN_INTERVAL_S, SCAN_TIMER_REVISION
+    global SCAN_INTERVAL_S, SCAN_TIMER_REVISION, SCAN_ENABLED
     value = _validate_scan_interval(value)
     from runtime.learned_install import _atomic
     with SCAN_TIMER_CONDITION:
         path = _scan_settings_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic(path, json.dumps({'scan_interval': value}).encode())
+        if not SCAN_ENABLED:
+            # Explicitly choosing an interval is the opt-in for periodic scans.
+            SCAN_ENABLED = True
+        _atomic(path, json.dumps({'scan_interval': value, 'scan_enabled': SCAN_ENABLED}).encode())
         SCAN_INTERVAL_S = value
         SCAN_TIMER_REVISION += 1
         with STATE_LOCK:
             SCAN_STATE['scan_interval'] = value
+            SCAN_STATE['scan_enabled'] = SCAN_ENABLED
         SCAN_TIMER_CONDITION.notify_all()
     return value
+
+
+def set_scan_enabled(enabled):
+    global SCAN_ENABLED, SCAN_TIMER_REVISION
+    if type(enabled) is not bool:
+        raise ValueError('scan_enabled 需要布尔值')
+    from runtime.learned_install import _atomic
+    with SCAN_TIMER_CONDITION:
+        path = _scan_settings_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic(path, json.dumps({'scan_interval': SCAN_INTERVAL_S, 'scan_enabled': enabled}).encode())
+        SCAN_ENABLED = enabled
+        SCAN_TIMER_REVISION += 1
+        with STATE_LOCK:
+            SCAN_STATE['scan_enabled'] = enabled
+        SCAN_TIMER_CONDITION.notify_all()
+    return enabled
 MAX_ANALYSTS = _env_int("ASG_MAX_ANALYSTS", 2)
-GOOSE_MAX_TURNS = _env_optional_positive_int("ASG_GOOSE_MAX_TURNS") if "ASG_GOOSE_MAX_TURNS" in os.environ else 40
+GOOSE_MAX_TURNS = _env_optional_positive_int("ASG_GOOSE_MAX_TURNS") if "ASG_GOOSE_MAX_TURNS" in os.environ else 120
 GOOSE_MAX_TOOL_REPETITIONS = _env_optional_positive_int("ASG_GOOSE_MAX_TOOL_REPETITIONS") if "ASG_GOOSE_MAX_TOOL_REPETITIONS" in os.environ else 3
 GOOSE_TIMEOUT_S = _env_optional_positive_float("ASG_GOOSE_TIMEOUT")
 GOOSE_IDLE_DIAGNOSTIC_S = _env_optional_positive_float("ASG_GOOSE_IDLE_DIAGNOSTIC") or 300.0
@@ -173,6 +201,7 @@ DISCOVERY_EVIDENCE_CACHE: dict = {}
 SCAN_STATE = {
     "last_scan_time": None,
     "scan_interval": SCAN_INTERVAL_S,
+    "scan_enabled": SCAN_ENABLED,
     "scan_count": 0,
     "autonomous_analysis": AUTONOMOUS_ANALYSIS_ENABLED,
     "agents": [],
@@ -563,7 +592,7 @@ def _asset_paths_from_findings(run_dir: Path | None) -> dict[str, list[str]]:
         return result
     candidate = Path(run_dir) / 'findings.json'
     if not candidate.is_file():
-        matches = sorted(Path(run_dir).glob('**/findings*.json'))
+        matches = sorted(Path(run_dir).glob('**/*findings*.json'))
         candidate = matches[0] if matches else candidate
     try:
         document = json.loads(candidate.read_text(encoding='utf-8'))
@@ -587,10 +616,27 @@ def _asset_paths_from_findings(run_dir: Path | None) -> dict[str, list[str]]:
         if isinstance(path, str) and Path(path).is_absolute():
             p = Path(path)
             result['skill_roots'].append(str(p.parent if p.name == 'SKILL.md' else p))
-    for item in items_of('registered_tools_and_mcp') + items_of('mcp'):
+    mcp_items = items_of('registered_tools_and_mcp') + items_of('mcp')
+    # Goose 对不同 Agent 的 MCP finding 结构不一：旧式用 items[]，新式（ZCode 等）
+    # 用 observed_runtime_servers[] / declared_plugin_servers[]。统一归并后再取路径。
+    for key in ('mcp', 'registered_tools_and_mcp'):
+        record = assets.get(key) or {}
+        value = record.get('value') or {}
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                value = {}
+        if isinstance(value, dict):
+            for extra in ('observed_runtime_servers', 'declared_plugin_servers'):
+                servers = value.get(extra)
+                if isinstance(servers, list):
+                    mcp_items.extend(s for s in servers if isinstance(s, dict))
+    for item in mcp_items:
         path = None
         if isinstance(item, dict):
-            path = item.get('config_path') or item.get('source_path') or item.get('path')
+            path = (item.get('config_path') or item.get('source_path') or item.get('path')
+                    or item.get('cwd'))
         if isinstance(path, str) and Path(path).is_absolute():
             result['mcp_configs'].append(path)
     return result
@@ -702,13 +748,40 @@ def _auto_bind_observations(agents):
         run_dir = Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard')))
         for agent in agents:
             adapter = agent.get('adapter') or {}
-            if adapter.get('match_status') != 'exact':
+            match_status = adapter.get('match_status')
+            if match_status not in ('exact', 'trial'):
                 continue
             recipe = adapter.get('historical_recipe')
+            instance_id = str(agent.get('instance_id') or '')
+            if match_status == 'trial':
+                # Changed builds only bind the candidate's declared observation
+                # source after an actual installation. A bound log still proves
+                # nothing until this new instance emits its own events.
+                family_id = adapter.get('harness_id')
+                history = onboarding.load_experience().get('instances', {})
+                candidates = []
+                for source in history.values():
+                    proposal = source.get('trial_candidate') or {}
+                    if (proposal.get('family_id') == family_id
+                            and (source.get('install') or {}).get('status') in _GENERIC_INSTALL_STATUSES
+                            and (source.get('plan') or {}).get('investigation_run_dir') == proposal.get('run_dir')):
+                        candidates.append(proposal)
+                if len(candidates) != 1:
+                    continue
+                proposal = candidates[0]
+                try:
+                    current = analyzer.analyze(int(agent['pid']))
+                    if current.get('compatibility') != proposal.get('compatibility'):
+                        continue
+                    raw = (Path(proposal['run_dir']) / 'recipes' / 'candidate.json').read_bytes()
+                    if hashlib.sha256(raw).hexdigest() != proposal.get('candidate_sha256'):
+                        continue
+                    recipe = json.loads(raw)['recipe']
+                except (OSError, ValueError, KeyError, psutil.Error):
+                    continue
             if not isinstance(recipe, dict) or not recipe.get('observation_source'):
                 continue
             workspace = (recipe.get('hook') or {}).get('workspace')
-            instance_id = str(agent.get('instance_id') or '')
             if not workspace or ':' not in instance_id or instance_id in known:
                 continue
             pid_text, _, created_text = instance_id.partition(':')
@@ -1302,13 +1375,33 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                     current = analyzer.analyze(pid)
                     if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
                         raise ValueError('Target changed during investigation')
-                    entry = matcher.remember_verified(
-                        struct, recipe, evidence, elapsed_ms, source='goose',
-                        asset_paths=_asset_paths_from_findings(run_dir))
+                    trial_match = matcher.classify(struct)
+                    trial_entry = trial_match.get('entry') if trial_match.get('status') == 'trial' else None
+                    if trial_entry:
+                        # A changed build may use the old family as a lead, but
+                        # cannot become exact before its own installed callback.
+                        target_family = (recipe.get('match_features') or {}).get('evolves_prior_harness')
+                        if target_family != trial_entry['id']:
+                            raise ValueError('Trial investigation must name the matched prior family; no new family or silent merge')
+                        entry = trial_entry
+                    else:
+                        entry = matcher.remember_verified(
+                            struct, recipe, evidence, elapsed_ms, source='goose',
+                            asset_paths=_asset_paths_from_findings(run_dir))
                     target = {'pid': pid, 'create_time': create_time}
                     onboarding_plan = onboarding.record_investigation(
-                        target, struct, recipe, evidence, entry, match_status='miss',
+                        target, struct, recipe, evidence, entry,
+                        match_status='trial' if trial_entry else 'miss',
                         source='goose', run_dir=str(run_dir))
+                    if trial_entry:
+                        candidate_sha = hashlib.sha256(candidate_file.read_bytes()).hexdigest()
+                        onboarding.record_transition(target, 'trial_candidate_saved', {
+                            'trial_candidate': {'family_id': trial_entry['id'],
+                                                'candidate_sha256': candidate_sha,
+                                                'source_target': target, 'run_dir': str(run_dir),
+                                                'compatibility': struct['compatibility'],
+                                                'mount_ms': elapsed_ms},
+                        })
                     install_result, verification_result = _auto_execute_onboarding(
                         onboarding_plan, target)
                     hook_text = "接入点 proposed/unverified（未核对接入点证据）"
@@ -1669,6 +1762,65 @@ def _scan_agents_once():
                 }
             
             match_result = matcher.classify(struct)
+            if match_result['status'] == 'trial' and autonomous_pipeline.enabled():
+                instance_key = f"{pid}:{pinfo.get('create_time')}"
+                prior = onboarding.instance_state(instance_key) or {}
+                candidate = prior.get('trial_candidate') or {}
+                installed = prior.get('install') or {}
+                family = match_result.get('entry') or {}
+                if not candidate:
+                    # A newly installed Hook commonly first loads after the
+                    # Agent restarts. Keep the original investigation evidence
+                    # bound to its source instance; only the new instance's own
+                    # observation binding can complete the trial.
+                    history = onboarding.load_experience().get('instances', {})
+                    sources = []
+                    for source in history.values():
+                        proposal = source.get('trial_candidate') or {}
+                        if (proposal.get('family_id') == family.get('id')
+                                and proposal.get('compatibility') == struct.get('compatibility')
+                                and (source.get('install') or {}).get('status') in _GENERIC_INSTALL_STATUSES
+                                and (source.get('plan') or {}).get('investigation_run_dir') == proposal.get('run_dir')):
+                            sources.append((proposal, source.get('install') or {}))
+                    if len(sources) == 1:
+                        candidate, installed = sources[0]
+                if (candidate.get('family_id') == family.get('id')
+                        and candidate.get('compatibility') == struct.get('compatibility')
+                        and installed.get('status') in _GENERIC_INSTALL_STATUSES
+                        and (prior.get('plan') or {}).get('investigation_run_dir') in (None, candidate.get('run_dir'))):
+                    verification = autonomous_pipeline.verify_installed(instance_key)
+                    if (verification.get('status') == 'observing'
+                            and verification.get('observing') is True
+                            and verification.get('loaded_observed') is True
+                            and int(verification.get('valid_events') or 0) >= 2):
+                        # Re-read the live build before promoting. Trial never
+                        # rebinds an old install across a changed build.
+                        current_build = analyzer.analyze(pid)
+                        if (current_build.get('create_time') == struct.get('create_time')
+                                and current_build.get('compatibility') == struct.get('compatibility')):
+                            from runtime.recipe_validation import validate as validate_recipe
+                            run = Path(candidate['run_dir'])
+                            raw_candidate = (run / 'recipes' / 'candidate.json').read_bytes()
+                            if hashlib.sha256(raw_candidate).hexdigest() != candidate.get('candidate_sha256'):
+                                raise ValueError('Trial candidate changed after investigation; refusing promotion')
+                            recipe = json.loads(raw_candidate)['recipe']
+                            if (recipe.get('match_features') or {}).get('evolves_prior_harness') != family['id']:
+                                raise ValueError('Trial candidate family changed; refusing promotion')
+                            checked = validate_recipe(recipe, run / 'evidence',
+                                                      target=candidate.get('source_target') or
+                                                      {'pid': pid, 'create_time': pinfo.get('create_time')})
+                            promoted = matcher.remember_verified(
+                                struct, recipe, checked['evidence'],
+                                candidate.get('mount_ms', 0), source='trial',
+                                asset_paths=_asset_paths_from_findings(run),
+                                trial_verification=verification)
+                            onboarding.record_transition(
+                                {'pid': pid, 'create_time': pinfo.get('create_time')},
+                                'trial_promoted', {'fingerprint_id': promoted['id'],
+                                                   'fingerprint_revision': promoted['revision'],
+                                                   'trial_candidate': None,
+                                                   'verification': verification})
+                            match_result = matcher.classify(struct)
             matched_fp = match_result['entry'] if match_result['status'] == 'exact' else None
             match_ms = match_result['match_ms']
             onboarding_view = onboarding.view_for_instance(
@@ -1676,7 +1828,7 @@ def _scan_agents_once():
             if match_result['status'] == 'exact' and matched_fp:
                 # classify() remains pure; the scanner explicitly records a reusable exact hit.
                 try:
-                    matcher.record_hit(matched_fp.get('id', ''))
+                    matcher.record_hit(matched_fp.get('id', ''), matched_fp.get('revision'))
                     if onboarding_view.get('last_event') is None:
                         onboarding.record_reuse(
                             {'pid': pid, 'create_time': pinfo.get('create_time')},
@@ -1793,6 +1945,7 @@ def _scan_agents_once():
                 onboarding_view['install'] = None
                 onboarding_view['verification'] = None
 
+            family_reference = matched_fp or (match_result.get('entry') if match_result['status'] == 'trial' else None)
             recipe_obj = matched_fp.get("hook_recipe", {}) if matched_fp else {}
             adapter_info = {
                 "matched": is_matched,
@@ -1802,7 +1955,7 @@ def _scan_agents_once():
                 "investigated_identity": partial_identity,
                 "agent_classification": agent_classification,
                 "match_ms": match_ms,
-                "harness_id": matched_fp.get("id") if matched_fp else "unregistered",
+                "harness_id": family_reference.get("id") if family_reference else "unregistered",
                 "behavioral_class": (recipe_obj.get("match_features", {}).get("behavioral_class")) if matched_fp else "unknown-runtime",
                 "observation": (recipe_obj.get("observation")) if matched_fp else ("⚡ Goose 正在非交互式自主逆向接管中..." if is_investigating else "未挂接 (需要首次逆向)"),
                 "hook": (recipe_obj.get("hook")) if matched_fp else "未挂接",
@@ -1825,7 +1978,8 @@ def _scan_agents_once():
             adapter_info['match_reason'] = match_result['reason']
             adapter_info['fingerprint_revision'] = matched_fp.get('revision') if matched_fp else None
             adapter_info['recipe_status'] = 'structure_validated_hook_unverified' if matched_fp else 'not_available'
-            adapter_info['historical_recipe'] = recipe_obj
+            adapter_info['historical_recipe'] = (family_reference.get('hook_recipe', {})
+                                                 if family_reference else {})
             adapter_info['onboarding'] = onboarding_view
             adapter_info['observation_evidence'] = observation_for_instance(
                 instance_observation, pid, pinfo.get('create_time'))
@@ -2020,10 +2174,11 @@ def _scan_agents_once():
 
 def background_scanner_loop():
     while True:
-        try:
-            scan_agents_once()
-        except Exception as e:
-            print(f"[Scanner Error] {e}", file=sys.stderr)
+        if SCAN_ENABLED:
+            try:
+                scan_agents_once()
+            except Exception as e:
+                print(f"[Scanner Error] {e}", file=sys.stderr)
         with SCAN_TIMER_CONDITION:
             revision = SCAN_TIMER_REVISION
             deadline = time.monotonic() + SCAN_INTERVAL_S
@@ -2595,8 +2750,13 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
                 if not isinstance(data, dict):
                     raise ValueError('无效请求')
-                value = set_scan_interval(data.get('scan_interval'))
-                code, payload = 200, {'scan_interval': value}
+                if 'scan_enabled' in data and 'scan_interval' not in data:
+                    enabled = set_scan_enabled(data.get('scan_enabled'))
+                    code, payload = 200, {'scan_enabled': enabled,
+                                          'scan_interval': SCAN_INTERVAL_S}
+                else:
+                    value = set_scan_interval(data.get('scan_interval'))
+                    code, payload = 200, {'scan_interval': value, 'scan_enabled': True}
             except (ValueError, TypeError) as exc:
                 code, payload = 400, {'error': str(exc)}
             except OSError:
@@ -2746,7 +2906,11 @@ def main():
     t = threading.Thread(target=background_scanner_loop, name="scanner-thread", daemon=True)
     t.start()
     threading.Thread(target=_investigation_dispatcher_loop, name="investigation-dispatcher", daemon=True).start()
-    print(f"[Monitor] {SCAN_INTERVAL_S}s 扫描与调查引擎已启动")
+    if SCAN_ENABLED:
+        print(f"[Monitor] 周期扫描已启用，间隔 {SCAN_INTERVAL_S}s")
+    else:
+        print("[Monitor] 周期扫描默认关闭；页面扫描/SOC 命令触发扫描，接口 POST /api/scan-interval 可开启")
+    threading.Thread(target=scan_agents_once, daemon=True, name="startup-scan").start()
     if not AUTONOMOUS_ANALYSIS_ENABLED:
         print("[Monitor] 自动深度分析已禁用 (ASG_AUTONOMOUS_ANALYSIS=0)")
     

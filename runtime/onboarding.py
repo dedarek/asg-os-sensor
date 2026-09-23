@@ -130,7 +130,7 @@ def record_transition(instance: dict[str, Any], event_type: str, payload: dict[s
             "updated_at": event["ts"],
         })
         for key in ("match_status", "fingerprint_id", "fingerprint_revision", "recipe_source",
-                    "recipe", "plan", "install", "verification", "compatibility"):
+                    "recipe", "plan", "install", "verification", "compatibility", "trial_candidate"):
             if key in payload:
                 summary[key] = _safe_payload(payload[key])
         return event
@@ -361,7 +361,7 @@ def plan_from_match(struct: dict[str, Any], match_result: dict[str, Any]) -> dic
     """从一次发现匹配产生只读计划，不调用 Goose、不写文件。"""
     status = match_result.get("status")
     entry = match_result.get("entry") if isinstance(match_result.get("entry"), dict) else None
-    if status in ("similar", "miss"):
+    if status in ("trial", "similar", "miss"):
         return {
             "plan_version": 1,
             "instance_id": make_instance_id(struct["pid"], struct["create_time"]),
@@ -372,7 +372,8 @@ def plan_from_match(struct: dict[str, Any], match_result: dict[str, Any]) -> dic
             "match_status": status,
             "fingerprint_id": entry.get("id") if entry else None,
             "recipe_source": "historical_reference" if entry else None,
-            "reason": match_result.get("reason", "需要调查"),
+            "reason": ("同家族版本变化：旧配方只供新构建调查参考；安装需新证据，真实回调通过后才能晋级"
+                       if status == "trial" else match_result.get("reason", "需要调查")),
             "authorization": {"status": "not_yet_applicable"},
             "verification": {"blocking": "unsupported"},
         }
@@ -709,6 +710,16 @@ def view_for_instance(instance_id: str, struct: dict[str, Any], match_result: di
                 refreshed.update(action='install_candidate_recipe',
                     investigation_run_dir=original['investigation_run_dir'])
             prior['plan'] = refreshed
+        elif match_result.get('status') == 'trial':
+            candidate = prior.get('trial_candidate') or {}
+            if (candidate.get('family_id') != (match_result.get('entry') or {}).get('id')
+                    or candidate.get('compatibility') != struct.get('compatibility')
+                    or prior['plan'].get('investigation_run_dir') != candidate.get('run_dir')):
+                # A process whose build changed must never expose its old
+                # instance's executable plan or verification as a trial install.
+                return {'status': 'investigation_required',
+                        'plan': plan_from_match(struct, match_result),
+                        'last_event': None, 'install': None, 'verification': None}
         return {"status": prior.get("plan", {}).get("status", "known"),
                 "plan": prior.get("plan"), "last_event": prior.get("last_event"),
                 "verification": prior.get("verification"), "install": prior.get("install")}

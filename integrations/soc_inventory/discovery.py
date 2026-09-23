@@ -88,6 +88,34 @@ def canonical_asset_instances(agents):
     return [selected[key] for key in order]
 
 
+def bound_conversation_proof(instance, report, observation=None):
+    """Use an actual current-instance Hook conversation as an Agent signal.
+
+    A configured Hook, package name, or past process is insufficient. The
+    observer validates the binding and filters the event file by PID/start time.
+    This read is only used to admit otherwise pending candidates to SOC.
+    """
+    from runtime import event_vocabulary
+    if (not isinstance(report, dict) or report.get('status') != 'ok'
+            or (report.get('filter') or {}).get('instance_id') != instance
+            or not any(binding.get('instance_id') == instance
+                       and binding.get('target_alive') is True
+                       for binding in report.get('bindings') or [])):
+        return False
+    rows = report.get('records') or []
+    kinds = {row.get('event_type') for row in rows}
+    loaded = ('hook.loaded' in kinds or
+              isinstance(observation, dict) and observation.get('instance_id') == instance and
+              observation.get('loaded_observed') is True and
+              observation.get('target_alive') is True)
+    if not loaded:
+        return False
+    return (any(row.get('event_type') == 'user.input' and
+                event_vocabulary.text_for(row.get('payload'), 'user') for row in rows)
+            and any(row.get('event_type') == 'assistant.output' and
+                    event_vocabulary.text_for(row.get('payload'), 'assistant') for row in rows))
+
+
 def _servers_map(value):
     if not isinstance(value,dict) or not value:return False
     return any(isinstance(d,dict) and any(k in d for k in ('command','url','transport','type')) for d in value.values())
@@ -156,7 +184,7 @@ def _fingerprint_asset_paths(fingerprint_id):
     return {}
 
 
-def confirmed(state):
+def confirmed(state, conversation_proof=None):
     for target in state.get('agents',[]):
         adapter=target.get('adapter') or {}
         classification=adapter.get('agent_classification') or {}
@@ -176,7 +204,9 @@ def confirmed(state):
                 'opened-standard-asset','agent-control-protocol',
                 'agent-tool-protocol','model-sdk-runtime',
             })
-            if int(target.get('score') or 0)<40 and not strong_signal:continue
+            if int(target.get('score') or 0)<40 and not strong_signal:
+                if conversation_proof is None or not conversation_proof(target.get('instance_id','')):
+                    continue
         instance=target.get('instance_id','');source_instance=instance;changed=False
         try:
             pid,created=instance.split(':',1);process=psutil.Process(int(pid))
@@ -291,7 +321,22 @@ class Discovery:
         try:
             with build_opener(ProxyHandler({})).open(self.base+'/api/state',timeout=15) as r:state=json.load(r)
         except OSError:state={'agents':[]}
-        found=[];current=canonical_asset_instances(list(confirmed(state)))
+        proof_cache={}
+        def conversation_proof(instance):
+            if instance not in proof_cache:
+                try:
+                    query=urlencode({'instance_id':instance,'limit':100,'max_bytes':1048576})
+                    with build_opener(ProxyHandler({})).open(
+                            self.base+'/api/hook-data?'+query, timeout=15) as response:
+                        snapshot=next((a for a in state.get('agents',[])
+                                       if a.get('instance_id')==instance),{})
+                        observation=(snapshot.get('adapter') or {}).get('observation_evidence')
+                        proof_cache[instance]=bound_conversation_proof(
+                            instance,json.load(response),observation)
+                except (OSError, ValueError, TypeError):
+                    proof_cache[instance]=False
+            return proof_cache[instance]
+        found=[];current=canonical_asset_instances(list(confirmed(state,conversation_proof)))
         # Capture before the first network enrollment. An exited instance's
         # retained snapshot remains historical evidence, never a live heartbeat.
         for agent in current:
@@ -437,6 +482,18 @@ class Discovery:
                 if not registered:continue
                 row=self.endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',(instance,)).fetchone()
                 prior=json.loads(row[0]) if row else None
+                # The target already emitted a bound ASG conversation through
+                # an installed Hook. Do not lay a second automatic package on
+                # top of it just because SOC has no installer receipt yet.
+                if (proof_cache.get(instance) is True and not prior):
+                    with self.endpoint.db:self.endpoint.db.execute(
+                        'INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',
+                        (instance,json.dumps({'status':'existing_hook_observed',
+                                              'reason':'current_instance_hook_events',
+                                              'installation':'not_attributed_to_soc_package'})))
+                    continue
+                if prior and prior.get('status')=='existing_hook_observed':
+                    continue
                 installed=prior and prior.get('status') in (
                     'installed','already_installed','installed_waiting_activation',
                     'activation_verified')

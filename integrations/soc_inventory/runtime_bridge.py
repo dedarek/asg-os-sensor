@@ -162,7 +162,7 @@ class RuntimeBridge:
             if target is None:return
             revision=int(time.time_ns())
             target_fingerprints = fingerprints_for_target(fingerprints, target)
-            payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust'),'fingerprints':target_fingerprints}
+            payload={'collector_id':(self.endpoint.config.get('state_dir') or ''),'agent':target,'hook_data':hooks,'capture_scope':'bounded_hook_view','scan_interval':state.get('scan_interval'),'scan_enabled':state.get('scan_enabled',False),'control':controls,'model_settings':model_settings,'native_trust':state.get('native_trust'),'fingerprints':target_fingerprints}
             records=hooks.get('records') or []
             total_records=len(records)
             while len(canonical({'instance_id':instance,'revision':revision,'payload':payload}))>self.REPORT_BUDGET and records:

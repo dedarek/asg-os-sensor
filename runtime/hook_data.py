@@ -935,6 +935,7 @@ def snapshot(run_dir: Path | str | None = None, *, pid: int | str | None = None,
         if any((item.get('coverage') or {}).get('truncated_records') for item in local_results):
             local_coverage['missing_inputs'] = [*local_coverage.get('missing_inputs', []), 'full_record_window']
         coverage['integration_selfchecks'].append(selfcheck(normalized, local_coverage, iid, proofs))
+    coverage['capture_matrix'] = capture_matrix(flat_records)
     return {
         "schema_version": SCHEMA_VERSION,
         "status": status,
@@ -957,6 +958,135 @@ def snapshot(run_dir: Path | str | None = None, *, pid: int | str | None = None,
         "vocabulary": event_vocabulary.vocabulary_summary(flat_records),
         "coverage": coverage,
     }
+
+
+def capture_matrix(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Evidence pointers for one bounded, instance-filtered Hook window.
+
+    A declaration, model setting, or transcript path never proves use or
+    conversation history. The matrix intentionally carries no body text.
+    """
+    names = ('user_input', 'assistant_output', 'tool_before', 'tool_after',
+             'skill_use', 'mcp_use', 'model_used', 'model_request',
+             'model_response', 'history_context')
+    result: dict[str, Any] = {key: {'status': 'not_observed', 'count': 0,
+                                     'evidence': []} for key in names}
+    model_refs: dict[str, list[dict[str, Any]]] = {}
+
+    def body(value: Any) -> bool:
+        """A substantive value, not an empty envelope or metadata-only ID."""
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, list):
+            return any(body(item) for item in value)
+        if isinstance(value, dict):
+            return any(body(value.get(k)) for k in
+                       ('text', 'content', 'parts', 'messages', 'input', 'output',
+                        'prompt', 'body', 'request_body', 'response_body'))
+        return False
+
+    def add(name: str, row: dict[str, Any], *, status: str = 'observed') -> None:
+        item = result[name]
+        item['count'] += 1
+        if item['status'] == 'not_observed' or status == 'observed':
+            item['status'] = status
+        if len(item['evidence']) < 3:
+            payload = row.get('payload') or {}
+            item['evidence'].append({'event_id': payload.get('event_id'),
+                                     'line': row.get('line'),
+                                     'timestamp': row.get('timestamp_iso'),
+                                     'event_type': row.get('event_type')})
+
+    for row in records:
+        payload = row.get('payload') or {}
+        if not isinstance(payload, dict):
+            continue
+        content = payload.get('content')
+        content = content if isinstance(content, dict) else {}
+        detail = payload.get('detail') if isinstance(payload.get('detail'), dict) else {}
+        kind = event_vocabulary.canonical(row.get('event_type')) or row.get('event_type')
+        user_text = event_vocabulary.text_for(payload, 'user') if kind == 'user.input' else None
+        assistant_text = event_vocabulary.text_for(payload, 'assistant') if kind == 'assistant.output' else None
+        if user_text:
+            add('user_input', row)
+        if assistant_text:
+            add('assistant_output', row)
+        tool = str(content.get('tool_name') or payload.get('tool') or detail.get('tool') or '')
+        if kind == 'tool.execute.before' and tool and any(
+                key in source for source in (content, payload, detail)
+                for key in ('tool_input', 'args', 'parameters')):
+            add('tool_before', row)
+        if kind == 'tool.execute.after' and any(
+                key in source for source in (content, payload, detail)
+                for key in ('tool_response', 'result', 'output')):
+            add('tool_after', row)
+        if kind in ('tool.execute.before', 'tool.execute.after'):
+            usage_status = 'observed' if kind == 'tool.execute.after' else 'metadata_only'
+            if any(source.get('skill_name') for source in (content, payload, detail)) or tool.lower() in ('skill', 'skills'):
+                add('skill_use', row, status=usage_status)
+            if any(source.get('mcp_server') for source in (content, payload, detail)) or tool.lower().startswith(('mcp__', 'mcp:', 'mcp.')):
+                add('mcp_use', row, status=usage_status)
+        model = content.get('model') or payload.get('model') or detail.get('model')
+        if isinstance(model, dict):
+            model = model.get('modelID') or model.get('model_id') or model.get('name')
+        if kind in ('user.input', 'model.request', 'model.response',
+                    'tool.execute.before', 'tool.execute.after') and isinstance(model, str) and model:
+            model_refs.setdefault(model, []).append(row)
+        if kind == 'model.request':
+            request = content.get('request') if isinstance(content.get('request'), dict) else {}
+            add('model_request', row, status='observed' if any(body(value) for value in (
+                content.get('messages'), request.get('messages'), payload.get('body'),
+                payload.get('request_body'), detail.get('messages'))) else 'metadata_only')
+        if kind == 'model.response':
+            add('model_response', row, status='observed' if any(body(value) for value in (
+                content.get('output'), content.get('response'), payload.get('body'),
+                payload.get('response_body'), detail.get('output'))) else 'metadata_only')
+        messages = content.get('messages')
+        if not messages and isinstance(content.get('request'), dict):
+            messages = content['request'].get('messages')
+        if not messages:
+            messages = detail.get('messages')
+        if kind == 'model.request' and isinstance(messages, list) and len(messages) > 1 and any(
+                isinstance(m, dict) and m.get('role') in ('user', 'assistant', 'tool') and
+                (m.get('content') or m.get('parts')) for m in messages[:-1]):
+            add('history_context', row)
+
+    if model_refs:
+        latest = max((row for rows in model_refs.values() for row in rows),
+                     key=lambda row: row.get('timestamp') or 0)
+        latest_payload = latest.get('payload') or {}
+        latest_content = latest_payload.get('content') or {}
+        latest_model = latest_content.get('model') or latest_payload.get('model')
+        if isinstance(latest_model, dict):
+            latest_model = latest_model.get('modelID') or latest_model.get('model_id') or latest_model.get('name')
+        result['model_used']['model'] = latest_model
+        result['model_used']['scope'] = 'latest_hook_metadata_only'
+        for rows in model_refs.values():
+            for row in rows:
+                add('model_used', row, status='metadata_only')
+    unsupported = set()
+    for row in records:
+        payload = row.get('payload') or {}
+        if row.get('event_type') == 'io.turn.end' and isinstance(payload, dict):
+            unsupported.update(value for value in payload.get('unsupported_capture', [])
+                               if isinstance(value, str))
+    for key, event in (('model_request', 'model.request'),
+                       ('model_response', 'model.response')):
+        if event in unsupported and result[key]['status'] == 'not_observed':
+            result[key]['reason'] = 'producer_declared_unsupported'
+    if result['tool_before']['count'] and not result['tool_after']['count']:
+        decisions = [row.get('payload', {}).get('content') for row in records
+                     if row.get('event_type') == 'control.applied' and
+                     isinstance(row.get('payload'), dict)]
+        errors = [value for value in decisions if isinstance(value, dict) and
+                  value.get('decision') == 'deny' and value.get('control_error')]
+        result['tool_after']['reason'] = ('control_error_before_execution' if errors else
+                                          'no_paired_completion_in_window')
+    if result['history_context']['status'] == 'not_observed' and any(
+            isinstance((row.get('payload') or {}).get('content'), dict) and
+            (row['payload']['content'].get('transcript_path')) for row in records):
+        result['history_context']['reason'] = 'transcript_path_only'
+    return {'scope': 'bound_instance_bounded_window', 'items': result}
 
 
 def read_raw_events(*args: Any, **kwargs: Any) -> dict[str, Any]:

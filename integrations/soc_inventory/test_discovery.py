@@ -31,6 +31,138 @@ class DiscoveryTest(unittest.TestCase):
             items=list(confirmed({'agents':[plain,protocol]}))
         self.assertEqual([item['name'] for item in items],['Example'])
         self.assertEqual(items[0]['platform'],'example')
+    def test_pending_agent_with_bound_conversation_is_registered_without_brand_rule(self):
+        process=Mock();process.create_time.return_value=123.5
+        process.cwd.return_value='/workspace';process.environ.return_value={}
+        process.exe.return_value='/Applications/Example.app/Contents/MacOS/App'
+        target=self.target('pending',score=0)
+        target['identity']={'id':'package:/Applications/Example.app',
+                            'evidence':'/Applications/Example.app/Contents/MacOS/App'}
+        target['discovery_evidence']={'signals':[]}
+        proof=Mock(return_value=True)
+        with patch('psutil.Process',return_value=process):
+            items=list(confirmed({'agents':[target]},proof))
+        proof.assert_called_once_with('42:123.5')
+        self.assertEqual(len(items),1)
+        self.assertEqual(items[0]['classification'],'pending')
+
+    def test_conversation_proof_rejects_unbound_or_unloaded_events(self):
+        from .discovery import bound_conversation_proof
+        rows=[{'event_type':'user.input','payload':{'prompt':'hello'}},
+              {'event_type':'assistant.output','payload':{'assistant_output':'hi'}}]
+        base={'status':'ok','filter':{'instance_id':'42:123.5'}}
+        self.assertFalse(bound_conversation_proof('42:123.5',{
+            **base,'bindings':[{'instance_id':'42:123.5','target_alive':True}],'records':rows}))
+        self.assertFalse(bound_conversation_proof('42:123.5',{
+            **base,'bindings':[{'instance_id':'42:123.5','target_alive':False}],
+            'records':[{'event_type':'hook.loaded'},*rows]}))
+        self.assertTrue(bound_conversation_proof('42:123.5',{
+            **base,'bindings':[{'instance_id':'42:123.5','target_alive':True}],
+            'records':[{'event_type':'hook.loaded'},*rows]}))
+        self.assertTrue(bound_conversation_proof('42:123.5',{
+            **base,'bindings':[{'instance_id':'42:123.5','target_alive':True}],
+            'records':rows},{'instance_id':'42:123.5','loaded_observed':True,
+                             'target_alive':True}))
+        self.assertFalse(bound_conversation_proof('42:123.5',{
+            **base,'bindings':[{'instance_id':'42:123.5','target_alive':True}],
+            'records':rows},{'instance_id':'42:old','loaded_observed':True,
+                             'target_alive':True}))
+
+    def test_real_hook_evidence_rebinds_existing_soc_asset_after_restart(self):
+        import io, json, os, psutil, tempfile
+        from pathlib import Path
+        from .endpoint import Endpoint
+        from .discovery import Discovery, durable_asset_id
+        with tempfile.TemporaryDirectory() as directory:
+            process=psutil.Process(os.getpid())
+            instance='%s:%s'%(process.pid,process.create_time())
+            previous='%s:%s'%(process.pid,process.create_time()-100)
+            target=self.target('pending',score=0)
+            target.update(pid=process.pid,instance_id=instance,identity={
+                'id':'package:/tmp/example-agent','evidence':process.exe()})
+            target['discovery_evidence']={'signals':[]}
+            previous_asset={'platform':'example-agent','workspace':process.cwd(),
+                            'executable':process.exe(),'hook_workspace':None}
+            asset_id=durable_asset_id(previous_asset)
+            config={'backend_url':'http://127.0.0.1:1','state_dir':directory,
+                    'agents':[],'discovery':{'application_key_file':'unused'}}
+            endpoint=Endpoint(config)
+            discovery=Discovery(endpoint)
+            old={**previous_asset,'name':'Example','asset_id':asset_id,
+                 'asg_instance_id':previous,'agent_id':'stable-soc-asset',
+                 'key_file':str(Path(directory)/'key'),'enrollment_scope':'asset'}
+            endpoint.db.execute('INSERT INTO enrolled VALUES(?,?)',
+                                (previous,json.dumps(old)))
+            Path(old['key_file']).write_text('test-key')
+            calls=[]
+            def fake_request(_agent,path,_body,method='POST'):
+                calls.append(path)
+                if path=='/api/asg/enroll':return {
+                    'agent_id':'stable-soc-asset','api_key':'test-key','asset_id':asset_id}
+                return {'items':[]}
+            endpoint.request=fake_request
+            hook={'status':'ok','filter':{'instance_id':instance},
+                  'bindings':[{'instance_id':instance,'target_alive':True}],
+                  'records':[{'event_type':'hook.loaded'},
+                             {'event_type':'user.input','payload':{'prompt':'hello'}},
+                             {'event_type':'assistant.output','payload':{'assistant_output':'hi'}}]}
+            class Opener:
+                def open(self,url,timeout=None):
+                    data={'agents':[target]} if url.endswith('/api/state') else hook
+                    return io.BytesIO(json.dumps(data).encode())
+            with patch('integrations.soc_inventory.discovery.build_opener',
+                       return_value=Opener()):
+                self.assertEqual(discovery.refresh(),['stable-soc-asset'])
+            enrolled=endpoint.db.execute('SELECT instance,configuration FROM enrolled').fetchall()
+            self.assertEqual(len(enrolled),1)
+            self.assertEqual(enrolled[0][0],instance)
+            self.assertEqual(json.loads(enrolled[0][1])['asset_id'],asset_id)
+            self.assertEqual(calls.count('/api/asg/enroll'),1)
+            endpoint.db.close()
+    def test_existing_bound_hook_is_not_installed_a_second_time(self):
+        import io, json, os, psutil, tempfile
+        from .endpoint import Endpoint
+        from .discovery import Discovery
+        process=psutil.Process(os.getpid())
+        instance='%s:%s'%(process.pid,process.create_time())
+        target=self.target('pending',score=0)
+        target.update(pid=process.pid,instance_id=instance,
+                      identity={'id':'package:/tmp/example-agent','evidence':process.exe()},
+                      discovery_evidence={'signals':[]})
+        hook={'status':'ok','filter':{'instance_id':instance},
+              'bindings':[{'instance_id':instance,'target_alive':True}],
+              'records':[{'event_type':'hook.loaded'},
+                         {'event_type':'user.input','payload':{'prompt':'hello'}},
+                         {'event_type':'assistant.output','payload':{'assistant_output':'hi'}}]}
+        with tempfile.TemporaryDirectory() as directory:
+            endpoint=Endpoint({'backend_url':'http://127.0.0.1:1','state_dir':directory,
+                               'agents':[],'soc_installation':True,
+                               'discovery':{'application_key_file':'unused'}})
+            discovery=Discovery(endpoint)
+            def fake_request(_agent,path,body,method='POST'):
+                if path=='/api/asg/enroll':return {'agent_id':'stable','api_key':'key',
+                                                   'asset_id':json.loads(body)['asset_id']}
+                return {'items':[]}
+            endpoint.request=fake_request
+            class Opener:
+                def open(self,url,timeout=None):
+                    return io.BytesIO(json.dumps({'agents':[target]} if url.endswith('/api/state') else hook).encode())
+            patches=[patch('integrations.soc_inventory.discovery.build_opener',return_value=Opener()),
+                     patch('integrations.soc_inventory.soc_onboarding.install'),
+                     patch('integrations.soc_inventory.soc_onboarding.select',return_value=None),
+                     patch('runtime.protocol_package.prepare',return_value=None)]
+            active=[item.start() for item in patches]
+            try:
+                discovery.refresh()
+                discovery.refresh()
+            finally:
+                for item in reversed(patches):item.stop()
+            active[1].assert_not_called()
+            saved=json.loads(endpoint.db.execute('SELECT result FROM soc_onboarding WHERE instance=?',
+                                                  (instance,)).fetchone()[0])
+            self.assertEqual(saved['status'],'existing_hook_observed')
+            self.assertEqual(saved['installation'],'not_attributed_to_soc_package')
+            endpoint.db.close()
     def test_new_offline_target_cached_and_replayed_after_exit(self):
         import tempfile,json
         from pathlib import Path

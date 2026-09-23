@@ -313,7 +313,8 @@
   </div>
   <div class="meta-bar">
     <form class="meta-item" onsubmit="saveScanInterval(event)">
-      <label for="scan-interval-input">扫描周期:</label>
+      <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="scan-enabled-toggle" onchange="setScanEnabled(this.checked)">周期扫描</label>
+      <label for="scan-interval-input">间隔:</label>
       <input id="scan-interval-input" type="number" min="1" max="86400" step="1" required
         style="width:82px;background:var(--bg);color:var(--text-primary);border:1px solid var(--card-border);border-radius:6px;padding:6px" aria-label="扫描周期（秒）">
       <span>秒</span><button class="refresh-btn" type="submit">保存</button>
@@ -1110,6 +1111,7 @@ async function updateUI() {
       intervalInput.value = data.scan_interval || 30;
       intervalInput.dataset.initialized = 'true';
     }
+    document.getElementById('scan-enabled-toggle').checked = !!data.scan_enabled;
     document.getElementById('fp-count').innerText = data.fingerprints_count;
     document.getElementById('kpi-fp-total').innerText = data.fingerprints_count;
     const bindings = Object.values(data.observation_instances || {});
@@ -1436,8 +1438,24 @@ async function saveScanInterval(event) {
       headers:{'Content-Type':'application/json'}, body:JSON.stringify({scan_interval:value})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || '保存失败');
-    status.innerText = `已保存：${result.scan_interval} 秒`;
+    document.getElementById('scan-enabled-toggle').checked = !!result.scan_enabled;
+    status.innerText = result.scan_enabled ? ('已保存：周期扫描已开启，间隔 ' + result.scan_interval + ' 秒') : '已保存：' + result.scan_interval + ' 秒';
   } catch (error) { status.innerText = error.message; }
+}
+
+async function setScanEnabled(enabled) {
+  const status = document.getElementById('scan-interval');
+  status.innerText = '正在保存…';
+  try {
+    const response = await fetch('/api/scan-interval', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({scan_enabled:enabled})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '保存失败');
+    status.innerText = result.scan_enabled ? ('周期扫描已开启，间隔 ' + result.scan_interval + ' 秒') : '周期扫描已关闭；扫描分析按钮仍然可用';
+  } catch (error) {
+    document.getElementById('scan-enabled-toggle').checked = !enabled;
+    status.innerText = error.message;
+  }
 }
 
 async function triggerScan() {

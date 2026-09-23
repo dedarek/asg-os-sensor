@@ -96,12 +96,17 @@ def main():
                      'decision': 'allow' if allowed else 'deny', 'tool': event['tool'],
                      'call_id': call_id, 'outcome': 'decision_returned'}, 5)
     except (OSError, ValueError, subprocess.SubprocessError):
-        allowed = False
+        # Observe-first: transport or decision errors must not block execution.
+        allowed = True
+        decision = {'decision': 'observe-only', 'reason': 'control unavailable'}
+    # Only block when the control service explicitly returned deny.
+    explicit_deny = decision.get('decision') == 'deny' and decision.get('control_error') in (None, '')
+    allowed = not explicit_deny
     response = {'hookSpecificOutput': {'hookEventName': native,
                 'permissionDecision': 'allow' if allowed else 'deny',
                 'permissionDecisionReason': 'SOC execution policy'}}
-    if not allowed:
-        response.update({'decision': 'block', 'reason': 'SOC execution policy unavailable or denied'})
+    if explicit_deny:
+        response.update({'decision': 'block', 'reason': 'SOC execution policy denied'})
     print(json.dumps(response, ensure_ascii=False))
     return 0 if allowed else 2
 

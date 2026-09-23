@@ -124,7 +124,7 @@ def match(struct: dict):
     return (result['entry'] if result['status'] == 'exact' else None), result['match_ms']
 
 
-def record_hit(entry_id: str) -> int:
+def record_hit(entry_id: str, revision: int | None = None) -> int:
     """显式命中计数: 锁内读改写后原子落盘, 返回新计数。
 
     这是 match() 副作用的唯一去处; 不调用则不产生任何写。
@@ -134,9 +134,17 @@ def record_hit(entry_id: str) -> int:
     def _mutate(db: dict):
         for e in db.get("fingerprints", []):
             if e.get("id") == entry_id:
+                matched = None
+                if revision is not None:
+                    matched = next((r for r in e.get('revisions', []) if r.get('revision') == revision), None)
+                    if matched is None:
+                        return _NOCHANGE
                 count = int(e.get("match_count", 0)) + 1
                 e["match_count"] = count
                 e["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                if matched is not None:
+                    matched['exact_hits'] = int(matched.get('exact_hits', 0)) + 1
+                    matched['last_exact_hit_ns'] = time.time_ns()
                 return count
         return _NOCHANGE  # 未命中: 不产生任何磁盘写
 
@@ -209,6 +217,7 @@ def classify(struct: dict) -> dict:
     f = features_of(struct)
     compatible = struct.get('compatibility')
     similar = None
+    trial_candidates = {}
     exact = None
     exact_rank = None
     EXACT_BOUNDS = [
@@ -284,8 +293,26 @@ def classify(struct: dict) -> dict:
                         exact, exact_rank = candidate, rank
         if f['exe'] and ef.get('exe') == f['exe'] and ef.get('runtime') == f['runtime']:
             similar = deepcopy(entry)
+            if (compatible and entry.get('investigation_verified') is True
+                    and compatible.get('executable') and compatible.get('entry')
+                    and isinstance(entry.get('revisions'), list)):
+                for revision in reversed(entry['revisions']):
+                    prior = revision.get('compatibility')
+                    recipe = revision.get('recipe') or {}
+                    if (isinstance(recipe, dict) and isinstance(prior, dict)
+                            and prior.get('executable') and prior.get('entry')
+                            and compatible.get('platform') == prior.get('platform')
+                            and compatible.get('architecture') == prior.get('architecture')
+                            and _family_identity_matches(compatible, prior)):
+                        trial_candidates[entry['id']] = deepcopy(dict(
+                            entry, hook_recipe=recipe, revision=revision['revision']))
+                        break
     if exact is not None:
         return exact
+    if len(trial_candidates) == 1:
+        return {'status': 'trial', 'entry': next(iter(trial_candidates.values())),
+                'reason': 'Same family but changed build; prior recipe is an investigation reference only. New-build install and live callback verification required',
+                'match_ms': int((time.monotonic()-start)*1000)}
     return {'status': 'similar' if similar else 'miss', 'entry': similar,
             'reason': 'Historical reference only' if similar else 'No family reference',
             'match_ms': int((time.monotonic()-start)*1000)}
@@ -336,7 +363,8 @@ def _family_identity_matches(observed, prior) -> bool:
     return False
 
 
-def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asset_paths=None):
+def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asset_paths=None,
+                      trial_verification=None):
     """Supervisor-only entry: evidence validated before a revision may be reusable.
 
     演进（evolves_prior_harness）必须通过入口/包身份证据门禁：先比较可执行文件 digest
@@ -349,7 +377,15 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asse
         raise ValueError('Invalid investigation recipe')
     f = features_of(struct)
     stored_recipe = deepcopy(recipe)
-    recipe_source = source if source in ('goose', 'manual') else 'manual'
+    recipe_source = source if source in ('goose', 'manual', 'trial') else 'manual'
+    if source == 'trial':
+        verification = trial_verification if isinstance(trial_verification, dict) else {}
+        if (verification.get('status') != 'observing' or verification.get('observing') is not True
+                or verification.get('loaded_observed') is not True
+                or int(verification.get('valid_events') or 0) < 2
+                or not isinstance(stored_recipe.get('match_features'), dict)
+                or not stored_recipe['match_features'].get('evolves_prior_harness')):
+            raise ValueError('Trial requires a family target and real instance-bound paired callback evidence')
 
     def mutate(db):
         target = stored_recipe.get('match_features', {}).get('evolves_prior_harness')
@@ -373,6 +409,11 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asse
                 raise ValueError('Evolution target lacks family identity evidence (exe/entry/package); similar is reference only, do not merge')
         elif target and entry is None:
             raise ValueError('Evolution target not found in fingerprint DB')
+        if source == 'trial':
+            if entry is None or entry.get('investigation_verified') is not True:
+                raise ValueError('Trial family must have a verified prior revision')
+            if any(r.get('compatibility') == struct['compatibility'] for r in entry.get('revisions', [])):
+                raise ValueError('Trial build already has a revision; use exact matching')
         if entry is None:
             entry = {'id': 'harness-' + __import__('uuid').uuid4().hex[:12], 'features': f,
                      'first_seen': time.strftime('%Y-%m-%dT%H:%M:%S'), 'revisions': [], 'match_count': 0}
@@ -384,7 +425,9 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asse
         entry['revisions'].append({'revision': revision, 'recipe': deepcopy(stored_recipe),
                                   'validated_at_ns': time.time_ns(),
                                   'compatibility': deepcopy(struct['compatibility']), 'evidence': deepcopy(evidence),
-                                  'status': 'recipe_validated_hook_unverified', 'source': recipe_source})
+                                  'status': ('runtime_observed' if source == 'trial' else 'recipe_validated_hook_unverified'),
+                                  'source': recipe_source,
+                                  **({'runtime_verification': deepcopy(trial_verification)} if source == 'trial' else {})})
         # 资产路径沉淀：只收绝对路径（skill 根目录、MCP 配置文件），让下次
         # 同类构建在第 1 层就能直接命中，不再依赖 Goose。凭据/内容不入库。
         if asset_paths:

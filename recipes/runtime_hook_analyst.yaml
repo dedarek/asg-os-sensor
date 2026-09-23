@@ -64,8 +64,11 @@ prompt: |
   When the mechanism is evidenced, call propose_recipe with a recipe object containing:
   - agent_identity_name; confidence (0..1); match_features describing observed build/launch compatibility,
     e.g. {runtime: "..."}; evidence_refs (exact observation ids); observation; fallback.
-    evolves_prior_harness is OPTIONAL and is an id selector, never prose: omit it or set null for a new
-    family; set it ONLY to one exact prior harness id (e.g. "harness-01") returned by get_prior_recipe.
+    Call get_prior_recipe first when the current build resembles a known Agent; it reads the runtime
+    fingerprint families and revisions. evolves_prior_harness is OPTIONAL and is an id selector, never prose:
+    omit it or set null for a genuinely new family; set it to the exact prior harness id (e.g. "harness-01")
+    when evidence identifies the same family after a version change. A similar build must be investigated
+    against the current files; do not copy an old install plan or assume its previous callbacks still work.
     Reasons for or against evolution belong in observation/fallback, not in this field.
   - investigation: identity_evidence {sources,uncertainty}, assets with model_gateway,mcp,skills,rules;
     each asset {status: collected/empty/unknown/failed/unsupported, sources, value or summary, uncertainty}.
