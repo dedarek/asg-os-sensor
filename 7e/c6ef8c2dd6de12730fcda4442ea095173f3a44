@@ -1,0 +1,18 @@
+integrations/soc_inventory/discovery.py
+  h_c6bfc5197c52f3 330
+release/service_main.py
+  h_c6bfc5197c52f3 71-83
+runtime/learned_install.py
+  h_c6bfc5197c52f3 31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7ec6ef8c2dd6de12730fcda4442ea095173f3a44",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
