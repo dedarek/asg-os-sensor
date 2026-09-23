@@ -1,0 +1,52 @@
+CRAZYTEST_ISSUES_2026-09-24.md
+  h_c6bfc5197c52f3 1-243
+integrations/soc_inventory/discovery.py
+  h_c6bfc5197c52f3 91-118,187,207-209,324-339,485-496
+integrations/soc_inventory/event_spool.py
+  h_c6bfc5197c52f3 54-59,61-74
+integrations/soc_inventory/runtime_bridge.py
+  h_c6bfc5197c52f3 165
+integrations/soc_inventory/test_discovery.py
+  h_c6bfc5197c52f3 34-165
+integrations/soc_inventory/test_event_spool.py
+  h_c6bfc5197c52f3 11-32,60-76
+monitor_dashboard.py
+  h_c6bfc5197c52f3 106-108,125-128,132,138-141,146,149-165,167,204,595,619-635,638-639,751-752,755-781,1378-1390,1393-1394,1396-1404,1765-1823,1831,1948,1958,1981-1982,2177-2181,2753-2759,2909-2913
+recipes/runtime_hook_analyst.yaml
+  h_c6bfc5197c52f3 67-71
+runtime/analyst_tools.py
+  h_c6bfc5197c52f3 988-990
+runtime/autonomous_pipeline.py
+  h_c6bfc5197c52f3 96-98
+runtime/fingerprints.json
+  h_c6bfc5197c52f3 608-633,710,901
+runtime/fingerprints.json.bak-observe-1790130365
+  h_c6bfc5197c52f3 2-2735,2737-2774,2776-2973,2975-3052,3054-3109,3111-3128,3130-3394,3396-3424,3426-3667,3669-3697,3699-4005,4007-4020,4022-4028,4030-4574,4576-4582,4584-4967,4969-4970
+runtime/hook_data.py
+  h_c6bfc5197c52f3 938,963-1091
+runtime/matcher.py
+  h_c6bfc5197c52f3 127,137-141,145-147,220,296-309,312-315,366-367,380-388,412-416,428-430
+runtime/onboarding.py
+  h_c6bfc5197c52f3 133,364,375-376,713-722
+runtime/soc_command_protocol_hook.py
+  h_c6bfc5197c52f3 99-104,108-109
+test_goose_stage1.py
+  h_c6bfc5197c52f3 47,56,59-108,129
+test_hook_data.py
+  h_c6bfc5197c52f3 69-118
+test_onboarding.py
+  h_c6bfc5197c52f3 119-141
+web/dashboard.html
+  h_c6bfc5197c52f3 316-317,1114,1441-1442,1446-1460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d0eb6e69ec992aa3ee17198f2afc363d9c148cbe",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
