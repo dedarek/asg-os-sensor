@@ -136,7 +136,8 @@ function apply (ctx) {
   // ── 3. 工具执行前：同步 decision 门控 ──
 }
 """
-        wired=wire_model_request_payload(source)
+        wired,state=wire_model_request_payload(source)
+        self.assertEqual(state,'injected')
         self.assertIn("ctx.on('llm/stream'",wired)
         self.assertIn("event: 'model.route'",wired)
         self.assertIn("event: index === 0 ? 'model.request' : 'model.request.chunk'",wired)
@@ -144,7 +145,12 @@ function apply (ctx) {
         self.assertIn('request_payload_complete: true',wired)
         self.assertNotIn('redactRequest(payload)',wired)
         self.assertIn("'[REDACTED]'",wired)
-        self.assertEqual(wired,wire_model_request_payload(wired))
+        again,state2=wire_model_request_payload(wired)
+        self.assertEqual(state2,'already')
+        self.assertEqual(wired,again)
+        na,state3=wire_model_request_payload('const x=1')
+        self.assertEqual(state3,'not_applicable')
+        self.assertEqual(na,'const x=1')
 
     def test_invalid_yaml_recipe_is_rejected_before_publication(self):
         content="""client('event', record)

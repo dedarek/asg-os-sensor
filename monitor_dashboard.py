@@ -118,26 +118,56 @@ def _validate_scan_interval(value):
     return value
 
 
-try:
-    SCAN_INTERVAL_S = _validate_scan_interval(json.loads(_scan_settings_path().read_text())['scan_interval'])
-except (OSError, ValueError, KeyError, TypeError):
-    pass
-try:
-    SCAN_ENABLED = bool(json.loads(_scan_settings_path().read_text())['scan_enabled'])
-except (OSError, ValueError, KeyError, TypeError):
-    pass
+def _load_scan_settings():
+    """Cold-start scan settings with an explicit legacy-key migration.
+
+    Pre-manual-mode settings files only carried scan_interval; after an
+    upgrade the missing scan_enabled key used to raise KeyError and silently
+    disable periodic scans while the page still showed an interval
+    (crazytest B26).  Migrate once: keep the interval, default the switch to
+    off (the manual-first product decision), and persist the completed file
+    so the stored state and the page can never disagree again.
+    """
+    global SCAN_INTERVAL_S, SCAN_ENABLED
+    try:
+        raw = json.loads(_scan_settings_path().read_text())
+    except (OSError, ValueError):
+        return
+    if not isinstance(raw, dict):
+        return
+    if 'scan_interval' in raw:
+        try:
+            SCAN_INTERVAL_S = _validate_scan_interval(raw['scan_interval'])
+        except ValueError:
+            pass
+    if 'scan_enabled' in raw:
+        SCAN_ENABLED = bool(raw['scan_enabled'])
+    else:
+        # Legacy file: write the full schema immediately (failures are
+        # non-fatal; the in-memory default still stands).
+        try:
+            from runtime.learned_install import _atomic
+            path = _scan_settings_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic(path, json.dumps({'scan_interval': SCAN_INTERVAL_S,
+                                      'scan_enabled': False}).encode())
+        except OSError:
+            pass
+
+
+_load_scan_settings()
 
 
 def set_scan_interval(value):
-    global SCAN_INTERVAL_S, SCAN_TIMER_REVISION, SCAN_ENABLED
+    global SCAN_INTERVAL_S, SCAN_TIMER_REVISION
     value = _validate_scan_interval(value)
     from runtime.learned_install import _atomic
     with SCAN_TIMER_CONDITION:
         path = _scan_settings_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not SCAN_ENABLED:
-            # Explicitly choosing an interval is the opt-in for periodic scans.
-            SCAN_ENABLED = True
+        # Changing the interval never enables periodic scans by itself
+        # (crazytest B7); only set_scan_enabled controls execution, matching
+        # the page checkbox and the "default off" product decision.
         _atomic(path, json.dumps({'scan_interval': value, 'scan_enabled': SCAN_ENABLED}).encode())
         SCAN_INTERVAL_S = value
         SCAN_TIMER_REVISION += 1
@@ -2756,7 +2786,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
                                           'scan_interval': SCAN_INTERVAL_S}
                 else:
                     value = set_scan_interval(data.get('scan_interval'))
-                    code, payload = 200, {'scan_interval': value, 'scan_enabled': True}
+                    code, payload = 200, {'scan_interval': value, 'scan_enabled': SCAN_ENABLED}
             except (ValueError, TypeError) as exc:
                 code, payload = 400, {'error': str(exc)}
             except OSError:

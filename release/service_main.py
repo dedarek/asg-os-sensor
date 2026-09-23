@@ -241,7 +241,12 @@ def engine_probe(config, scan_track):
     out['scan_interval'] = state.get('scan_interval')
     active = state.get('active_investigations')
     out['active_investigations'] = len(active) if isinstance(active, dict) else 0
-    if isinstance(count, int):
+    # Manual mode is the product default: with periodic scans disabled a flat
+    # scan_count is expected, not a stall (crazytest B27 false alarm).
+    scan_enabled = state.get('scan_enabled')
+    if scan_enabled is False:
+        out['scan_stalled'] = False
+    elif isinstance(count, int):
         if scan_track['count'] != count:
             scan_track['count'] = count
             scan_track['since'] = time.time()

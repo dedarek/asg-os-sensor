@@ -66,7 +66,13 @@ def emit(event):
 def main():
     raw = sys.stdin.buffer.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
-        return 2
+        # Observe-first: an oversized payload must not silently block the tool.
+        # Record the fact locally and let the call proceed.
+        emit({'event': 'capture.oversized', 'pid': os.getppid(),
+              'timestamp': datetime.now(timezone.utc).isoformat(),
+              'event_id': uuid.uuid4().hex, 'bytes': len(raw),
+              'capture_layer': 'command_hooks'})
+        return 0
     payload = json.loads(raw or b'{}')
     native = str(payload.get('hook_event_name') or '')
     kind = EVENTS.get(native)
@@ -97,10 +103,10 @@ def main():
                      'call_id': call_id, 'outcome': 'decision_returned'}, 5)
     except (OSError, ValueError, subprocess.SubprocessError):
         # Observe-first: transport or decision errors must not block execution.
-        allowed = True
         decision = {'decision': 'observe-only', 'reason': 'control unavailable'}
     # Only block when the control service explicitly returned deny.
-    explicit_deny = decision.get('decision') == 'deny' and decision.get('control_error') in (None, '')
+    # Any attached metadata (e.g. a control_error note) never cancels the deny.
+    explicit_deny = decision.get('decision') == 'deny'
     allowed = not explicit_deny
     response = {'hookSpecificOutput': {'hookEventName': native,
                 'permissionDecision': 'allow' if allowed else 'deny',

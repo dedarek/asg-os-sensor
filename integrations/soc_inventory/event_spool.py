@@ -66,9 +66,11 @@ class EventSpool:
             for row in group:
                 if selected and size+len(row[1])>1024*1024:break
                 selected.append(row);size+=len(row[1])
-            if not selected:return
+            if not selected:continue
             try:
                 receipt=self.endpoint.request(agent,'/api/asg/events',canonical({'instance_id':instance,'events':[json.loads(r[1]) for r in selected]}))
-                if receipt.get('accepted') is not True:return
-            except OSError:return
+                if receipt.get('accepted') is not True:continue
+            except OSError:continue
+            # A failing/old instance group must not starve newer instance
+            # groups of the same agent (crazytest B4: return->continue).
             with self.endpoint.db:self.endpoint.db.executemany('DELETE FROM event_outbox WHERE id=?',[(r[0],) for r in selected])

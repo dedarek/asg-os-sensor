@@ -172,14 +172,14 @@ def wire_model_request_payload(content):
     emitted as one event; large requests are losslessly split into base64 JSON
     chunks so the SOC can reconstruct them instead of accepting truncation.
     """
-    if "ctx.on('llm/stream'" in content:return content
+    if "ctx.on('llm/stream'" in content:return content,'already'
     route="""        content: {
           provider: (resolved && resolved.provider) ?? null,
           model: (resolved && resolved.model) ?? null,
           reasoningEffort: (resolved && resolved.reasoningEffort) ?? null,
         },
         content_complete: true,"""
-    if route not in content or "ctx.on('agent/request'" not in content:return content
+    if route not in content or "ctx.on('agent/request'" not in content:return content,'not_applicable'
     helper="""const redactRequest = (value, key = '', depth = 0) => {
   if (/token|secret|password|api[_-]?key|authorization|cookie/i.test(key)) return '[REDACTED]'
   if (Array.isArray(value)) return value.map((item) => redactRequest(item, key, depth + 1))
@@ -241,8 +241,8 @@ const publishModelRequest = (options) => {
   })
 """
     tools_anchor="\n  // ── 3. 工具执行前：同步 decision 门控 ──\n"
-    if tools_anchor not in content:return content
-    return content.replace(tools_anchor,model_listener+tools_anchor,1)
+    if tools_anchor not in content:return content,'no_tools_anchor'
+    return content.replace(tools_anchor,model_listener+tools_anchor,1),'injected'
 
 def pin_loader_revision(plan):
     """Bind an ASG loader entry to the transformed Hook module digest."""
@@ -413,13 +413,16 @@ def main():
         if not (asg_root/'runtime/hook_control_client.py').is_file():raise ValueError('ASG collector runtime is required')
     resolved=recipe_bundle.resolve_bundle(bundle,asg_root=asg_root,target_workspace=workspace)
     plan=learned_install.validate_plan(resolved['recipe']['install_plan'])
+    mrp_wired, mrp_skipped = [], []
     if direct:
         # Preserve the learned Hook mechanism; replace only its generic control transport.
         for item in plan['files']:
             item['content']=re.sub(r'(const CONTROL_PYTHON\s*=\s*)[\"\'][^\"\']+[\"\']',lambda m:m[1]+json.dumps(sys.executable),item['content'])
             item['content']=wire_soc_events(item['content'])
             item['content']=wire_soc_control_client(item['content'],asg_root)
-            item['content']=wire_model_request_payload(item['content'])
+            item['content'],_mrp=wire_model_request_payload(item['content'])
+            if _mrp in ('injected','already'):mrp_wired.append(item['path'])
+            else:mrp_skipped.append({'path':item['path'],'state':_mrp})
         plan=pin_loader_revision(plan)
         cfg={'backend_url':a.backend_url,'agent_id':a.agent_id,'agent_name':a.agent_name,'platform':a.platform,'instance_id':a.instance_id or a.agent_id,'token_file':str(asg_root/'agent.key')}
         for rel,content in [('runtime/hook_control_client.mjs',(ROOT/'soc_client.mjs').read_text()),
@@ -615,7 +618,8 @@ def main():
             chain=(list(previous.get('rollback_chain',[]))+[previous['plan_digest']]
                    if receipt.exists() and package_changed else
                    list(previous.get('rollback_chain',[])) if receipt.exists() else [])
-            receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at,'rollback_chain':chain}));receipt.chmod(0o600)
+            receipt.write_text(json.dumps({**result,'bundle_digest':bundle['integrity']['digest'],'installer_revision':installer_revision,'installed_plan':plan,'binding':binding,'installed_at':installed_at,'rollback_chain':chain,'model_request_wiring':({'wired_files':mrp_wired,'not_applicable_files':mrp_skipped}
+                if direct else None)}));receipt.chmod(0o600)
     print(json.dumps(result))
 if __name__=='__main__':
     try:main()
