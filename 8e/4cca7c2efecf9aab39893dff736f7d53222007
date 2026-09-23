@@ -1,0 +1,16 @@
+e2e/capture_target_baselines.py
+  h_c6bfc5197c52f3 44
+e2e/verify_latency_metrics.py
+  h_c6bfc5197c52f3 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8e4cca7c2efecf9aab39893dff736f7d53222007",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
