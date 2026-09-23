@@ -441,6 +441,36 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asse
         entry.update(name=stored_recipe['agent_identity_name'], hook_recipe=deepcopy(stored_recipe), revision=revision,
                      investigation_verified=True, hook_verified=False, mount_ms=mount_ms,
                      recipe_source=recipe_source)
+        _prune_revisions(entry)
         return deepcopy(entry)
 
     return _locked_update(mutate)
+
+
+REVISION_KEEP_RECENT = 10
+REVISION_HIT_RETENTION_NS = 90 * 24 * 3600 * 10**9  # 90 days
+
+
+def _prune_revisions(entry: dict) -> int:
+    """Bound fingerprint growth (settled policy, crazytest B9).
+
+    Keep the most recent REVISION_KEEP_RECENT revisions; additionally keep any
+    older revision that was exact-hit within the last 90 days, so pruning can
+    never remove a profile another live machine still resolves to. Returns the
+    number of dropped revisions.
+    """
+    revisions = entry.get('revisions') or []
+    if len(revisions) <= REVISION_KEEP_RECENT:
+        return 0
+    revisions.sort(key=lambda r: r.get('revision', 0))
+    keep_recent = revisions[-REVISION_KEEP_RECENT:]
+    recent_ids = {r.get('revision') for r in keep_recent}
+    now_ns = time.time_ns()
+    keep = [r for r in revisions
+            if r.get('revision') in recent_ids
+            or now_ns - int(r.get('last_exact_hit_ns') or 0) <= REVISION_HIT_RETENTION_NS]
+    dropped = len(revisions) - len(keep)
+    if dropped:
+        entry['revisions'] = keep
+        entry['revisions_pruned'] = int(entry.get('revisions_pruned', 0)) + dropped
+    return dropped

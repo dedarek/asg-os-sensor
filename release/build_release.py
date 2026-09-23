@@ -76,6 +76,7 @@ def copy_app(pkg):
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
+    sanitize_portability(pkg)
     # goose is optional: investigation falls back without it, but bundle it
     # when available on the build machine (copied dereferenced, chmod 0755).
     goose = Path(os.environ.get('ASG_GOOSE_BIN', '/opt/homebrew/bin/goose'))
@@ -84,6 +85,48 @@ def copy_app(pkg):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(goose.resolve(), target)
         os.chmod(target, 0o755)
+
+
+def sanitize_portability(pkg):
+    """Strip learning-machine specifics from the packaged fingerprint library.
+
+    runtime/fingerprints.json accumulates recipes learned on the build
+    machine; their plans and baselines reference paths under this user's home
+    (crazytest B17: 63 hits shipped in one release).  A release that carries
+    them cannot satisfy its own README promise (reuse on fresh machines):
+    installs would fail with misleading precondition errors on every other
+    host.  Recipes whose plan content mentions a home prefix are dropped from
+    the package (the build machine keeps them in its live library), and the
+    drop list is recorded in release.json for auditability.
+    """
+    home = str(Path.home())
+    other_homes = ('/home/', 'C:\\Users\\')
+    fp = pkg / 'app' / 'runtime' / 'fingerprints.json'
+    if not fp.exists():
+        return
+    data = json.loads(fp.read_text())
+    kept, dropped = [], []
+    for entry in data.get('fingerprints', []):
+        blob = json.dumps(entry, ensure_ascii=False)
+        why = None
+        if home in blob:
+            why = 'build-machine home path'
+        elif any(marker in blob for marker in other_homes):
+            why = 'foreign user-home absolute path'
+        if why:
+            dropped.append({'id': entry.get('id'), 'name': entry.get('name'), 'reason': why})
+        else:
+            kept.append(entry)
+    data['fingerprints'] = kept
+    fp.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    (pkg / 'release' / 'portability-scan.json').write_text(json.dumps(
+        {'build_home_redacted': True, 'fingerprints_kept': len(kept),
+         'fingerprints_dropped': dropped}, ensure_ascii=False, indent=1))
+    if dropped:
+        (pkg / 'README.md').open('a').write(
+            '\n## 指纹库可移植性\n构建期从包内指纹库剔除了 %d 个含构建机路径的配方'
+            '（清单见 release/portability-scan.json）。目标机器首次遇到这些类型时'
+            '由发现/调查链路现场学习，学习结果保留在运行库中，不回写发布包。\n' % len(dropped))
 
 
 def bundle_python(pkg, wheels_dir):

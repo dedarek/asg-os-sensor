@@ -378,6 +378,7 @@ class Discovery:
                 continue
             if self.endpoint.db.execute('SELECT 1 FROM pending_discoveries WHERE instance=?',(instance,)).fetchone():continue
             envelope=collect_contract({**agent,'agent_id':'pending-enrollment'},'pending-registration',1,
+                home=agent.get('collection_home'),
                 env=agent.get('collection_environment'),bounded=True)
             with self.endpoint.db:self.endpoint.db.execute('INSERT OR IGNORE INTO pending_discoveries VALUES(?,?,?)',(instance,json.dumps(agent),canonical(envelope)))
         for instance,configuration,raw in self.endpoint.db.execute('SELECT instance,configuration,envelope FROM pending_discoveries').fetchall():

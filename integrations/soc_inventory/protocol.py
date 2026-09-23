@@ -120,7 +120,18 @@ def roots(platform, cwd, home=None, env=None):
         # Workspace config files (generic names only, never brand-specific paths).
         for name in ('config.toml','config.json','settings.json','mcp.json'):
             f=cwd/name
-            if f.is_file():mcps.append((f,'mcp_servers'))
+            if f.is_file():
+                # Same structural probe as the env-declared roots above: unknown
+                # platforms spell the block mcpServers/mcp/servers, not only
+                # mcp_servers; a fixed field name reported a false "0 MCP"
+                # (crazytest B21). mcp.json puts servers at the document root.
+                data=read(f)
+                field=_first_mcp_field(data)
+                if field: mcps.append((f,field))
+                elif name=='mcp.json' and isinstance(data,dict) and any(
+                        isinstance(v,dict) and any(k in v for k in ('command','url','transport','type'))
+                        for v in data.values()):
+                    mcps.append((f,''))
 
     return list(dict.fromkeys(p.resolve() for p in skill)),list(dict.fromkeys((p.resolve(),k) for p,k in mcps)),settings,errors
 
@@ -204,7 +215,10 @@ def mcp_scope(path, field):
     key='mcp:'+str(path);result={'scope_key':key,'status':'success','items':[],'expected_count':0}
     try:
         value=config(path)
-        for part in field.split('.'):value=value.get(part,{})
+        # An empty field means the servers block is the document root (mcp.json).
+        for part in field.split('.'):
+            if part:
+                value=value.get(part,{})
         if not isinstance(value,dict):raise ValueError('invalid MCP block')
         for name,definition in sorted(value.items()):
             if not isinstance(definition,dict):raise ValueError('invalid MCP definition')
