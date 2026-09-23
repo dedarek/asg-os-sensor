@@ -241,3 +241,53 @@ fork 演练副本（/tmp/asg-fork-dryrun-bj4aqq）跑这两个文件：30 passed
 
 ### monitor_dashboard.py 审查结论
 HTTP 面、扫描循环、调查调度、OTLP 边界全部过审。除 B28/B29/B30 外未发现新缺陷。至此全部代码面（含 2923 行运行面大文件）审查完毕，阶段一记录完成。
+
+---
+
+## 22. 修复记录（修复阶段提前至 02:30 后；工作区 /Users/mac/个人项目/asg-crazytest-wt，分支 cryzytest）
+
+说明：原计划 06:00 后开分支修复。02:21 建 fork 时发现原仓是 git worktree、rsync 复制导致 fork 与原仓共享 gitdir，commit 误挪了原仓 HEAD；当即恢复（原仓 reset --mixed 回 9fb2637 回到 beta 分支，status 恒 20，逐轮验证），改用 git worktree add 建立独立工作区后继续。全部提交只落在 cryzytest 分支，原仓与 beta 分支未被触碰。
+
+### 逐项修复与验证
+
+| 项 | 修法 | 验证 | commit |
+| --- | --- | --- | --- |
+| B1 采集服务 install 必炸 UnboundLocalError | soc_collector_service.py 用 service_root 替换错误 ROOT 引用 | 全量绿 | fa4325d |
+| B2 capture_matrix 字符串 content/payload 崩溃 | hook_data.py isinstance 防护 | 全量绿+回归断言 | fa4325d |
+| 测试欠账 2 条 | test_adapter_stage1 期望改 trial；g07 mock 补 conversation_proof 参数 | 全量绿 | fa4325d |
+| B4 event_spool 一组失败丢弃全部后续组 | flush 循环 return 改 continue | 全量绿 | a960f4b |
+| B6 explicit_deny 被 control_error 旁路+超大 stdin 死代码 | deny 不再信任 control_error 分支；超大 stdin observe-first 放行并记 capture.oversized | 全量绿 | a960f4b |
+| B7 改间隔隐式开启周期扫描 | set_scan_interval 不再置 SCAN_ENABLED=True；接口回真实开关 | 全量绿 | a960f4b |
+| B24 模型请求接线结果不落回执 | wire_model_request_payload 返回 (content,state)，receipt 落 model_request_wiring；补 not_applicable 用例 | 定向+全量绿 | a960f4b |
+| B26 旧设置文件缺键致周期扫描静默失效 | _load_scan_settings() 显式迁移并落盘完整 schema | 全量绿 | a960f4b |
+| B27 手动模式 supervisor 误报 scan_stalled | engine_probe 在 scan_enabled=false 时不判停滞 | 全量绿 | a960f4b |
+| B3 指纹 baseline 链断裂 | 新工具 tools/repair_fingerprint_baselines.py 按 revision 链推导；实修 opencode 两处，不可推导如实报 unverifiable | 工具自测+全量绿 | a60b1b5 |
+| B9 revisions 只增不减 | matcher._prune_revisions：保留最近 10 条+90 天内 exact 命中永不删 | 全量绿 | a60b1b5 |
+| B17 发布包携带构建机 home 路径 | build_release.py sanitize_portability() 剔除并写 portability-scan.json | 单测绿 | a60b1b5 |
+| B21 工作区 MCP 配置结构探测 | protocol.py 走 _first_mcp_field，根级 servers 空 field，空 part 跳过 | 全量绿 | a60b1b5 |
+| B22 首次 pending 清点缺 collection_home | discovery pending 补 home 字段 | 全量绿 | a60b1b5 |
+| B5 外部 Hook 永久否决后续安装 | observed 状态目录出现兼容 artifact 时 fall through 正常安装 | 全量绿 | 0848e7f |
+| B10 永久 4xx 毒记录堵死上报队列 | 非 408/429 的 4xx 计 3 次后移入 dead_letter 表并继续 | 端到端手工验证+全量绿 | 0848e7f |
+| B15 两套命令 Hook 控制故障语义不一 | command_protocol_hook 统一 observe-first，control_failure_mode=enforce 才阻断 | test_protocol_fastpath 锁两档语义 | 1512c7e |
+| B28 管理 POST 可被局域网对端调用 | do_POST 管理路由要求 loopback peer，403 提示 read_only_mode；token 路由不受影响 | 全量绿 | 1512c7e |
+| B29 dispatcher 拿槽位后目标已死仍派发 | 派发前复查存活，死则释放槽位并记取消 | 全量绿 | 1512c7e |
+| B18 reap_orphans 误杀同前缀并存安装 | home 匹配加边界符 | 全量绿 | 7ec6ef8 |
+| B13 conversation_proof 15s 阻塞 | timeout 降为 5s | 全量绿 | 7ec6ef8 |
+| B25 计划文件数错误信息缺实际值 | 报错带实际数量 | 全量绿 | 7ec6ef8 |
+| B30 冷启动设置读取分散 | 并入 _load_settings 统一入口 | 全量绿 | 7ec6ef8 |
+| B12 体积裁剪循环反复全量序列化 | 以骨架 payload 测基准体积，仅对 records 数组序列化比对余量 | 定向 11 用例+全量绿 | 58971f3 |
+
+### 未修项及理由
+
+- B8（GOOSE_MAX_TURNS 40→120）：工作区既有未提交人工决定，非缺陷；按成本敏感原则在交付说明显式标注，由交付人拍板。
+- B11（双线程 sqlite 锁冲突仅日志难区分）：低概率无正确性影响，保持现状并记录。
+- B14（install 命令过期语义）：行为符合不自动重试安装的设计，缺口在 UI 提示，属产品侧待办。
+- B16：仅记录项，无需代码动作。
+- B19（supervisor scan_interval 重启回 config 值）：复核确认已被 B26 顺带修复——引擎冷启动时设置文件值覆盖 ASG_SCAN_INTERVAL 环境变量，页面设置跨重启保持。
+- B20（抽屉展开态视觉噪声）：视觉问题，留给交付后处理。
+- B23（能力声明依赖源码正则）：方向性重构建议，不适合夜间批量实施。
+- ruff 卫生 55 条（F401/F841/B023 等）：e2e 脚本 B023 影响历史延迟数据可信度，交付说明标注；全仓 import 清理 diff 过大，避免与交付分支合并冲突，不夜间处理。
+
+### 最终全量测试结果
+
+（08:30 固化时回填）
