@@ -1,0 +1,24 @@
+integrations/soc_inventory/discovery.py
+  h_c6bfc5197c52f3 381
+integrations/soc_inventory/protocol.py
+  h_c6bfc5197c52f3 123-134,218-221
+release/build_release.py
+  h_c6bfc5197c52f3 79,90-131
+runtime/fingerprints.json
+  h_c6bfc5197c52f3 1929,2207
+runtime/matcher.py
+  h_c6bfc5197c52f3 444,448-476
+tools/repair_fingerprint_baselines.py
+  h_c6bfc5197c52f3 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a60b1b59701b471814826fd41f270f43ee878d9d",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
