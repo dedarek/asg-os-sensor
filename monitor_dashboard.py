@@ -1604,6 +1604,14 @@ def _dispatch_next_investigation(block: bool = True) -> bool:
             INVESTIGATION_QUEUED[task["instance_id"]] = {"enqueued_at": iso(),
                                                          "force": task.get("force", False)}
         return False
+    # Crazytest B29: the target may exit while this task waits on a busy
+    # semaphore; re-check after acquiring the slot so a dead instance never
+    # starts a doomed investigation run.
+    if not _investigation_target_alive(task):
+        INVESTIGATION_SEMAPHORE.release()
+        _record_investigation_result(task["instance_id"], task["pid"], task.get("create_time"),
+                                     "failed", "实例在等待调查槽位期间退出，调查取消")
+        return True
     threading.Thread(target=_dispatch_worker, args=(task,), daemon=True,
                      name=f"analyst-dispatch-{task['pid']}").start()
     return True
@@ -2722,6 +2730,19 @@ class MonitorHandler(BaseHTTPRequestHandler):
         from runtime.otlp_ingest import handle as handle_otlp
         if handle_otlp(self): return
         if _handle_hook_control_request(self):
+            return
+        # Crazytest B28: the tokened hook-control and OTLP routes own their
+        # authentication above. Everything left here is a page/admin mutation
+        # (scan, onboarding install, model settings, scan interval, bundle
+        # import, investigation). Those must only come from this machine:
+        # LAN exposure is a view-only feature, and binding ASG_HOST openly
+        # must never turn into remote hook installation or config writes.
+        peer = str(getattr(self.client_address, 'host', '') or self.client_address[0])
+        if peer not in ('127.0.0.1', '::1', 'localhost'):
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error":"read_only_mode: management actions require a local connection"}')
             return
         if self.path == '/api/native-trust/refresh':
             from runtime import native_trust

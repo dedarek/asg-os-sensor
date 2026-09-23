@@ -75,7 +75,13 @@ class DirectProtocolTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(response['hookSpecificOutput']['permissionDecision'], 'deny')
         def broken(request): raise OSError('unavailable')
-        self.assertEqual(handle(payload, {'control_client': ['fixture']}, {}, decide=broken, emit=lambda _: None)[1], 2)
+        # Crazytest B15 unified policy: control transport failure defaults to
+        # observe-first (allow, keep capturing); enforce mode blocks explicitly.
+        self.assertEqual(handle(payload, {'control_client': ['fixture']}, {}, decide=broken, emit=lambda _: None)[1], 0)
+        response, code = handle(payload, {'control_client': ['fixture'], 'control_failure_mode': 'enforce'},
+                                {}, decide=broken, emit=lambda _: None)
+        self.assertEqual(code, 2)
+        self.assertEqual(response['hookSpecificOutput']['permissionDecision'], 'deny')
 
 
 

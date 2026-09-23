@@ -45,7 +45,14 @@ def handle(payload, config, target, *, decide=None, emit=None):
                            'tool': payload.get('tool_name'), 'input': payload.get('tool_input')})
         allowed = decision.get('decision') == 'allow'
     except (OSError, ValueError, subprocess.SubprocessError):
-        allowed = False
+        # Crazytest B15: both command-Hook runtimes must answer the same
+        # question the same way. Control-plane transport failures follow the
+        # shipped policy: observe-first (default) lets the tool run and keeps
+        # capturing; enforce blocks. The Codex self-lock incident came from a
+        # silent fail-close on this path, so fail-close is opt-in per recipe.
+        allowed = str(config.get('control_failure_mode', 'observe')).lower() != 'enforce'
+        decision = {'decision': 'observe-only' if allowed else 'deny',
+                    'reason': 'control unavailable'}
     # The response mirrors the dialect the host just used (its own event name).
     # Both structured variants treat a missing decision as allow, so the
     # blocking form is emitted only on refusal; either way this is only our
