@@ -1,0 +1,142 @@
+{
+  "instance_id": "57879:1789830410.756945",
+  "started_at": 1789840760.9387782,
+  "cancel": [
+    {
+      "session_id": "ses_f452d5f8fffeoSI9v9Ij9fvqXA",
+      "canary": "ASG-CANCEL-2ba74ef75d73",
+      "abort_sent": true,
+      "assistant_text_len": 0,
+      "error": null,
+      "captured": true,
+      "error_event_captured": true
+    },
+    {
+      "session_id": "ses_f452d5a5fffeBt7KiJHVbO6W03",
+      "canary": "ASG-CANCEL-499dd83ce7aa",
+      "abort_sent": true,
+      "assistant_text_len": 0,
+      "error": null,
+      "captured": true,
+      "error_event_captured": true
+    },
+    {
+      "session_id": "ses_f452d5532ffeIlM5zm45r9O3Ec",
+      "canary": "ASG-CANCEL-9b68a15b6bce",
+      "abort_sent": true,
+      "assistant_text_len": 0,
+      "error": null,
+      "captured": true,
+      "error_event_captured": true
+    },
+    {
+      "session_id": "ses_f452d5019ffe4uZlC6Kiiuxzjw",
+      "canary": "ASG-CANCEL-f1a4501d2734",
+      "abort_sent": true,
+      "assistant_text_len": 0,
+      "error": null,
+      "captured": true,
+      "error_event_captured": true
+    },
+    {
+      "session_id": "ses_f452d4af1ffelZNFbWIlf27eDt",
+      "canary": "ASG-CANCEL-bbeb5c04a39e",
+      "abort_sent": true,
+      "assistant_text_len": 0,
+      "error": null,
+      "captured": true,
+      "error_event_captured": true
+    }
+  ],
+  "attach": [
+    {
+      "session_id": "ses_f452d45d5ffeigP32v9a12uCeN",
+      "attachment_name": "asg-attach-f829477e.txt",
+      "attachment_marker": "ASG-ATTACH-9084261b7a84",
+      "reply": "ASG-ATTACH-9084261b7a84",
+      "ok": true,
+      "reply_has_marker": true,
+      "attachment_captured": true,
+      "marker_captured": true
+    },
+    {
+      "session_id": "ses_f452d2b6effeFLLGFTEg5Q311A",
+      "attachment_name": "asg-attach-df4cb6a9.txt",
+      "attachment_marker": "ASG-ATTACH-82b322ee83bd",
+      "reply": "ASG-ATTACH-82b322ee83bd",
+      "ok": true,
+      "reply_has_marker": true,
+      "attachment_captured": true,
+      "marker_captured": true
+    },
+    {
+      "session_id": "ses_f452d234effe4MGOi7Mhgpmuk2",
+      "attachment_name": "asg-attach-002b8c23.txt",
+      "attachment_marker": "ASG-ATTACH-1e1e5e4323f1",
+      "reply": "ASG-ATTACH-1e1e5e4323f1",
+      "ok": true,
+      "reply_has_marker": true,
+      "attachment_captured": true,
+      "marker_captured": true
+    }
+  ],
+  "subagent": [
+    {
+      "session_id": "ses_f452d106affezFfrMPo2TDxKUS",
+      "canary": "ASG-SUB-be59cc26604e",
+      "ok": true,
+      "reply": "子任务（ASG-SUB-be59cc26604e）执行结果汇总：\n\n1 + 1 等于 2。",
+      "children": [
+        "ses_f452d0fadffeusdE37Yj0wGaHy"
+      ],
+      "children_captured": 1
+    },
+    {
+      "session_id": "ses_f452d01adffekssGYJnn3oF7AP",
+      "canary": "ASG-SUB-3076fcd6e412",
+      "ok": true,
+      "reply": "子任务 `ASG-SUB-3076fcd6e412` 执行结果如下：\n\n> **1+1 等于 2。**",
+      "children": [
+        "ses_f452d00c4ffeNcRxQiaoesm48i"
+      ],
+      "children_captured": 1
+    },
+    {
+      "session_id": "ses_f452cf10affekKEkllnlmg4jCQ",
+      "canary": "ASG-SUB-63e6fb7eef51",
+      "ok": true,
+      "reply": "子任务 `ASG-SUB-63e6fb7eef51` 结果汇总如下：\n\n1 + 1 等于 2。",
+      "children": [
+        "ses_f452cf032ffeBFonK0ZJRbZ4Yj"
+      ],
+      "children_captured": 1
+    },
+    {
+      "session_id": "ses_f452cdeb8ffeibldYt5srRcRcS",
+      "canary": "ASG-SUB-04e9551a3200",
+      "ok": true,
+      "reply": "子任务（ASG-SUB-04e9551a3200）结果汇总：\n\n1 + 1 等于 2。",
+      "children": [
+        "ses_f452cddd4ffeZWw45E6wsuCLbA"
+      ],
+      "children_captured": 1
+    },
+    {
+      "session_id": "ses_f452cc942ffeGfnLRBCTl1dpgd",
+      "canary": "ASG-SUB-d40a3dfa2f17",
+      "ok": true,
+      "reply": "子任务（ASG-SUB-d40a3dfa2f17）执行结果汇总：\n\n1+1 等于 2。",
+      "children": [
+        "ses_f452cc453ffe1ce61BcY1be3k6"
+      ],
+      "children_captured": 1
+    }
+  ],
+  "gates": {
+    "cancel_5_aborted_and_captured": true,
+    "attach_3_delivered_and_captured": true,
+    "subagent_5_parent_child_captured": true
+  },
+  "passed": true,
+  "finished_at": 1789840808.796163
+}

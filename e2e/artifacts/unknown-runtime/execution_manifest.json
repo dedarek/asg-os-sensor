@@ -1,0 +1,82 @@
+{
+  "purpose": "blind unknown-runtime discovery and iterative attachment",
+  "model_constraint": "DeepSeek-only Analyst; target identity is not supplied to Analyst",
+  "blind_boundary": {
+    "analyst_receives": [
+      "behavioral process shape",
+      "tree depth/count",
+      "runtime capability shapes",
+      "event types and content-block types",
+      "redacted prior memory"
+    ],
+    "analyst_does_not_receive": [
+      "vendor/product identity",
+      "executable path/name",
+      "raw cwd/open paths",
+      "prompt bodies",
+      "tool arguments",
+      "credentials"
+    ],
+    "raw_supervisor_evidence": [
+      "sensor_events.jsonl",
+      "sensor_stdout.log",
+      "target_stream.jsonl",
+      "target_stdout.log"
+    ]
+  },
+  "phases": {
+    "first": {
+      "path": "first",
+      "path_taken": "first-seen-autonomous-investigation",
+      "matcher": {
+        "hit": false,
+        "elapsed_ms": 8
+      },
+      "tool_call_count": 12,
+      "recipe": "first/recipes/committed.json"
+    },
+    "second": {
+      "path": "second",
+      "path_taken": "remembered-recipe",
+      "matcher": {
+        "hit": true,
+        "elapsed_ms": 25
+      },
+      "memory": "runtime/fingerprints.json"
+    }
+  },
+  "replay_files": [
+    "first/analyst_command.json",
+    "first/analyst_stderr.log",
+    "first/analyst_stdout.jsonl",
+    "first/analyst_tool_calls.jsonl",
+    "first/evidence/ev-1788771165205-61d9f22626.json",
+    "first/evidence/ev-1788771165208-9a22a6c921.json",
+    "first/evidence/ev-1788771165319-e26a88987f.json",
+    "first/evidence/ev-1788771165506-7371ee5201.json",
+    "first/evidence/ev-1788771171565-bf21a9e8fb.json",
+    "first/evidence/ev-1788771171577-ce9fa38bd6.json",
+    "first/evidence/ev-1788771175753-bf21a9e8fb.json",
+    "first/evidence/ev-1788771175755-ce9fa38bd6.json",
+    "first/evidence/ev-1788771177542-bf21a9e8fb.json",
+    "first/evidence/ev-1788771177545-bf21a9e8fb.json",
+    "first/evidence/ev-1788771180887-ce9fa38bd6.json",
+    "first/evidence/ev-1788771202570-33a5de0ec4.json",
+    "first/phase.json",
+    "first/recipes/candidate.json",
+    "first/recipes/committed.json",
+    "first/semantic_events.jsonl",
+    "first/sensor_events.jsonl",
+    "first/sensor_stdout.log",
+    "first/target_stdout.log",
+    "first/target_stream.jsonl",
+    "run_report.json",
+    "second/phase.json",
+    "second/semantic_events.jsonl",
+    "second/sensor_events.jsonl",
+    "second/sensor_stdout.log",
+    "second/target_stdout.log",
+    "second/target_stream.jsonl"
+  ],
+  "report": "run_report.json"
+}

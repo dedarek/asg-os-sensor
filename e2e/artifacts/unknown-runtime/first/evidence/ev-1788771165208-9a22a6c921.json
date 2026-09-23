@@ -1,0 +1,16 @@
+{
+  "evidence_id": "ev-1788771165208-9a22a6c921",
+  "ts": "2026-09-07T08:52:45.208731+00:00",
+  "method": "tools/call",
+  "request_id": 3,
+  "tool": "get_prior_recipe",
+  "args": {},
+  "result": {
+    "path": "D:\\proj\\asg-os-sensor\\runtime\\fingerprints.json",
+    "value": {
+      "fingerprints": [],
+      "version": 1
+    }
+  },
+  "error": null
+}

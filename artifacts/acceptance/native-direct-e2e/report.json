@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-09-20T06:29:04.890Z",
+  "scope": "缺口②：SOC 原生 Codex Hook 包端到端直连与真实阻断验收",
+  "isolated_instance": {
+    "method": "codex exec --dangerously-bypass-hook-trust + 隔离 CODEX_HOME=/tmp/asg-native-e2e-1789885132604（模型走本机 7777 gpt-5.6-luna）",
+    "package": "SOC 目录原生包 security-hooks-codex（install.sh --platform codex，backend=http://127.0.0.1:8095，agent=asg-poc-codex）",
+    "turn1_allow": {
+      "prompt": "运行命令 touch /tmp/asg-e2e-marker.txt 然后回答 ok",
+      "analyze_calls": [
+        "user-input 14:19:04",
+        "before-tool-call 14:19:22",
+        "after-tool-call 14:19:22",
+        "agent-end 14:19:27"
+      ],
+      "file_created": "/tmp/asg-e2e-marker.txt (存在，0 字节，14:19)",
+      "verdict": "放行 → 工具真实执行"
+    },
+    "turn2_allow_batch": {
+      "prompt": "创建 /tmp/asg-e2e-allow.txt 内容 hello",
+      "file_created": "/tmp/asg-e2e-allow.txt (5 字节, 14:21)",
+      "verdict": "放行 → 文件真实创建"
+    },
+    "turn3_deny": {
+      "prompt": "echo ASG-DENY-MARKER > /tmp/asg-e2e-deny.txt",
+      "hook_output": "Command blocked by PreToolUse hook: Request blocked by security capability \"ASG 工具调用策略（终端验收）\" during the before_tool_call stage.",
+      "file_created": false,
+      "trace_row": "traces 395bebb1896e4cfca52cb49b63f09a71 status=blocked hook_type=before_tool_call 14:21:25",
+      "verdict": "拒绝 → 命令未执行、文件未创建、SOC 审计落库"
+    },
+    "traces_recent_window": "10 分钟内 traces 新增 11 行（user_input/before_tool_call/after_tool_call/agent_end 全链路）"
+  },
+  "desktop_instance_finding": {
+    "instance": "桌面 Codex（本机 config ~/.codex/config.toml，managed 块 security-hooks-codex）",
+    "real_analyze_requests_from_desktop": 0,
+    "explanation": "原生包四个受管块（UserPromptSubmit g1 / PreToolUse g2 / PostToolUse g2 / Stop g2）在 hooks.state 中无信任条目；Codex 跳过未信任 Hook。此前 asg_runtime_events 中 9601 实例的 142 条事件全部来自 ASG 桥接通道 /api/asg/runtime，不是原生包直报。",
+    "correction": "此前『原生包已活』判断不成立；本次以行首 [request] method=POST path=/api/analyze/ 精确计数（网关全量日志命中 0）纠正。",
+    "ui_action": "integrations/soc_inventory/codex_trust.py 新增原生信任审计；8081 快照对被误标接入的 Codex 返回 approval_required——需要在 Codex 内运行 /hooks 信任，ASG 不代批。",
+    "remaining": "用户在本机 Codex /hooks 信任 security-hooks-codex 后，新开会话即直报；随后做桌面实例 10 回合逐字对账。"
+  }
+}

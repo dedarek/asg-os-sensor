@@ -1,0 +1,138 @@
+{
+  "evidence_id": "ev-1788771202570-33a5de0ec4",
+  "ts": "2026-09-07T08:53:22.570452+00:00",
+  "method": "tools/call",
+  "request_id": 13,
+  "tool": "propose_recipe",
+  "args": {
+    "recipe": {
+      "match_features": {
+        "runtime_class_hint": "unknown-runtime",
+        "behavioral_class": "one-shot-agent-cli-json-event-stream",
+        "argv_signature": [
+          "--bare",
+          "--print",
+          "--verbose",
+          "--output-format",
+          "--permission-mode",
+          "--no-session-persistence"
+        ],
+        "process_shape": {
+          "depth": 0,
+          "child_count": 0,
+          "descendant_count": 0,
+          "ephemeral": true,
+          "exited_after_single_cycle": true
+        },
+        "network_shape": {
+          "established_tcp_count": 1,
+          "family": 2,
+          "type": 1,
+          "has_remote": true
+        },
+        "open_path_shape": {
+          "config_like": false,
+          "observed_extensions": [
+            ".mui"
+          ]
+        },
+        "stream_schema": {
+          "types": [
+            "system",
+            "assistant",
+            "result"
+          ],
+          "assistant_fields": [
+            "message_role",
+            "content_block_types",
+            "has_text",
+            "has_tool_call"
+          ],
+          "result_fields": [
+            "subtype"
+          ],
+          "observed_assistant_content": [
+            "text"
+          ],
+          "observed_result_subtype": [
+            "success"
+          ]
+        },
+        "cwd_class": "local-workspace",
+        "config_candidates_in_argv": []
+      },
+      "observation": "Passive read-only polling of the supervisor-exposed JSON event stream only. Parse newline-delimited envelopes by the top-level 'type' discriminator (system/assistant/result). Fingerprint the runtime by the argv flag signature (--bare/--print/--verbose/--output-format/--permission-mode/--no-session-persistence) combined with the event envelope schema. Never attach to the process, never inject input, never write to the workspace or config directories. Re-observe on a live re-run to capture the full cycle and detect tool_call-bearing assistant/result records.",
+      "hook": "Event-sink hook on the supervisor-exposed stream: consume assistant and result records to map message_role/content-block and tool-result structure. No active hook into process memory, no file watchers, no plugin/path hooking. If the process is re-observed while alive, hook = subscribe to stream and record cycle boundaries; do not touch the process tree.",
+      "redaction": "Redact all envelope field values not on the allowlist (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+      "confidence": "high: agent-like runtime confirmed by argv shape + single system/assistant/result event cycle + established TCP + clean exit. medium: config file location not directly observable (no config path in argv, no config-like open paths, only .mui resource); configuration appears flag/env driven and read early at startup, with default session store disabled by --no-session-persistence.",
+      "fallback": "If the target remains unavailable: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If probe_help/observe become available for a live PID: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details."
+    }
+  },
+  "result": {
+    "candidate_path": "D:\\proj\\asg-os-sensor\\e2e\\artifacts\\unknown-runtime\\first\\recipes\\candidate.json",
+    "recipe": {
+      "match_features": {
+        "runtime_class_hint": "unknown-runtime",
+        "behavioral_class": "one-shot-agent-cli-json-event-stream",
+        "argv_signature": [
+          "--bare",
+          "--print",
+          "--verbose",
+          "--output-format",
+          "--permission-mode",
+          "--no-session-persistence"
+        ],
+        "process_shape": {
+          "depth": 0,
+          "child_count": 0,
+          "descendant_count": 0,
+          "ephemeral": true,
+          "exited_after_single_cycle": true
+        },
+        "network_shape": {
+          "established_tcp_count": 1,
+          "family": 2,
+          "type": 1,
+          "has_remote": true
+        },
+        "open_path_shape": {
+          "config_like": false,
+          "observed_extensions": [
+            ".mui"
+          ]
+        },
+        "stream_schema": {
+          "types": [
+            "system",
+            "assistant",
+            "result"
+          ],
+          "assistant_fields": [
+            "message_role",
+            "content_block_types",
+            "has_text",
+            "has_tool_call"
+          ],
+          "result_fields": [
+            "subtype"
+          ],
+          "observed_assistant_content": [
+            "text"
+          ],
+          "observed_result_subtype": [
+            "success"
+          ]
+        },
+        "cwd_class": "local-workspace",
+        "config_candidates_in_argv": []
+      },
+      "observation": "Passive read-only polling of the supervisor-exposed JSON event stream only. Parse newline-delimited envelopes by the top-level 'type' discriminator (system/assistant/result). Fingerprint the runtime by the argv flag signature (--bare/--print/--verbose/--output-format/--permission-mode/--no-session-persistence) combined with the event envelope schema. Never attach to the process, never inject input, never write to the workspace or config directories. Re-observe on a live re-run to capture the full cycle and detect tool_call-bearing assistant/result records.",
+      "hook": "Event-sink hook on the supervisor-exposed stream: consume assistant and result records to map message_role/content-block and tool-result structure. No active hook into process memory, no file watchers, no plugin/path hooking. If the process is re-observed while alive, hook = subscribe to stream and record cycle boundaries; do not touch the process tree.",
+      "redaction": "Redact all envelope field values not on the allowlist (type, message_role, content_block_types, has_text, has_tool_call, subtype). Redact stream key names where marked [REDACTED] by the supervisor. Redact all network peer identifiers (IP/port). Never request, log, or persist credentials, tokens, cookies, API keys, session identifiers, or private key material. Treat any config-like content as secret-bearing until proven otherwise.",
+      "confidence": "high: agent-like runtime confirmed by argv shape + single system/assistant/result event cycle + established TCP + clean exit. medium: config file location not directly observable (no config path in argv, no config-like open paths, only .mui resource); configuration appears flag/env driven and read early at startup, with default session store disabled by --no-session-persistence.",
+      "fallback": "If the target remains unavailable: classify from the retained supervisor stream snapshot only (counts + type distribution), do not force re-observation. If probe_help/observe become available for a live PID: re-run probe_help, re-scan open paths for config-like extensions, and re-check argv for a config-file flag before committing a config-location fingerprint. If the stream schema changes (new types or fields): fall back to opaque line capture recording only type distribution, and lower confidence on protocol details."
+    },
+    "next": "Supervisor must verify and commit; Analyst cannot activate hooks."
+  },
+  "error": null
+}
