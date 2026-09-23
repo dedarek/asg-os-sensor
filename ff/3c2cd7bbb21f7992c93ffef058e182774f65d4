@@ -1,0 +1,16 @@
+CRAZYTEST_ISSUES_2026-09-24.md
+  h_c6bfc5197c52f3 279-280,289,291
+web/dashboard.html
+  h_c6bfc5197c52f3 887-889,892
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ff3c2cd7bbb21f7992c93ffef058e182774f65d4",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
