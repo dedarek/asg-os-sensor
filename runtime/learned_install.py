@@ -28,7 +28,8 @@ def validate_plan(plan: dict) -> dict:
         raise ValueError('unsupported learned file plan version')
     files = plan.get('files')
     if not isinstance(files, list) or not 1 <= len(files) <= 16:
-        raise ValueError('plan requires 1-16 file changes')
+        raise ValueError('plan requires 1-16 file changes (got %s)' %
+                         ('list of %d' % len(files) if isinstance(files, list) else type(files).__name__))
     normalized, names, total = [], set(), 0
     for item in files:
         if not isinstance(item, dict):

@@ -327,7 +327,7 @@ class Discovery:
                 try:
                     query=urlencode({'instance_id':instance,'limit':100,'max_bytes':1048576})
                     with build_opener(ProxyHandler({})).open(
-                            self.base+'/api/hook-data?'+query, timeout=15) as response:
+                            self.base+'/api/hook-data?'+query, timeout=5) as response:
                         snapshot=next((a for a in state.get('agents',[])
                                        if a.get('instance_id')==instance),{})
                         observation=(snapshot.get('adapter') or {}).get('observation_evidence')

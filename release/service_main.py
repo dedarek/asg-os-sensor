@@ -68,7 +68,19 @@ def main():
                 continue
             if pid in (me, os.getppid()):
                 continue
-            if str(home) not in command:
+            # Crazytest B18: a plain substring test misfires for sibling
+            # installs whose paths share a prefix (/tmp/asg vs /tmp/asg-e2e-x).
+            # Require a path/word boundary right after the home directory.
+            home_text = str(home)
+            hit = False
+            at = command.find(home_text)
+            while at != -1:
+                after = command[at + len(home_text):at + len(home_text) + 1]
+                if after in ('', ' ', '\t', '/', os.sep):
+                    hit = True
+                    break
+                at = command.find(home_text, at + 1)
+            if not hit:
                 continue
             if 'monitor_dashboard.py' not in command and 'integrations.soc_inventory.endpoint' not in command:
                 continue
