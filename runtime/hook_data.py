@@ -1054,8 +1054,12 @@ def capture_matrix(records: list[dict[str, Any]]) -> dict[str, Any]:
     if model_refs:
         latest = max((row for rows in model_refs.values() for row in rows),
                      key=lambda row: row.get('timestamp') or 0)
-        latest_payload = latest.get('payload') or {}
-        latest_content = latest_payload.get('content') or {}
+        latest_payload = latest.get('payload')
+        latest_payload = latest_payload if isinstance(latest_payload, dict) else {}
+        latest_content = latest_payload.get('content')
+        # Hook producers sometimes put the prompt string straight into content;
+        # only a dict can carry model metadata (crazytest B2 crash path 1).
+        latest_content = latest_content if isinstance(latest_content, dict) else {}
         latest_model = latest_content.get('model') or latest_payload.get('model')
         if isinstance(latest_model, dict):
             latest_model = latest_model.get('modelID') or latest_model.get('model_id') or latest_model.get('name')
@@ -1066,8 +1070,10 @@ def capture_matrix(records: list[dict[str, Any]]) -> dict[str, Any]:
                 add('model_used', row, status='metadata_only')
     unsupported = set()
     for row in records:
-        payload = row.get('payload') or {}
-        if row.get('event_type') == 'io.turn.end' and isinstance(payload, dict):
+        payload = row.get('payload')
+        if not isinstance(payload, dict):
+            continue
+        if row.get('event_type') == 'io.turn.end':
             unsupported.update(value for value in payload.get('unsupported_capture', [])
                                if isinstance(value, str))
     for key, event in (('model_request', 'model.request'),
@@ -1082,9 +1088,12 @@ def capture_matrix(records: list[dict[str, Any]]) -> dict[str, Any]:
                   value.get('decision') == 'deny' and value.get('control_error')]
         result['tool_after']['reason'] = ('control_error_before_execution' if errors else
                                           'no_paired_completion_in_window')
+    def _payload_dict(row):
+        payload = row.get('payload')
+        return payload if isinstance(payload, dict) else {}
     if result['history_context']['status'] == 'not_observed' and any(
-            isinstance((row.get('payload') or {}).get('content'), dict) and
-            (row['payload']['content'].get('transcript_path')) for row in records):
+            isinstance(_payload_dict(row).get('content'), dict) and
+            (_payload_dict(row)['content'].get('transcript_path')) for row in records):
         result['history_context']['reason'] = 'transcript_path_only'
     return {'scope': 'bound_instance_bounded_window', 'items': result}
 

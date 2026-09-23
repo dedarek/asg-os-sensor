@@ -44,7 +44,7 @@ class InvestigationLifecycleTest(unittest.TestCase):
             return _Response(state_payload)
 
         with patch('integrations.soc_inventory.discovery.build_opener') as opener, \
-             patch('integrations.soc_inventory.discovery.confirmed', side_effect=lambda state: [self.target()]), \
+             patch('integrations.soc_inventory.discovery.confirmed', side_effect=lambda state, conversation_proof=None: [self.target()]), \
              patch('psutil.Process') as process:
             opener.return_value.open.side_effect = open_impl
             process.return_value.create_time.return_value = 123.5

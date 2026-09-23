@@ -49,7 +49,10 @@ def main():
             shutil.copytree(ROOT/package,target,ignore=shutil.ignore_patterns('test_*','__pycache__','*.pyc'))
         sys.path.insert(0,str(runtime))
         command=[sys.executable,'-m','integrations.soc_inventory.endpoint','--config',str(Path(args.config).expanduser().resolve())]
-        ROOT=runtime
+        # Service units must start from the staged copy, not the developer checkout.
+        # Use a fresh local name; reassigning module-level ROOT here made the
+        # earlier copytree read of ROOT an UnboundLocalError (crazytest B1).
+        service_root=runtime
     if sys.platform=='darwin':
         path=Path.home()/'Library/LaunchAgents'/f'{NAME}.plist';domain=f'gui/{os.getuid()}'
         if args.action=='remove':
@@ -57,14 +60,14 @@ def main():
             path.unlink(missing_ok=True);return
         path.parent.mkdir(parents=True,exist_ok=True)
         log=Path(config['state_dir']).expanduser();log.mkdir(parents=True,exist_ok=True)
-        path.write_bytes(plistlib.dumps({'Label':NAME,'ProgramArguments':command,'WorkingDirectory':str(ROOT),'RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':30,'StandardOutPath':str(log/'service.log'),'StandardErrorPath':str(log/'service.log')}))
+        path.write_bytes(plistlib.dumps({'Label':NAME,'ProgramArguments':command,'WorkingDirectory':str(service_root),'RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':30,'StandardOutPath':str(log/'service.log'),'StandardErrorPath':str(log/'service.log')}))
         subprocess.run(['launchctl','bootout',domain,str(path)],check=False)
         run('launchctl','bootstrap',domain,str(path))
     elif os.name=='nt':
         if args.action=='remove':run('schtasks','/Delete','/TN',NAME,'/F');return
         # A launcher gives Task Scheduler an explicit working directory.
         launcher=Path(config['state_dir']).expanduser()/'start-collector.cmd';launcher.parent.mkdir(parents=True,exist_ok=True)
-        launcher.write_text('@echo off\ncd /d '+subprocess.list2cmdline([str(ROOT)])+'\n'+subprocess.list2cmdline(command)+'\n')
+        launcher.write_text('@echo off\ncd /d '+subprocess.list2cmdline([str(service_root)])+'\n'+subprocess.list2cmdline(command)+'\n')
         run('schtasks','/Create','/TN',NAME,'/SC','ONLOGON','/TR',subprocess.list2cmdline([str(launcher)]),'/F')
         run('schtasks','/Run','/TN',NAME)
     else:
@@ -73,6 +76,6 @@ def main():
             subprocess.run(['systemctl','--user','disable','--now',NAME],check=False);path.unlink(missing_ok=True);run('systemctl','--user','daemon-reload');return
         path.parent.mkdir(parents=True,exist_ok=True)
         quote=lambda s:'"'+s.replace('\\','\\\\').replace('"','\\"').replace('%','%%')+'"'
-        path.write_text('[Unit]\nDescription=ASG SOC endpoint collector\nAfter=network-online.target\n[Service]\nWorkingDirectory='+quote(str(ROOT))+'\nExecStart='+' '.join(quote(x) for x in command)+'\nRestart=always\nRestartSec=30\n[Install]\nWantedBy=default.target\n')
+        path.write_text('[Unit]\nDescription=ASG SOC endpoint collector\nAfter=network-online.target\n[Service]\nWorkingDirectory='+quote(str(service_root))+'\nExecStart='+' '.join(quote(x) for x in command)+'\nRestart=always\nRestartSec=30\n[Install]\nWantedBy=default.target\n')
         run('systemctl','--user','daemon-reload');run('systemctl','--user','enable','--now',NAME)
 if __name__=='__main__':main()

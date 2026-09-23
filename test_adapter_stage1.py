@@ -86,7 +86,9 @@ class AdapterStage1Tests(unittest.TestCase):
         changed = dict(self.struct, argv_shape=[self.script.name, '--flag-x'],
                        compatibility=__import__('runtime.compatibility', fromlist=['observe']).observe(
                            sys.executable, [sys.executable, str(self.script), '--flag-x'], str(self.root)))
-        self.assertEqual(matcher.classify(changed)['status'], 'similar')
+        # Same family, changed build: the prior recipe is only a trial
+        # reference until a new-build install verifies a live callback.
+        self.assertEqual(matcher.classify(changed)['status'], 'trial')
 
 
 if __name__ == '__main__':
