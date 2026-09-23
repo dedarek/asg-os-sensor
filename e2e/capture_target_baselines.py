@@ -41,7 +41,7 @@ def main():
         adapter = agent.get('adapter') or {}
         assets = adapter.get('assets') or {}
 
-        def status(key):
+        def status(key, assets=assets):  # bind loop var; crazytest B023
             value = assets.get(key)
             return value.get('status') if isinstance(value, dict) else None
 

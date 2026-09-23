@@ -64,7 +64,7 @@ def main():
         sent = []
         import threading
 
-        def _send():
+        def _send(sid=sid, canary=canary, sent=sent):  # bind loop vars; crazytest B023
             try:
                 request(target, '/session/' + sid + '/message',
                         {'model': {'providerID': 'demo', 'modelID': gateway['model']},
