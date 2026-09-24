@@ -912,9 +912,20 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 # Narrow provider compatibility: only a missing final outer
                 # object brace. Never invent values or alter generated source.
                 if exc.pos != len(raw) or not raw.startswith('{'):
-                    raise
-                recipe = json.loads(raw + '}')
-                normalization = 'decoded_json_string_missing_final_object_brace'
+                    # Mirror case observed in real Goose runs: a complete JSON
+                    # object followed by duplicated trailing braces. Accept
+                    # only when a valid object parses from the start and every
+                    # remaining character is whitespace or a stray closing brace.
+                    if exc.msg != "Extra data" or not raw.startswith("{"):
+                        raise
+                    value, end = json.JSONDecoder().raw_decode(raw)
+                    if raw[end:].strip("} \t\r\n"):
+                        raise
+                    recipe = value
+                    normalization = "decoded_json_string_trailing_object_braces_stripped"
+                else:
+                    recipe = json.loads(raw + '}')
+                    normalization = 'decoded_json_string_missing_final_object_brace'
         recipe = redact(recipe)
         if not isinstance(recipe, dict):
             raise ValueError("recipe must be an object")
