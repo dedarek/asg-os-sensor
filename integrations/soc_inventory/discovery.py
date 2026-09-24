@@ -7,6 +7,7 @@ import json
 import base64
 import hashlib
 import os
+import subprocess
 import re
 import uuid
 import psutil
@@ -579,8 +580,8 @@ class Discovery:
                             result['investigation']=json.load(response)
                             result['investigation_requested']=True
                     with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(result)))
-                except (OSError,ValueError,psutil.Error) as exc:
-                    result['status']='failed';result['reason']=type(exc).__name__
+                except (OSError,ValueError,psutil.Error,subprocess.SubprocessError) as exc:
+                    result['status']='failed';result['reason']='%s: %s' % (type(exc).__name__, exc) or type(exc).__name__
                     with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO soc_onboarding VALUES(?,?)',(instance,json.dumps(result)))
         # SOC packages are always tried before protocol/Goose investigation.
         onboard(True)

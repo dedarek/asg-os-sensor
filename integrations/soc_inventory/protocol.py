@@ -6,6 +6,7 @@ ASG evidence. Neither file presence nor a heartbeat proves runtime invocation.
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 import subprocess
@@ -49,7 +50,7 @@ def project_chain(cwd):
     return [cwd]
 
 
-def roots(platform, cwd, home=None, env=None):
+def roots(platform, cwd, home=None, env=None, name=None):
     env=os.environ if env is None else env
     home=Path(home or Path.home()).resolve(); cwd=Path(cwd).resolve()
     chain=project_chain(cwd); skill=[]; mcps=[]; settings=[]; errors=[]
@@ -58,6 +59,9 @@ def roots(platform, cwd, home=None, env=None):
     # (AGENTS.md and friends), never brand-specific guesses.
     prompt_names=('AGENTS.md','SOUL.md','CLAUDE.md','QWEN.md','GEMINI.md')
     prompt=[]; models=[]
+    # Configs we opened and confirmed contain no MCP block: distinguishes a
+    # verified "0 declared MCP servers" from an unsearched "not collected".
+    verified_empty_configs=set()
     def read(p):
         try: value=config(p); settings.append(value); return value
         except Exception: errors.append(str(p)); return {}
@@ -114,6 +118,16 @@ def roots(platform, cwd, home=None, env=None):
         # Env-declared roots: any *_HOME/*_CONFIG_DIR/*_CONFIG_PATH the process
         # exported. We look for skills/config below each declared root.
         declared=[]
+        # Agent-name fallback: '@scope/pkg' or 'Foo Bar' commonly installs its
+        # config at ~/.<last-segment-lowercase>. Only used when the directory
+        # actually exists - never created, never blind-swept.
+        if name:
+            last=str(name).split('/')[-1].strip().lower()
+            last=re.sub(r'[^a-z0-9._-]','',last)
+            if last:
+                for candidate in (home/('.'+last),home/last):
+                    if candidate.is_dir() and candidate not in declared:
+                        declared.append(candidate)
         for key,value in env.items():
             if not value or key=='PATH':continue
             if key in ('HOME','USERPROFILE') or key.endswith(('_HOME','_CONFIG_DIR','_CONFIG_PATH')):
@@ -123,18 +137,19 @@ def roots(platform, cwd, home=None, env=None):
                     declared.append(candidate)
         for base in declared[:8]:
             skill.append(base/'skills')
-            for name in ('config.toml','config.json','config.jsonc','settings.json','settings.toml'):
-                f=base/name
+            for fname in ('config.toml','config.json','config.jsonc','settings.json','settings.toml','config.yaml','config.yml','settings.yaml','settings.yml'):
+                f=base/fname
                 if f.is_file():
                     # Discover the MCP servers block by structure, not by key name.
                     # Generic unknown platforms can't rely on a fixed field name.
                     data=read(f)
                     field=_first_mcp_field(data)
                     if field: mcps.append((f,field))
+                    else: verified_empty_configs.add(str(f))
                     models.append(f)
             prompt.extend(base/name for name in prompt_names)
         # Workspace config files (generic names only, never brand-specific paths).
-        for name in ('config.toml','config.json','settings.json','mcp.json'):
+        for name in ('config.toml','config.json','settings.json','mcp.json','config.yaml','config.yml','settings.yaml','settings.yml'):
             f=cwd/name
             if f.is_file():
                 # Same structural probe as the env-declared roots above: unknown
@@ -148,6 +163,7 @@ def roots(platform, cwd, home=None, env=None):
                         isinstance(v,dict) and any(k in v for k in ('command','url','transport','type'))
                         for v in data.values()):
                     mcps.append((f,''))
+                else: verified_empty_configs.add(str(f))
                 models.append(f)
         for p in chain:prompt.extend(p/name for name in prompt_names)
         prompt.append(home/'AGENTS.md')
@@ -158,7 +174,8 @@ def roots(platform, cwd, home=None, env=None):
             'mcp':list(dict.fromkeys((p.resolve(),k) for p,k in mcps)),
             'settings':settings,'errors':errors,
             'prompt':existing(prompt),
-            'model':existing(models)}
+            'model':existing(models),
+            'verified_mcp_checked':sorted(verified_empty_configs)}
 
 
 def _first_mcp_field(data, prefix=()):
@@ -331,17 +348,37 @@ def model_scope(path):
         default=data.get('model')
         if isinstance(default,str) and default.strip():entries['default']={'default_model':default[:200]}
         elif isinstance(default,dict):entries['default']=_safe_model_value(default)
-        for field in ('model_providers','providers','models'):
-            block=data.get(field)
-            if isinstance(block,dict):
-                for name,definition in block.items():
-                    if isinstance(definition,dict):
-                        safe=_safe_model_value(definition)
-                        refs=sorted(_model_redacted_keys(definition))
-                        if refs:safe['credential_ref']=refs;safe['auth_type']='configured'
-                        entries[str(name)]=safe
-        # Nested layouts (agents.defaults.model etc.) qualify only through
-        # providers; anything else stays metadata-only under 'default'.
+        # Provider blocks appear at the document root or nested under an
+        # arbitrary section (e.g. 'llm-pi-ai: {providers: {...}}'). Walk the
+        # tree generically; depth-limited and cycle-guarded by construction.
+        def find_provider_blocks(node, depth=0):
+            if depth>4 or not isinstance(node,dict):return
+            for field in ('model_providers','providers'):
+                block=node.get(field)
+                if isinstance(block,dict):
+                    for pname,definition in block.items():
+                        if isinstance(definition,dict) and str(pname) not in entries:
+                            safe=_safe_model_value(definition)
+                            refs=sorted(_model_redacted_keys(definition))
+                            if refs:safe['credential_ref']=refs;safe['auth_type']='configured'
+                            # Declare supported model ids so the value itself,
+                            # not just the slot name, is inventoried.
+                            ids=[str(m.get('id') or m.get('name')) for m in definition.get('models',[]) if isinstance(m,dict) and (m.get('id') or m.get('name'))]
+                            if ids:safe['model_ids']=ids[:50]
+                            entries[str(pname)]=safe
+            for value in node.values():find_provider_blocks(value,depth+1)
+        find_provider_blocks(data)
+        # '<section>-default-model' / 'default-model' conventions spell the
+        # active selection as {provider, model}; surface it as the default slot.
+        if 'default' not in entries:
+            for ckey,cvalue in data.items():
+                lk=str(ckey).lower()
+                if isinstance(cvalue,dict) and ('model' in cvalue) and ('default-model' in lk or 'default_model' in lk):
+                    provider=cvalue.get('provider');model=cvalue.get('model')
+                    joined=f'{provider}/{model}' if provider and model else (str(model)[:200] if model else None)
+                    if joined:entries['default']={'default_model':joined}
+                    break
+        # Nested layouts without any provider block stay metadata-only under 'default'.
         for name,safe in sorted(entries.items()):
             installation=key+'/'+name
             result['items'].append({**safe,'name':name,'installation_key':installation,
@@ -387,14 +424,14 @@ def collect_contract(agent, epoch, revision, home=None, env=None, previous_scope
     platform=agent['platform'];cwd=agent['workspace'];deadline=time.monotonic()+60
     if bounded:
         try:
-            plan=bounded_reader('roots',{'platform':platform,'cwd':cwd,'home':home,'env':env},deadline)
+            plan=bounded_reader('roots',{'platform':platform,'cwd':cwd,'home':home,'env':env,'name':agent.get('name')},deadline)
             skill=[Path(p) for p in plan['skill']];mcps=[(Path(p),k) for p,k in plan['mcp']]
             prompts=[Path(p) for p in plan.get('prompt',[])];models=[Path(p) for p in plan.get('model',[])]
             settings=plan['settings'];errors=plan['errors']
         except (TimeoutError,subprocess.SubprocessError,ValueError):
             skill=[];mcps=[];prompts=[];models=[];settings=[];errors=['INVENTORY_ROOT_DISCOVERY_FAILED']
     else:
-        plan=roots(platform,cwd,home,env)
+        plan=roots(platform,cwd,home,env,agent.get('name'))
         skill=plan['skill'];mcps=plan['mcp'];prompts=plan['prompt'];models=plan['model'];settings=plan['settings'];errors=plan['errors']
     # Roots learned by ASG are explicit evidence, not guessed brand-specific paths.
     skill.extend(Path(p).resolve() for p in agent.get('learned_skill_roots',[]))
@@ -426,7 +463,13 @@ def collect_contract(agent, epoch, revision, home=None, env=None, previous_scope
         if 'INVENTORY_ROOT_DISCOVERY_FAILED' in errors:status='failed'
         elif errors and key=='skill':status='partial'
         if not values and platform not in ('codex','hermes','opencode','openclaw') and key in ('skill','mcp_server'):status='failed'
+        # A config we opened and confirmed has no MCP block is real evidence:
+        # report a verified 0 declarations instead of an unsearched failure.
+        if not values and key=='mcp_server' and plan.get('verified_mcp_checked'):
+            status='success'
         categories[key]={'status':status,'scopes':values}
+        if key=='mcp_server' and plan.get('verified_mcp_checked'):
+            categories[key]['checked_configs']=plan['verified_mcp_checked']
         if errors and key=='skill':categories[key]['errors']=errors
     return {'schema_version':1,'agent_id':agent['agent_id'],'platform':platform,'channel':'desktop',
         'collector_id':'soc-inventory-'+platform,'collector_version':'1.0.0','workspace_id':workspace_identity(agent,home,env),

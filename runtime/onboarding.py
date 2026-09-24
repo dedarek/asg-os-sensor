@@ -511,7 +511,7 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
         ws = ghost_install.ensure_workspace(Path(workspace))
         _target_is_live(target)
     except (OSError, ValueError, psutil.Error) as exc:
-        result = {"status": "failed", "reason": "安装前检查失败: %s" % type(exc).__name__}
+        result = {"status": "failed", "reason": "安装前检查失败: %s: %s" % (type(exc).__name__, exc)}
         record_transition(target, "install_failed", {"plan": plan, "install": result})
         return result
 
@@ -573,7 +573,7 @@ def execute_install(plan: dict[str, Any], target: dict[str, Any],
             "blocking": "unsupported",
         }
     except (OSError, ValueError) as exc:
-        result = {"status": "failed", "reason": "安装事务失败: %s" % type(exc).__name__}
+        result = {"status": "failed", "reason": "安装事务失败: %s: %s" % (type(exc).__name__, exc)}
     record_transition(target, "install_result", {"plan": plan, "install": result})
     return result
 
@@ -649,7 +649,7 @@ def verify_activation(install_result: dict[str, Any], target: dict[str, Any]) ->
             "instance_id": make_instance_id(target["pid"], target["create_time"]),
         }
     except (OSError, ValueError, KeyError, psutil.Error) as exc:
-        result = {"status": "verification_failed", "reason": "事件验证失败: %s" % type(exc).__name__,
+        result = {"status": "verification_failed", "reason": "事件验证失败: %s: %s" % (type(exc).__name__, exc),
                   "hook_verified": False, "blocking": "unsupported"}
     record_transition(target, "activation_verification", {"install": install_result, "verification": result})
     return result
@@ -851,7 +851,7 @@ def _execute_reused_file_plan(plan: dict[str, Any], target: dict[str, Any],
         _target_is_live(target)
         expected_plan = learned_install.plan_digest(recipe.get("install_plan"))
     except (OSError, ValueError, psutil.Error) as exc:
-        result = {"status": "failed", "reason": "复用前置检查失败: %s" % type(exc).__name__}
+        result = {"status": "failed", "reason": "复用前置检查失败: %s: %s" % (type(exc).__name__, exc)}
         record_transition(target, "install_failed", {"plan": plan, "install": result})
         return result
     located = _locate_reuse_material(expected_plan, workspace, refs)

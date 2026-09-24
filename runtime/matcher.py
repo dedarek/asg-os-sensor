@@ -397,6 +397,28 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asse
                           if e.get('features') == f and any(
                               rev.get('compatibility') == struct['compatibility']
                               for rev in e.get('revisions', []))), None)
+        if not target and entry is None:
+            # Family dedupe (crazytest: DSH accumulated four sibling entries):
+            # launch-flag variants of one verified package must merge as
+            # revisions, never open a new family. Strict unattended gate:
+            # identical non-native entry digest only - the basename fallback
+            # used by explicit evolution is not trusted here (npm packages
+            # share "bin.js"); native apps never auto-merge on flags.
+            observed_compat = struct.get('compatibility') or {}
+            o_entry = observed_compat.get('entry')
+            if o_entry and o_entry != 'native':
+                best = None
+                for candidate in db.get('fingerprints', []):
+                    if any(isinstance(rev.get('compatibility'), dict)
+                           and rev['compatibility'].get('entry') == o_entry
+                           for rev in candidate.get('revisions') or []):
+                        if best is None or int(candidate.get('match_count') or 0) > int(best.get('match_count') or 0):
+                            best = candidate
+                if best is not None:
+                    entry = best
+                    mf = stored_recipe.setdefault('match_features', {})
+                    if isinstance(mf, dict):
+                        mf.setdefault('evolves_prior_harness', best['id'])
         if target and entry is not None:
             prior_compat = None
             for rev in reversed(entry.get('revisions') or []):

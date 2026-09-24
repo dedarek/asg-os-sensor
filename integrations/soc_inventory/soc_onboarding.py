@@ -245,6 +245,13 @@ def install(endpoint, agent, exe, execute=False, upgrade=False, selected=None):
     if len(data)>2*1024*1024 or hashlib.sha256(data).hexdigest()!=selected['checksum']:raise ValueError('SOC package checksum mismatch')
     parent=Path(endpoint.config['state_dir'])/'install-packages';parent.mkdir(parents=True,exist_ok=True)
     root=Path(tempfile.mkdtemp(prefix='verified-',dir=parent))
+    # Verified packages are transient: the installer subprocess consumes the
+    # extracted tree synchronously inside this call.  Prune leftovers from
+    # earlier passes (and crashes) so the cache cannot grow without bound.
+    import shutil as _shutil
+    for stale in sorted(parent.glob('verified-*'), key=lambda d: d.stat().st_mtime, reverse=True)[20:]:
+        try:_shutil.rmtree(stale, ignore_errors=True)
+        except OSError:pass
     with tarfile.open(fileobj=io.BytesIO(data)) as archive:
         members=archive.getmembers();seen=set();total=0
         for member in members:

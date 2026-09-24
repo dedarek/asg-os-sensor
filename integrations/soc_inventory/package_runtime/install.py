@@ -287,6 +287,61 @@ def pin_loader_revision(plan):
         if changed:item['content']=yaml.safe_dump(value,sort_keys=False,allow_unicode=True)
     return plan
 
+def patch_entries(value):
+    """Parse the loader patch shape: top-level list of pure insert groups."""
+    if not isinstance(value, list) or not value:return None
+    found=[]
+    for group in value:
+        if not isinstance(group,dict) or set(group)!={'insert'} or not isinstance(group['insert'],list) or not group['insert']:
+            return None
+        for entry in group['insert']:
+            if not isinstance(entry,dict) or not isinstance(entry.get('id'),str) or not entry['id'] or not isinstance(entry.get('name'),str):
+                return None
+            found.append(entry)
+    return found
+
+
+def is_legacy_asg_entry(entry):
+    return (entry.get('id')=='asg-runtime-observer'
+            and 'asg-runtime-observer' in str(entry.get('name','')))
+
+
+def patch_migration_matches_prior(name, target, prior_content):
+    """True when *target* is a valid post-migration form of the installed bytes.
+
+    The installer's own structured-patch migration rewrites loader patch files
+    (legacy observer removal, revision merges), so byte equality against an
+    older receipt would reject our own migration.  Every entry this receipt
+    installed, except ASG's superseded legacy observer, must still be present
+    unchanged; unrelated entries belong to the user and may change.
+    """
+    if Path(name).suffix.lower() not in ('.yaml', '.yml') or not target.is_file():return False
+    try:
+        import yaml
+        prior=patch_entries(yaml.safe_load(prior_content))
+        current=patch_entries(yaml.safe_load(target.read_text()))
+    except Exception:return False
+    if prior is None or current is None:return False
+    ids=[entry['id'] for entry in current]
+    if len(ids)!=len(set(ids)):return False
+    by_id={entry['id']:entry for entry in current}
+    def loader_base(name):
+        value=str(name).split('?',1)[0]
+        return re.sub(r'\.[0-9a-f]{64}(?=\.[^./]+$)','',value)
+    for entry in prior:
+        if is_legacy_asg_entry(entry):continue  # superseded by the direct Hook
+        live=by_id.get(entry['id'])
+        if live is None:return False
+        if entry.get('id')=='asg-observer':
+            # The managed observer is legitimately rewritten on every package
+            # revision (content-addressed loader name); identity is the stable
+            # loader base, matching merge_structured_patch's own rule.
+            if loader_base(live.get('name'))!=loader_base(entry.get('name')):return False
+            continue
+        if live!=entry:return False  # unrelated/user-owned entries must stay verbatim
+    return True
+
+
 def merge_structured_patch(plan, workspace):
     """Preserve unrelated YAML patch entries on a reused profile.
 
@@ -309,19 +364,16 @@ def merge_structured_patch(plan, workspace):
             original_text=path.read_text()
             current=yaml.safe_load(original_text)
         except (OSError,UnicodeError,yaml.YAMLError):continue
-        def insertions(value):
-            if not isinstance(value,list) or not value:return None
-            found=[]
-            for group in value:
-                if not isinstance(group,dict) or set(group)!= {'insert'} or not isinstance(group['insert'],list) or not group['insert']:
-                    return None
-                for entry in group['insert']:
-                    if not isinstance(entry,dict) or not isinstance(entry.get('id'),str) or not entry['id'] or not isinstance(entry.get('name'),str):
-                        return None
-                    found.append(entry)
-            return found
-        wanted=insertions(desired);present=insertions(current)
+        wanted=patch_entries(desired);present=patch_entries(current)
         if wanted is None or present is None:continue
+        # The current recipe may still describe the legacy observer it shipped
+        # before the direct Hook existed.  Once this package's own asg-observer
+        # entry is part of the plan, the superseded ASG rows must never be
+        # re-added -- reinstalling them made the same instance emit every
+        # event twice through two observers.
+        if any(entry.get('id')=='asg-observer' for entry in wanted):
+            filtered=[entry for entry in wanted if not is_legacy_asg_entry(entry)]
+            if len(filtered)!=len(wanted):wanted=filtered
         # Supersede only the legacy ASG control gate that this project itself
         # installed. Leaving it enabled would make two controllers race and a
         # stale local client could deny before the new SOC-direct Hook runs.
@@ -332,12 +384,9 @@ def merge_structured_patch(plan, workspace):
         # uninstall.
         migrated=False
         if any(entry.get('id')=='asg-observer' for entry in wanted):
-            def is_legacy_asg(entry):
-                return (entry.get('id')=='asg-runtime-observer'
-                        and 'asg-runtime-observer' in str(entry.get('name','')))
-            if any(is_legacy_asg(entry) for entry in present):
+            if any(is_legacy_asg_entry(entry) for entry in present):
                 # Rebuild the top-level insert groups without the legacy rows.
-                current=[{'insert':[e for e in group['insert'] if not is_legacy_asg(e)]}
+                current=[{'insert':[e for e in group['insert'] if not is_legacy_asg_entry(e)]}
                          for group in current]
                 current=[group for group in current if group['insert']]
                 migrated=True
@@ -519,9 +568,11 @@ def main():
                 target=workspace/name
                 if name in RUNTIME_MUTABLE:
                     continue
-                if (not target.is_file()
-                        or hashlib.sha256(target.read_bytes()).hexdigest()!=hashlib.sha256(content.encode()).hexdigest()):
-                    raise ValueError('managed file changed; refusing package upgrade: '+name)
+                if (target.is_file()
+                        and hashlib.sha256(target.read_bytes()).hexdigest()==hashlib.sha256(content.encode()).hexdigest()):
+                    continue
+                if patch_migration_matches_prior(name, target, content):continue
+                raise ValueError('managed file changed; refusing package upgrade: '+name)
             for item in plan['files']:
                 if item['path'] in prior_files:
                     target=workspace/item['path']
@@ -541,9 +592,19 @@ def main():
         process=psutil.Process(a.verify_pid)
         if Path(process.exe()).resolve()!=exe:raise ValueError('verification process executable differs')
         previous=json.loads(receipt.read_text())
+        # Activation verification proves the *previously installed* package is
+        # intact and running.  Compare against the receipt bytes, with the same
+        # structured-patch migration allowance as the upgrade pre-check: our own
+        # observer rewrite of a loader patch file is not corruption.  During an
+        # upgrade the on-disk bytes legitimately precede the new transaction's
+        # writes, so comparing against pending bytes here is meaningless.
         for item in previous['installed_plan']['files']:
             if item['path'] in RUNTIME_MUTABLE:continue
-            if digest(workspace/item['path'])!=hashlib.sha256(item['content'].encode()).hexdigest():raise ValueError('installed file changed; verification rejected')
+            target=workspace/item['path']
+            if (target.is_file()
+                    and digest(target)==hashlib.sha256(item['content'].encode()).hexdigest()):continue
+            if patch_migration_matches_prior(item['path'], target, item['content']):continue
+            raise ValueError('installed file changed; verification rejected: '+item['path'])
         source=resolved['recipe']['observation_source']
         log=Path(source['log_path'])
         if log.is_absolute() or '..' in log.parts:raise ValueError('observation log must be workspace-relative')

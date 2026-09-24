@@ -140,6 +140,30 @@ class ContractTest(unittest.TestCase):
             removed=collect_contract(agent,'e',2,home=d,env={},previous_scopes=['skill:'+str(root.resolve())])
             scope=removed['categories']['skill']['scopes'][0]
             self.assertEqual(scope['status'],'success');self.assertEqual(scope['items'],[])
+    def test_unknown_platform_name_derived_yaml_config(self):
+        # A newly installed unknown agent (~/.<name>) with nested provider
+        # YAML must yield real model entries and a verified 0-MCP result,
+        # never a false "not collected".
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); home=root/'home'; (home/'.dsh').mkdir(parents=True)
+            (home/'.dsh/settings.yaml').write_text(
+                'llm-pi-ai:\n  providers:\n    lenovo:\n      apiKeyEnv: LENOVO_API_KEY\n'
+                '      baseURL: https://api.example.test/v1\n      models:\n'
+                '        - id: Qwen3.8-Flash-Next\n        - id: other-model\n'
+                'agent-default-model:\n  provider: lenovo\n  model: Qwen3.8-Flash-Next\n')
+            agent={'agent_id':'a','platform':'unknown-runtime','workspace':str(root),'name':'@deepseek-ai/dsh'}
+            report=collect_contract(agent,'e',1,home=home,env={})
+            mitems={i['name']:i for s in report['categories']['model']['scopes'] for i in s['items']}
+            self.assertEqual(mitems['default']['default_model'],'lenovo/Qwen3.8-Flash-Next')
+            self.assertEqual(mitems['lenovo']['model_ids'],['Qwen3.8-Flash-Next','other-model'])
+            self.assertEqual(mitems['lenovo']['baseURL'],'https://api.example.test')
+            self.assertIn('credential_ref',mitems['lenovo'])
+            mcp=report['categories']['mcp_server']
+            self.assertEqual(mcp['status'],'success')
+            self.assertEqual(mcp['scopes'],[])
+            self.assertTrue(mcp.get('checked_configs'))
+            self.assertNotIn(b'LENOVO_API_KEY',canonical(report))
+
     def test_once_fails_when_registration_failed(self):
         with tempfile.TemporaryDirectory() as d:
             endpoint=Endpoint({'backend_url':'http://127.0.0.1:1','state_dir':d,'agents':[{'agent_id':'a','platform':'codex','workspace':d}]})

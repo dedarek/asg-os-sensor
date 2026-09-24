@@ -11,9 +11,31 @@ import unittest
 from runtime.recipe_bundle import digest, portable_recipe, resolve_bundle, scan_portability
 from integrations.soc_inventory.deployment_package import build
 from integrations.soc_inventory.soc_onboarding import integrity,existing_install_mode
-from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch,pin_loader_revision,activation_affecting_files_changed
+from integrations.soc_inventory.package_runtime.install import wire_model_request_payload,wire_soc_control_client,merge_structured_patch,pin_loader_revision,activation_affecting_files_changed,patch_migration_matches_prior
 
 class DeploymentPackageTests(unittest.TestCase):
+    def test_owned_patch_migration_accepts_only_the_superseded_observer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target=Path(tmp)/'cordis.patch.yml'
+            prior='''- insert:
+  - id: asg-runtime-observer
+    name: ./asg-runtime-observer/index.mjs
+  - id: asg-observer
+    name: ./plugins/asg-observer.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mjs
+  - id: administrator-hook
+    name: ./admin.mjs
+'''
+            target.write_text('''- insert:
+  - id: asg-observer
+    name: ./plugins/asg-observer.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.mjs
+  - id: administrator-hook
+    name: ./admin.mjs
+''')
+            self.assertTrue(patch_migration_matches_prior('cordis.patch.yml',target,prior))
+            target.write_text(target.read_text().replace('./admin.mjs','./other.mjs'))
+            self.assertFalse(patch_migration_matches_prior('cordis.patch.yml',target,prior))
+            self.assertFalse(patch_migration_matches_prior('other.yml',Path(tmp)/'missing.yml',prior))
+
     def test_transport_client_upgrade_does_not_require_agent_reload(self):
         prior={'plugins/asg-observer.mjs':'hook-v1',
                '.soc-hook/runtime/hook_control_client.mjs':'transport-v1'}
