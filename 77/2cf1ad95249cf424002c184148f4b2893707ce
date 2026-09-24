@@ -1,0 +1,20 @@
+docs/stage1/QA_NIGHT_20260924.md
+  h_c6bfc5197c52f3 76-94
+release/build_release.py
+  h_c6bfc5197c52f3 106-109,117,121
+runtime/fingerprints.json
+  h_c6bfc5197c52f3 3334,3341,3348
+test_release_build_order.py
+  h_c6bfc5197c52f3 29-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "772cf1ad95249cf424002c184148f4b2893707ce",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
