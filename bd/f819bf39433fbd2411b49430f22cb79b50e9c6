@@ -1,0 +1,16 @@
+release/build_release.py
+  h_cc496700febce9 125-126,286-288
+test_release_build_order.py
+  h_cc496700febce9 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bdf819bf39433fbd2411b49430f22cb79b50e9c6",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
