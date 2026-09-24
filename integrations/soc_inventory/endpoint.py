@@ -240,6 +240,7 @@ class Endpoint:
                     time.sleep(15)
             threading.Thread(target=runtime_loop,daemon=True).start()
         next_collect={}
+        next_heartbeat={}
         while True:
             self.beat()
             manual=self.config.get('collection_mode')=='manual' and not once
@@ -255,12 +256,28 @@ class Endpoint:
                 # in every mode: manual only gates deep asset collection, never
                 # finding/enrolling new instances or retrying queued receipts.
                 try:
-                    active=set(discovery.refresh()) | {a['agent_id'] for a in self.config.get('agents',[])}
+                    discovered=set(discovery.refresh())
+                    active=discovered | {a['agent_id'] for a in self.config.get('agents',[])}
                     discovery_pending=self.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0]
                 except (OSError,ValueError,KeyError) as e:
-                    active=set(self.agents);discovery_pending=1
+                    active=set(self.agents);discovered=set();discovery_pending=1
                     collection_failed=True
                     LOG.warning('Discovery pending: %s',type(e).__name__)
+                # Online means this Agent was found in the *current* process
+                # snapshot. It does not imply its Hook is installed or loaded.
+                # Asset collection remains manual; this lightweight status
+                # heartbeat uses the SOC gateway's existing Agent contract.
+                for agent_id in discovered:
+                    agent=self.agents.get(agent_id)
+                    if not agent or time.monotonic()<next_heartbeat.get(agent_id,0):continue
+                    try:
+                        self.request(agent,'/api/heartbeat',canonical({
+                            'agent_id':agent_id,'agent_name':agent.get('name') or agent_id,
+                            'platform':agent['platform'],'status':'online',
+                            'timestamp':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}))
+                        next_heartbeat[agent_id]=time.monotonic()+60
+                    except (OSError,ValueError,KeyError) as e:
+                        LOG.warning('Agent heartbeat pending: %s',type(e).__name__)
                 self.flush()
                 if manual:
                     # Registration captures a bounded first snapshot before any

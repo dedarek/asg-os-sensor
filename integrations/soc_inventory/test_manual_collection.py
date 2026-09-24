@@ -26,6 +26,22 @@ class ManualCollectionTest(unittest.TestCase):
    with patch.object(discovery_module,'Discovery',D),patch('integrations.soc_inventory.endpoint.time.sleep',side_effect=InterruptedError):
     with self.assertRaises(InterruptedError):e.run()
    e.enqueue.assert_not_called()
+ def test_manual_discovery_heartbeats_only_live_agents_without_collecting(self):
+  with tempfile.TemporaryDirectory() as root:
+   live={'agent_id':'live','platform':'example','name':'Live','workspace':root,'key_file':'unused'}
+   stale={'agent_id':'stale','platform':'example','name':'Stale','workspace':root,'key_file':'unused'}
+   e=Endpoint({'state_dir':root,'backend_url':'http://127.0.0.1:1','collection_mode':'manual',
+               'agents':[live,stale],'discovery':{'application_key_file':'unused'}})
+   class D:
+    def __init__(self,endpoint):self.refresh=Mock(return_value=['live'])
+   e.request=Mock(return_value={});e.flush=Mock();e.enqueue=Mock()
+   import integrations.soc_inventory.discovery as discovery_module
+   with patch.object(discovery_module,'Discovery',D),patch('integrations.soc_inventory.endpoint.time.sleep',side_effect=InterruptedError):
+    with self.assertRaises(InterruptedError):e.run()
+   sent=[call for call in e.request.call_args_list if call.args[1]=='/api/heartbeat']
+   self.assertEqual(len(sent),1)
+   self.assertEqual(sent[0].args[0]['agent_id'],'live')
+   e.enqueue.assert_not_called()
  def test_manual_mode_replays_cached_first_snapshot_without_deep_rescan(self):
   import json
   from pathlib import Path
