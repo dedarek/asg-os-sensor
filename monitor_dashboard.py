@@ -1530,8 +1530,23 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
                     evidence = validated['evidence']
                     hook_evidence_supported = validated['hook_evidence_supported']
                     # Re-check identity/build after the investigation, before committing.
-                    current = analyzer.analyze(pid)
-                    if current.get('create_time') != struct.get('create_time') or current.get('compatibility') != struct.get('compatibility'):
+                    # crazytest B18: a restarted process (create_time drift) is
+                    # definitive, but a compatibility mismatch can also come
+                    # from a transient read failure inside digest() (temporary
+                    # OSError returns None), which previously wasted complete
+                    # goose investigations on OpenCodex. Re-observe twice before
+                    # condemning the run; only a persistent mismatch means the
+                    # build genuinely changed under us.
+                    changed = True
+                    for attempt in range(3):
+                        current = analyzer.analyze(pid)
+                        if current.get('create_time') != struct.get('create_time'):
+                            break
+                        if current.get('compatibility') == struct.get('compatibility'):
+                            changed = False
+                            break
+                        time.sleep(1.0)
+                    if changed:
                         raise ValueError('Target changed during investigation')
                     trial_match = matcher.classify(struct)
                     trial_entry = trial_match.get('entry') if trial_match.get('status') == 'trial' else None
