@@ -1,0 +1,16 @@
+integrations/soc_inventory/event_spool.py
+  h_c6bfc5197c52f3 8-10,32,34-74,76-84
+integrations/soc_inventory/test_event_spool.py
+  h_c6bfc5197c52f3 60-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1bb9e20fc671b115b1bc289dc9bfa488846a1dbc",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
