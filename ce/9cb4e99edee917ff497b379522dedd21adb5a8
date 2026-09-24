@@ -1,0 +1,28 @@
+integrations/soc_inventory/discovery.py
+  h_cc496700febce9 10,583-584
+integrations/soc_inventory/package_runtime/install.py
+  h_cc496700febce9 290-344,367,369-376,387,389,571-575,595-600,603-607
+integrations/soc_inventory/protocol.py
+  h_cc496700febce9 9,53,62-64,121-130,140-141,148,152,166,177-178,351-381,427,434,466-469,471-472
+integrations/soc_inventory/soc_onboarding.py
+  h_cc496700febce9 248-254
+integrations/soc_inventory/test_deployment_package.py
+  h_cc496700febce9 14,17-38
+integrations/soc_inventory/test_protocol.py
+  h_cc496700febce9 143-166
+runtime/matcher.py
+  h_cc496700febce9 400-421
+runtime/onboarding.py
+  h_cc496700febce9 514,576,652,854
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ce9cb4e99edee917ff497b379522dedd21adb5a8",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
