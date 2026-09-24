@@ -89,7 +89,7 @@ class DeploymentPackageTests(unittest.TestCase):
       name: ./other.mjs
 """,'expected_sha256':None}]},workspace)
 
-    def test_new_direct_hook_disables_only_legacy_asg_control_gate(self):
+    def test_new_direct_hook_removes_legacy_asg_observer_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace=Path(tmp);target=workspace/'cordis.patch.yml'
             target.write_text("""- insert:
@@ -112,7 +112,9 @@ class DeploymentPackageTests(unittest.TestCase):
             import yaml
             entries=[entry for group in yaml.safe_load(content) for entry in group['insert']]
             by_id={entry['id']:entry for entry in entries}
-            self.assertFalse(by_id['asg-runtime-observer']['config']['control']['enabled'])
+            # One agent, one observer: the legacy ASG duplicate is removed,
+            # while unrelated administrator entries keep their own control.
+            self.assertNotIn('asg-runtime-observer', by_id)
             self.assertTrue(by_id['administrator-hook']['config']['control']['enabled'])
             self.assertEqual(by_id['asg-observer']['name'],'./plugins/asg-observer.mjs')
 

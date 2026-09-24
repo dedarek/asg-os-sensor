@@ -325,16 +325,22 @@ def merge_structured_patch(plan, workspace):
         # Supersede only the legacy ASG control gate that this project itself
         # installed. Leaving it enabled would make two controllers race and a
         # stale local client could deny before the new SOC-direct Hook runs.
-        # Observation remains loaded, unrelated entries are untouched, and the
-        # transaction backup restores the exact original YAML on uninstall.
+        # The legacy observer itself is removed once the new direct Hook is
+        # present: keeping both made the same instance emit every event twice
+        # (one duplicate stream per observer). Unrelated entries are untouched,
+        # and the transaction backup restores the exact original YAML on
+        # uninstall.
         migrated=False
         if any(entry.get('id')=='asg-observer' for entry in wanted):
-            for entry in present:
-                control=((entry.get('config') or {}).get('control') or {})
-                if (entry.get('id')=='asg-runtime-observer'
-                        and 'asg-runtime-observer' in entry.get('name','')
-                        and control.get('enabled') is True):
-                    control['enabled']=False;migrated=True
+            def is_legacy_asg(entry):
+                return (entry.get('id')=='asg-runtime-observer'
+                        and 'asg-runtime-observer' in str(entry.get('name','')))
+            if any(is_legacy_asg(entry) for entry in present):
+                # Rebuild the top-level insert groups without the legacy rows.
+                current=[{'insert':[e for e in group['insert'] if not is_legacy_asg(e)]}
+                         for group in current]
+                current=[group for group in current if group['insert']]
+                migrated=True
         by_id={entry['id']:entry for entry in present}
         additions=[]
         def loader_base(name):
