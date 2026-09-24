@@ -127,6 +127,30 @@ class Endpoint:
         except OSError:pass
     def soc_note(self,state,detail=''):
         self.note(self.health_file,{'checked_at':time.time(),'pid':os.getpid(),'state':state,'detail':str(detail)[:200]})
+    def retire_local(self,agent_id):
+        """Crazytest B17: SOC reported this identity as retired (superseded).
+
+        A retired card never returns to online by design, so continuing to
+        heartbeat or report runtime for it only refreshes a closed record and
+        makes the platform look inconsistent. Drop the local enrollment (and
+        its per-instance receipts/key) so every loop stops speaking for the
+        retired card. Discovery independently decides whether the live process
+        warrants a fresh identity from current evidence.
+        """
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='enrolled'").fetchone():
+            with self.db:
+                for inst,cfg in self.db.execute('SELECT instance,configuration FROM enrolled').fetchall():
+                    try:
+                        if json.loads(cfg).get('agent_id')!=agent_id:continue
+                    except ValueError:continue
+                    self.db.execute('DELETE FROM enrolled WHERE instance=?',(inst,))
+                    for table in ('soc_onboarding','reported_protocol_packages'):
+                        try:self.db.execute('DELETE FROM '+table+' WHERE instance=?',(inst,))
+                        except Exception:pass
+        self.reload_agents()
+        try:(self.health_file.parent/(str(agent_id)+'.key')).unlink()
+        except OSError:pass
+        LOG.warning('Local enrollment retired after SOC verdict: %s',agent_id)
     def beat(self):
         self.note(self.beat_file,{'pid':os.getpid(),'t':time.time()})
     def request(self,agent,path,data,method='POST'):
@@ -302,13 +326,19 @@ class Endpoint:
                     agent=self.agents.get(agent_id)
                     if not agent or time.monotonic()<next_heartbeat.get(agent_id,0):continue
                     try:
-                        self.request(agent,'/api/heartbeat',canonical({
+                        payload=self.request(agent,'/api/heartbeat',canonical({
                             'agent_id':agent_id,'agent_name':agent.get('name') or agent_id,
                             'platform':agent['platform'],'status':'online',
                             'timestamp':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}))
                         next_heartbeat[agent_id]=time.monotonic()+60
                     except (OSError,ValueError,KeyError) as e:
                         LOG.warning('Agent heartbeat pending: %s',type(e).__name__)
+                    # Crazytest B17: the gateway echoes the stored card; a
+                    # retired verdict means this enrollment was superseded on
+                    # the platform and the local loop must stop for it.
+                    else:
+                        if isinstance(payload,dict) and (payload.get('data') or {}).get('status')=='retired':
+                            self.retire_local(agent_id)
                 self.flush()
                 if manual:
                     # Registration captures a bounded first snapshot before any

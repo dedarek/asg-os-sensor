@@ -184,7 +184,18 @@ class RuntimeBridge:
                 limitations=coverage.get('limitations') or []
                 limitations.append('上报体积超过网关上限：最早 %d 条记录本轮省略（记录本身已入事件流）'%(total_records-len(records)))
                 coverage['limitations']=limitations;hooks['coverage']=coverage
-            self.endpoint.request(agent,'/api/asg/runtime',canonical({'instance_id':instance,'revision':revision,'payload':payload}))
+            accepted=self.endpoint.request(agent,'/api/asg/runtime',canonical({'instance_id':instance,'revision':revision,'payload':payload}))
+            # Crazytest B17: the gateway echoes the platform card status with
+            # each acceptance. A retired verdict means this identity was
+            # superseded upstream (e.g. by enrollment dedup); a retired card
+            # never returns online, so keep reporting only refreshes a closed
+            # record. Drop the local enrollment and let discovery decide from
+            # current evidence whether the live process needs a new identity.
+            if isinstance(accepted,dict) and accepted.get('agent_status')=='retired':
+                self.endpoint.retire_local(agent.get('agent_id'))
+                # This agent's cycle ends here; run_once continues with the
+                # other enrolled agents on the next iteration.
+                return
             commands=self.endpoint.request(agent,'/api/asg/commands',None,'GET')
             for command in commands.get('commands') or []:
                 key=command['id'];prior=self.endpoint.db.execute('SELECT status,result FROM runtime_commands WHERE id=?',(key,)).fetchone()
