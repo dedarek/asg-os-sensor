@@ -173,6 +173,7 @@ def register_service(home, label):
     home = Path(home)
     program = [str(home / 'current/python/bin/python3'),
                str(home / 'current/app/service_main.py'), '--home', str(home)]
+    _retire_legacy_collector_service()
     if sys.platform == 'darwin':
         import plistlib
         path = plist_path(label)
@@ -209,6 +210,37 @@ def unregister_service(label):
         subprocess.run(['systemctl', '--user', 'disable', '--now', label], capture_output=True)
         unit_path(label).unlink(missing_ok=True)
         subprocess.run(['systemctl', '--user', 'daemon-reload'], capture_output=True)
+    _retire_legacy_collector_service()
+
+
+LEGACY_COLLECTOR_LABEL = 'com.asg.soc-collector'
+
+
+def _retire_legacy_collector_service():
+    """Remove the pre-supervisor standalone collector service left behind by
+    older installs.  The endpoint now runs under service_main, so a leftover
+    definition would double-report to SOC on the next login."""
+    try:
+        if sys.platform == 'darwin':
+            path = plist_path(LEGACY_COLLECTOR_LABEL)
+            if path.exists():
+                subprocess.run(['launchctl', 'bootout', launchd_domain(), str(path)],
+                               capture_output=True)
+                path.unlink(missing_ok=True)
+        elif os.name == 'nt':
+            # tools/soc_collector_service.py registered the legacy variant as a
+            # scheduled task on Windows; deleting an absent task is a no-op error.
+            subprocess.run(['schtasks', '/Delete', '/TN', LEGACY_COLLECTOR_LABEL, '/F'],
+                           capture_output=True)
+        else:
+            unit = Path.home() / '.config/systemd/user' / (LEGACY_COLLECTOR_LABEL + '.service')
+            if unit.exists():
+                subprocess.run(['systemctl', '--user', 'disable', '--now', LEGACY_COLLECTOR_LABEL],
+                               capture_output=True)
+                unit.unlink(missing_ok=True)
+                subprocess.run(['systemctl', '--user', 'daemon-reload'], capture_output=True)
+    except OSError:
+        pass
 
 
 def service_loaded(label):
