@@ -101,4 +101,51 @@ class EventSpoolTest(unittest.TestCase):
             self.assertEqual(calls[1]['events'][0]['event_id'],'e2')
             self.assertEqual(db.execute('SELECT count(*) FROM event_outbox').fetchone()[0],0)
 
+    def test_oversized_record_is_stubbed_not_head_blocking(self):
+        # crazytest B19: a single >1.5 MB row used to sit at the head of its
+        # instance group forever -- the gateway 413s any request over 2 MiB and
+        # the size selection always keeps the first row. It must be replaced by
+        # a bounded collection.gap stub so the rest of the stream keeps flowing.
+        with tempfile.TemporaryDirectory() as tmp:
+            db=sqlite3.connect(str(Path(tmp)/'state.db'))
+            calls=[]
+            endpoint=SimpleNamespace(db=db,request=lambda *args:(calls.append(json.loads(args[2])) or {'accepted':True}))
+            agent={'agent_id':'a','asg_instance_id':'42:100'}
+            db.execute('CREATE TABLE IF NOT EXISTS event_outbox(id TEXT PRIMARY KEY,agent TEXT,body BLOB NOT NULL)')
+            big=json.dumps({'event_id':'big','instance_id':'42:100','event_type':'tool.execute.after',
+                            'payload':{'blob':'x'*1_600_000}}).encode()
+            ok=json.dumps({'event_id':'ok','instance_id':'42:100','event_type':'stop'}).encode()
+            db.execute('INSERT INTO event_outbox VALUES(?,?,?)',('big','a',big))
+            db.execute('INSERT INTO event_outbox VALUES(?,?,?)',('ok','a',ok))
+            db.commit()
+            EventSpool(endpoint).flush(agent)
+            sent=[e for call in calls for e in call['events']]
+            self.assertEqual(db.execute('SELECT count(*) FROM event_outbox').fetchone()[0],0)
+            stubs=[e for e in sent if e['event_type']=='collection.gap']
+            self.assertEqual(len(stubs),1)
+            self.assertEqual(stubs[0]['event_id'],'big')
+            self.assertEqual(stubs[0]['reason'],'oversized_record_truncated')
+            self.assertGreater(stubs[0]['original_bytes'],1_500_000)
+            self.assertEqual(len(stubs[0]['body_sha256']),64)
+            self.assertIn('ok',[e['event_id'] for e in sent])
+            # Second flush is a no-op: the stub replaces the row, it does not
+            # reappear and it does not strand anything.
+            EventSpool(endpoint).flush(agent)
+            self.assertEqual(len(calls),1)
+        with tempfile.TemporaryDirectory() as tmp:
+            db=sqlite3.connect(str(Path(tmp)/'state.db'))
+            calls=[]
+            endpoint=SimpleNamespace(db=db,request=lambda *args:(calls.append(json.loads(args[2])) or {'accepted':True}))
+            agent={'agent_id':'a','asg_instance_id':'42:200'}
+            db.execute('CREATE TABLE IF NOT EXISTS event_outbox(id TEXT PRIMARY KEY,agent TEXT,body BLOB NOT NULL)')
+            for eid,inst in (('e1','42:100'),('e2','42:200'),('e3','42:100')):
+                body=json.dumps({'event_id':eid,'instance_id':inst,'event_type':'user.input'}).encode()
+                db.execute('INSERT INTO event_outbox VALUES(?,?,?)',(eid,'a',body))
+            db.commit()
+            EventSpool(endpoint).flush(agent)
+            self.assertEqual([c['instance_id'] for c in calls],['42:100','42:200'])
+            self.assertEqual(sorted(e['event_id'] for e in calls[0]['events']),['e1','e3'])
+            self.assertEqual(calls[1]['events'][0]['event_id'],'e2')
+            self.assertEqual(db.execute('SELECT count(*) FROM event_outbox').fetchone()[0],0)
+
 if __name__=='__main__':unittest.main()

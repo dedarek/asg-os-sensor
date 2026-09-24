@@ -1,10 +1,12 @@
 """Durable, instance-filtered JSONL transfer from validated ASG bindings."""
 import json
 import os
+import logging
 from pathlib import Path
 from runtime import hook_data
 from .protocol import canonical, sha
 
+LOG=logging.getLogger('asg.soc.spool')
 NL=bytes([10])
 WS=chr(32)+chr(13)+chr(10)+chr(9)
 
@@ -94,6 +96,24 @@ class EventSpool:
         # the same agent behind an envelope mismatch.
         rows=self.endpoint.db.execute('SELECT id,body,json_extract(CAST(body AS TEXT),\'$.instance_id\') FROM event_outbox WHERE agent=? ORDER BY rowid LIMIT 200',(agent['agent_id'],)).fetchall()
         if not rows:return
+        # crazytest B19: the gateway rejects a request above 2 MiB with 413,
+        # and the size selection below always keeps at least the first row of
+        # a group, so a single oversized record would bounce that whole
+        # instance group forever. Replace it with a bounded stub that keeps
+        # identity, size and digest for audit; the full record still lives in
+        # the local hook JSONL that this spool mirrors.
+        STUB_ABOVE=1_500_000
+        stubbed=[]
+        for row in rows:
+            if len(row[1])<=STUB_ABOVE:continue
+            stub=canonical({'event_id':row[0],'instance_id':(row[2] if len(row)>2 and row[2] else agent['asg_instance_id']),
+                            'channel':'bridge','event_type':'collection.gap','reason':'oversized_record_truncated',
+                            'original_bytes':len(row[1]),'body_sha256':sha(bytes(row[1]))})
+            with self.endpoint.db:self.endpoint.db.execute('DELETE FROM event_outbox WHERE id=?',(row[0],))
+            stubbed.append((row[0],stub,row[2]))
+        if stubbed:
+            LOG.info('Oversized spool records stubbed for %s: %d',agent['agent_id'],len(stubbed))
+            rows=[r for r in rows if len(r[1])<=STUB_ABOVE]+stubbed
         groups={}
         for row in rows:
             instance=row[2] if len(row)>2 and row[2] else agent['asg_instance_id']
