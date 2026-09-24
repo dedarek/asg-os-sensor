@@ -8,6 +8,7 @@ import os
 import time
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
+from urllib.error import HTTPError
 from urllib.request import Request, build_opener, ProxyHandler
 from .protocol import canonical
 
@@ -242,6 +243,16 @@ class RuntimeBridge:
                                         self.endpoint.db.execute('INSERT INTO collection_requests DEFAULT VALUES')
                                     result={'status':'requested','message':'Local discovery and collection queued'}
                                 status='failed' if result.get('error') else 'completed'
+                            except HTTPError as exc:
+                                # crazytest B21: a 4xx means the engine refused
+                                # the request outright (bad/unknown route), so the
+                                # operation certainly did NOT run and the receipt
+                                # must say failed. Only connectivity/5xx outcomes
+                                # are genuinely uncertain; mislabeling 404s as
+                                # 'uncertain' hid four deterministic routing bugs
+                                # on 2026-09-23 behind an ambiguous status.
+                                status='uncertain' if exc.code>=500 else 'failed'
+                                result={'error':type(exc).__name__,'http_status':exc.code}
                             except OSError as exc:status='uncertain';result={'error':type(exc).__name__}
                     with self.endpoint.db:self.endpoint.db.execute('INSERT OR REPLACE INTO runtime_commands VALUES(?,?,?)',(key,status,json.dumps(result)))
                 self.endpoint.request(agent,'/api/asg/commands/'+key+'/receipt',canonical({'status':status,'result':result}))

@@ -37,4 +37,22 @@ class DirectPolicyTests(unittest.TestCase):
         self.assertEqual(len(guard),1)
         self.assertIn('fingerprint_import',guard[0])
 
+    def test_engine_http_4xx_receipts_as_failed_not_uncertain(self):
+        # crazytest B21: a 404/400 from the engine proves the operation never
+        # ran; recording 'uncertain' masked four deterministic route bugs as
+        # ambiguous outcomes on 2026-09-23. HTTPError (an OSError subclass) must
+        # be handled before the generic OSError arm, with failed for <500.
+        import inspect
+        from . import runtime_bridge as rb
+        src=inspect.getsource(rb.RuntimeBridge._runtime_cycle)
+        lines=src.splitlines()
+        http=[i for i,l in enumerate(lines) if l.strip().startswith('except HTTPError as exc')]
+        os_err=[i for i,l in enumerate(lines) if l.strip().startswith('except OSError as exc')]
+        self.assertEqual(len(http),1)
+        self.assertEqual(len(os_err),1)
+        self.assertLess(http[0],os_err[0])
+        arm='\n'.join(lines[http[0]:http[0]+14])
+        self.assertIn("exc.code>=500",arm)
+        self.assertIn("'failed'",arm)
+
 if __name__=='__main__':unittest.main()
