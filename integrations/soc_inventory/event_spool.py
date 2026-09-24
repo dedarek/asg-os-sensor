@@ -5,6 +5,9 @@ from pathlib import Path
 from runtime import hook_data
 from .protocol import canonical, sha
 
+NL=bytes([10])
+WS=chr(32)+chr(13)+chr(10)+chr(9)
+
 class EventSpool:
     def __init__(self,endpoint):
         self.endpoint=endpoint
@@ -26,24 +29,59 @@ class EventSpool:
                         self.save(agent,source,offset,{'event_type':'collection.gap','reason':'source_truncated'},0);offset=0
                     stream.seek(offset);consumed=0
                     while consumed<4*1024*1024:
-                        start=stream.tell();line=stream.readline(512*1024+1)
+                        start=stream.tell();line=stream.readline(8*1024*1024+1)
                         if not line:break
-                        if not line.endswith(b'\n'):
-                            # Wait for partial writes; oversized records are explicit gaps.
-                            if len(line)<=512*1024:break
-                            self.save(agent,source,start,{'event_type':'collection.gap','reason':'oversized_or_incomplete_record'},stream.tell());break
-                        consumed+=len(line);record=None
-                        try:
-                            event=json.loads(line)
-                            if not isinstance(event,dict):raise ValueError()
-                            pid=hook_data._event_pid(event.get(fields.get('pid','pid')))
-                            ct=hook_data._optional_create_time(event);ts=hook_data._parse_time(event.get(fields.get('timestamp','timestamp')))
-                            if pid==target['pid'] and ts is not None and ts>=target['create_time']-1 and (ct is None or isinstance(ct,(int,float)) and abs(ct-target['create_time'])<=0.001):
-                                name=event.get(fields.get('event','event'))
-                                record={'event_type':name,'timestamp':ts,'payload':hook_data.redact(event)} if isinstance(name,str) and 0<len(name)<=200 else {'event_type':'collection.gap','reason':'missing_or_invalid_event_type'}
-                        except (ValueError,TypeError):record={'event_type':'collection.gap','reason':'malformed_jsonl'}
-                        self.save(agent,source,start,record,stream.tell())
+                        if not line.endswith(NL):
+                            if len(line)<=8*1024*1024:
+                                break  # partial write: wait for the next cycle
+                            # Oversized record (crazytest B16: one 966 KB Codex
+                            # record exceeded the old 512 KB cap): the previous
+                            # code advanced the durable offset by only the capped
+                            # read, so every later batch decoded from mid-record
+                            # offsets and reported a flood of malformed gaps.
+                            # Skip the whole physical line and resynchronize at
+                            # the next newline; an unterminated tail retries from
+                            # the saved offset on the next cycle.
+                            rest=b'';skipped=False
+                            while len(rest)<16*1024*1024:
+                                more=stream.readline(8*1024*1024+1)
+                                if not more:break
+                                rest+=more
+                                if rest.endswith(NL):skipped=True;break
+                            if not skipped:break  # tail still growing: retry next cycle from saved offset
+                            self.save(agent,source,start,{'event_type':'collection.gap','reason':'oversized_or_incomplete_record'},stream.tell())
+                            consumed+=len(line)+len(rest)
+                            continue
+                        consumed+=len(line)
+                        # One physical line may hold several JSON objects when an
+                        # earlier append was torn apart by a writer crash; the old
+                        # single json.loads per line marked the whole glued line
+                        # malformed and dropped every valid record inside it.
+                        try:text=line.decode('utf-8')
+                        except UnicodeDecodeError:
+                            self.save(agent,source,start,{'event_type':'collection.gap','reason':'malformed_jsonl'},stream.tell());continue
+                        dec=json.JSONDecoder(strict=False);pos=0;salvaged=False
+                        while pos<len(text):
+                            while pos<len(text) and text[pos] in WS:pos+=1
+                            if pos>=len(text):break
+                            try:obj,end=dec.raw_decode(text,pos)
+                            except ValueError:
+                                self.save(agent,source,start,{'event_type':'collection.gap','reason':'malformed_jsonl'},stream.tell());break
+                            salvaged=True
+                            self.save(agent,source,start,self.project(target,fields,obj),stream.tell())
+                            pos=end
+                        if not salvaged and pos==0:
+                            self.save(agent,source,start,{'event_type':'collection.gap','reason':'malformed_jsonl'},stream.tell())
             except OSError:continue
+    def project(self,target,fields,event):
+        """Map one decoded hook record onto an instance-bound event, or a gap."""
+        if not isinstance(event,dict):return {'event_type':'collection.gap','reason':'missing_or_invalid_event_type'}
+        pid=hook_data._event_pid(event.get(fields.get('pid','pid')))
+        ct=hook_data._optional_create_time(event);ts=hook_data._parse_time(event.get(fields.get('timestamp','timestamp')))
+        if pid==target['pid'] and ts is not None and ts>=target['create_time']-1 and (ct is None or isinstance(ct,(int,float)) and abs(ct-target['create_time'])<=0.001):
+            name=event.get(fields.get('event','event'))
+            return {'event_type':name,'timestamp':ts,'payload':hook_data.redact(event)} if isinstance(name,str) and 0<len(name)<=200 else {'event_type':'collection.gap','reason':'missing_or_invalid_event_type'}
+        return None
     def save(self,agent,source,start,record,end):
         with self.endpoint.db:
             if record is not None:

@@ -57,6 +57,33 @@ class EventSpoolTest(unittest.TestCase):
                 self.assertEqual(db.execute('SELECT count(*) FROM event_outbox').fetchone()[0],0)
                 spool.collect(agent,{'run_dir':tmp})
                 self.assertEqual(db.execute('SELECT count(*) FROM event_outbox').fetchone()[0],0)
+    def test_glued_and_oversized_records_recover_stream(self):
+        # Crazytest B16: a torn append glued two JSON objects onto one physical
+        # line, and a 966 KB record exceeded the 512 KB readline cap; the old
+        # decoder dropped both cases as gaps and desynced every later read.
+        with tempfile.TemporaryDirectory() as tmp:
+            db=sqlite3.connect(str(Path(tmp)/'state.db'))
+            endpoint=SimpleNamespace(db=db,request=lambda *a:(_ for _ in ()).throw(OSError()))
+            agent={'agent_id':'a','asg_instance_id':'42:100'}
+            path=Path(tmp)/'events.jsonl'
+            good={'pid':42,'timestamp':101,'event':'user.input','detail':{'text':'hello'}}
+            glued=json.dumps(good)+json.dumps({**good,'event':'assistant.output'})+chr(10)
+            oversized=json.dumps({**good,'event':'tool.execute.after','blob':'x'*9000000})+chr(10)
+            path.write_text(glued+oversized+json.dumps({**good,'event':'stop'})+chr(10))
+            binding={'instance_id':'42:100','target':{'pid':42,'create_time':100},'config':{'log_path':str(path)}}
+            spool=EventSpool(endpoint)
+            with patch('runtime.hook_data._registry_bindings',return_value=([binding],[],None)):
+                spool.collect(agent,{'run_dir':tmp})  # oversized line exhausts this round's read budget
+                spool.collect(agent,{'run_dir':tmp})  # resumes after the skipped record
+            rows=[json.loads(r[0]) for r in db.execute('SELECT body FROM event_outbox ORDER BY rowid')]
+            kinds=[r['event_type'] for r in rows]
+            self.assertEqual(kinds,['user.input','assistant.output','collection.gap','stop'])
+            self.assertEqual(rows[2]['reason'],'oversized_or_incomplete_record')
+            # Resynchronization is durable: a second pass finds nothing new.
+            with patch('runtime.hook_data._registry_bindings',return_value=([binding],[],None)):
+                EventSpool(endpoint).collect(agent,{'run_dir':tmp})
+            self.assertEqual(db.execute('SELECT count(*) FROM event_outbox').fetchone()[0],4)
+
     def test_mixed_instances_flush_separately(self):
         with tempfile.TemporaryDirectory() as tmp:
             db=sqlite3.connect(str(Path(tmp)/'state.db'))
