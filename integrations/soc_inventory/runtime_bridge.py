@@ -14,7 +14,13 @@ from .protocol import canonical
 PATHS={'scan':'/api/scan','investigate':'/api/reinvestigate','continue':'/api/reinvestigate/continue',
        'cancel':'/api/reinvestigate/cancel','install':'/api/onboarding/execute','verify':'/api/onboarding/verify',
        'trust_refresh':'/api/native-trust/refresh','scan_interval':'/api/scan-interval',
-       'collect':'/api/scan','control_policy':'/api/hook-control/policy','control_resolve':'/api/hook-control/resolve','model_settings':'/api/model-settings','fingerprints':'/api/recipe-bundle/export'}
+       'collect':'/api/scan','control_policy':'/api/hook-control/policy','control_resolve':'/api/hook-control/resolve','model_settings':'/api/model-settings','fingerprints':'/api/recipe-bundle/export',
+       # crazytest B20: the SOC admin console offers fingerprint_import and the
+       # platform controller whitelists it, but this bridge lost the route when
+       # the release was re-synced from the repository, so the command only
+       # ever receipted "operation_unsupported". Route it to the engine import
+       # endpoint; the bundle itself arrives as the POST body (arguments).
+       'fingerprint_import':'/api/recipe-bundle/import'}
 
 
 def fingerprint_summary(rows):
@@ -223,7 +229,10 @@ class RuntimeBridge:
                                     else:
                                         result=self.local(path+'?'+urlencode({'fingerprint_id':requested}))
                                 else:
-                                    if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings'):path+='?'+urlencode({'pid':target['pid']})
+                                    # crazytest B20: body-carrying routes match
+                                    # self.path exactly on the engine, so a
+                                    # stray ?pid= suffix turns them into 404s.
+                                    if command['operation'] not in ('collect','scan','trust_refresh','scan_interval','control_policy','control_resolve','model_settings','fingerprint_import'):path+='?'+urlencode({'pid':target['pid']})
                                     result=self.local(path,arguments)
                                     if command['operation']=='control_policy':
                                         result={**result,'direct_hook_updated':self.install_direct_policy(agent,result)}

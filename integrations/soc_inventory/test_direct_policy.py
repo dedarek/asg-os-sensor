@@ -19,5 +19,22 @@ class DirectPolicyTests(unittest.TestCase):
             self.assertEqual(saved['policy'],policy)
             self.assertEqual(saved['backend_url'],'https://soc.example')
 
+    def test_fingerprint_import_routes_bundle_body_without_pid_suffix(self):
+        # crazytest B20: the platform whitelists fingerprint_import; the bridge
+        # must POST the bundle arguments to /api/recipe-bundle/import exactly
+        # (no ?pid suffix -> the engine matches self.path verbatim) and turn a
+        # 200 receipt into status completed.
+        import inspect
+        from . import runtime_bridge as rb
+        self.assertEqual(rb.PATHS['fingerprint_import'],'/api/recipe-bundle/import')
+        # The engine matches self.path verbatim for body-carrying routes, so
+        # the pid-suffix guard inside run_once must keep this operation in its
+        # no-pid set; otherwise dispatch would 404 and the receipt is stuck
+        # 'uncertain' forever (four times in the 2026-09-23 platform records).
+        src=inspect.getsource(rb.RuntimeBridge._runtime_cycle)
+        guard=[line for line in src.splitlines()
+               if "not in ('collect','scan','trust_refresh'" in line]
+        self.assertEqual(len(guard),1)
+        self.assertIn('fingerprint_import',guard[0])
 
 if __name__=='__main__':unittest.main()
