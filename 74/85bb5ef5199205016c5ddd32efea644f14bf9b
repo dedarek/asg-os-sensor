@@ -1,0 +1,16 @@
+integrations/soc_inventory/endpoint.py
+  h_cc496700febce9 243,259-260,263,266-280
+integrations/soc_inventory/test_manual_collection.py
+  h_cc496700febce9 29-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7485bb5ef5199205016c5ddd32efea644f14bf9b",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
