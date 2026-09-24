@@ -804,11 +804,20 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         from runtime.io_acceptance import contract as io_contract
         from runtime.autonomous_pipeline import read as pipeline_read
         state = pipeline_read(str(p.pid)+':'+str(p.create_time()))
-        return {'target': {'pid': p.pid, 'create_time': p.create_time()},
-                'control_contract': contract(),
-                'io_capture_contract': io_contract(),
-                'upgrade_request': state.get('upgrade', {}),
-                'installation_verification': state.get('verification', {})}
+        payload = {'target': {'pid': p.pid, 'create_time': p.create_time()},
+                   'control_contract': contract(),
+                   'io_capture_contract': io_contract(),
+                   'upgrade_request': state.get('upgrade', {}),
+                   'installation_verification': state.get('verification', {})}
+        trial_family = os.environ.get('ASG_TRIAL_FAMILY_ID', '').strip()
+        if trial_family:
+            payload['trial_family'] = {
+                'id': trial_family,
+                'status': 'the supervisor matched this build to this existing fingerprint family',
+                'required_action': ('propose_recipe must set match_features.evolves_prior_harness '
+                                    'to exactly this id; never create a new family or omit it'),
+            }
+        return payload
     if name == 'follow_related_directory':
         return _follow_related_directory(args)
     if name == 'read_evidence':
@@ -918,6 +927,15 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         validate(recipe, EVIDENCE_DIR,
                  target={"pid": TARGET_PID, "create_time": TARGET_CREATE_TIME},
                  known_harness_ids=_known_harness_ids(recipe), require_protocol=True)
+        trial_family = os.environ.get("ASG_TRIAL_FAMILY_ID", "").strip()
+        if trial_family:
+            named = (recipe.get("match_features") or {}).get("evolves_prior_harness")
+            if named != trial_family:
+                raise ValueError(
+                    "match_features.evolves_prior_harness must be exactly "
+                    + trial_family + ": the supervisor matched this build to fingerprint family "
+                    + trial_family + " (see get_control_contract.trial_family)."
+                    + " Omitting it or naming another id is rejected.")
         RECIPE_DIR.mkdir(parents=True, exist_ok=True)
         path = RECIPE_DIR / "candidate.json"
         payload = {"status": "candidate", "created_at": now(), "recipe": recipe,

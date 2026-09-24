@@ -1349,6 +1349,14 @@ def _execute_investigation(pid: int, struct: dict[str, Any], instance_id: str,
 
             env = os.environ.copy()
             env.update(build_goose_env(route, key, pid))
+            # A trial instance (current build resembles one known family) must
+            # evolve that family: give the analyst the exact id instead of
+            # making it excavate 600KB of prior fingerprints.
+            trial_pre = matcher.classify(struct)
+            if trial_pre.get('status') == 'trial':
+                trial_entry_pre = trial_pre.get('entry') or {}
+                if trial_entry_pre.get('id'):
+                    env['ASG_TRIAL_FAMILY_ID'] = str(trial_entry_pre['id'])
             env.update(ASG_REQUIRE_STANDARD_DISPLAY="1", ASG_INVESTIGATION_PHASE=phase or "", ASG_TARGET_PID=str(pid), ASG_TARGET_CREATE_TIME=str(create_time),
                        ASG_AUDIT_DIR=str(run_dir), ASG_RECIPE_DIR=str(recipes_dir),
                        ASG_TARGET_STREAM_FILE=str(stream_file),

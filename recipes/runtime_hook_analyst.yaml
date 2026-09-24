@@ -65,9 +65,11 @@ prompt: |
   - agent_identity_name; confidence (0..1); match_features describing observed build/launch compatibility,
     e.g. {runtime: "..."}; evidence_refs (exact observation ids); observation; fallback.
     Call get_prior_recipe first when the current build resembles a known Agent; it reads the runtime
-    fingerprint families and revisions. evolves_prior_harness is OPTIONAL and is an id selector, never prose:
+    fingerprint families and revisions. evolves_prior_harness is an id selector, never prose:
     omit it or set null for a genuinely new family; set it to the exact prior harness id (e.g. "harness-01")
-    when evidence identifies the same family after a version change. A similar build must be investigated
+    when evidence identifies the same family after a version change. When get_control_contract returns a
+    trial_family, this build is already matched to that family by the supervisor: evolves_prior_harness is
+    then REQUIRED and must be exactly trial_family.id. A similar build must be investigated
     against the current files; do not copy an old install plan or assume its previous callbacks still work.
     Reasons for or against evolution belong in observation/fallback, not in this field.
   - investigation: identity_evidence {sources,uncertainty}, assets with model_gateway,mcp,skills,rules;

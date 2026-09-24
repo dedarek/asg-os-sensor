@@ -91,8 +91,10 @@ prompt: |
     agent_identity_name: string from metadata, or "unidentified-agent" if truly unknown
     evidence_refs: list of exact evidence_id strings returned by observation tools
     match_features: object describing observed build/launch compatibility, e.g. {runtime: "..."}.
-      evolves_prior_harness is OPTIONAL and is an id selector, never prose: omit it or set null for a new
+      evolves_prior_harness is an id selector, never prose: omit it or set null for a new
       family; set it ONLY to one exact prior harness id (e.g. "harness-01") returned by get_prior_recipe.
+      When get_control_contract returns a trial_family, evolves_prior_harness is REQUIRED and must be
+      exactly trial_family.id.
       Explanations of why something does or does not evolve belong in observation/fallback, not here.
     observation: concise factual summary
     hook: object with method (string), restart_required (boolean or "unknown"), capabilities (list),
