@@ -103,7 +103,10 @@ def sanitize_portability(pkg):
     drop list is recorded in release.json for auditability.
     """
     home = str(Path.home())
-    other_homes = ('/home/', 'C:\\Users\\')
+    # crazytest B26: Windows drive letters are case-insensitive; the previous
+    # literal 'C:\\Users\\' missed lowercase c:\\users\\ entries, which then
+    # shipped a foreign machine's home path inside release packages.
+    other_homes = ('/home/', ':' + chr(92) + 'users' + chr(92))
     fp = pkg / 'app' / 'runtime' / 'fingerprints.json'
     if not fp.exists():
         return
@@ -111,10 +114,11 @@ def sanitize_portability(pkg):
     kept, dropped = [], []
     for entry in data.get('fingerprints', []):
         blob = json.dumps(entry, ensure_ascii=False)
+        folded = blob.replace(chr(92) * 2, chr(92)).lower()
         why = None
         if home in blob:
             why = 'build-machine home path'
-        elif any(marker in blob for marker in other_homes):
+        elif any(marker in folded for marker in other_homes):
             why = 'foreign user-home absolute path'
         if why:
             dropped.append({'id': entry.get('id'), 'name': entry.get('name'), 'reason': why})
