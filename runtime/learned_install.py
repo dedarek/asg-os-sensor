@@ -51,9 +51,33 @@ def validate_plan(plan: dict) -> dict:
         expected = item.get('expected_sha256')
         if expected is not None and not (isinstance(expected, str) and re.fullmatch(r'[a-f0-9]{64}', expected)):
             raise ValueError('expected_sha256 must be null (create only) or a SHA256 digest')
+        _lint_js_hook(name, content)
         normalized.append({'path': name, 'content': content, 'expected_sha256': expected})
         names.add(name)
     return {'version': 1, 'files': normalized}
+
+
+# Crazytest B39: deterministic guard for Goose-authored JavaScript hooks.
+# A JS hook that can deny a tool call must implement the same control-failure
+# policy knob the shipped Python command hook has (control_failure_mode,
+# default observe). Without it, a control-plane outage turns into an
+# unconditional fail-close that locks the agent -- the Codex self-lock incident.
+_JS_DENY_CAPABLE = re.compile(r'permissionDecision|\bdeny\b')
+_JS_POLICY_KNOB = re.compile(r'control_failure_mode|CONTROL_FAILURE_MODE')
+
+
+def _lint_js_hook(name: str, content: str) -> None:
+    if not name.endswith(('.js', '.cjs', '.mjs')):
+        return
+    # First-party SOC runtime clients ship with the installer and are reviewed
+    # in-repo; the guard targets Goose-authored hook files only.
+    if PurePosixPath(name).name.startswith('hook_control_client'):
+        return
+    if _JS_DENY_CAPABLE.search(content) and not _JS_POLICY_KNOB.search(content):
+        raise ValueError(
+            'JavaScript hook %s can deny tool calls but does not implement '
+            'control_failure_mode (observe/enforce); refusing a fail-close-on-'
+            'control-outage hook (Crazytest B39)' % name)
 
 
 def plan_digest(plan: dict) -> str:

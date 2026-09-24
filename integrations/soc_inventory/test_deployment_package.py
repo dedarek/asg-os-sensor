@@ -177,7 +177,8 @@ function apply (ctx) {
         self.assertEqual(na,'const x=1')
 
     def test_invalid_yaml_recipe_is_rejected_before_publication(self):
-        content="""client('event', record)
+        content="""const CONTROL_FAILURE_MODE = process.env.ASG_CONTROL_FAILURE_MODE || 'observe';
+client('event', record)
 client('decision', request)
 client('ack', { request_id: 'denied', applied: true, outcome: 'blocked' })
 ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
@@ -218,6 +219,7 @@ ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))
   'SOURCE_ROOT/artifacts/stage1/dashboard/hook-control-client.json',
 ]
 const client = () => {}
+const CONTROL_FAILURE_MODE = process.env.ASG_CONTROL_FAILURE_MODE || 'observe';
 client("event", record)
 client("decision", request)
 client("ack", { request_id: 'denied', applied: true, outcome: "blocked" })
@@ -265,7 +267,8 @@ ctx.on('tools/pre-execute', async () => ({ kind: "deny", reason: 'blocked' }))
             build(bundle)
 
     def test_plugin_without_denied_execution_ack_is_not_packaged(self):
-        content="""client('event', record)
+        content="""const CONTROL_FAILURE_MODE = process.env.ASG_CONTROL_FAILURE_MODE || 'observe';
+client('event', record)
 client('decision', request)
 client('ack', { request_id: 'allowed', applied: true, outcome: 'allowed' })
 ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'blocked' }))

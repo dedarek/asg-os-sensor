@@ -57,6 +57,24 @@ class LearnedInstallTests(unittest.TestCase):
         with patch.object(li,'_atomic',side_effect=fail_second):
             with self.assertRaises(OSError):self.install(plan)
         self.assertFalse((self.ws/'first.txt').exists())
+    def test_b39_js_deny_hook_requires_failure_mode_knob(self):
+        bad = self.plan('hooks/guard.cjs',
+            'const r=send();let allow=r.ok&&r.body.decision==="allow";'
+            'if(!allow){process.stdout.write(JSON.stringify({hookSpecificOutput:'
+            '{permissionDecision:"deny"}}));process.exit(2);}')
+        with self.assertRaises(ValueError) as ctx:
+            li.plan_digest(bad)
+        self.assertIn('control_failure_mode', str(ctx.exception))
+        good = self.plan('hooks/guard.cjs',
+            'const mode=cfg.control_failure_mode||"observe";const r=send();'
+            'let allow=r.ok?r.body.decision==="allow":mode!=="enforce";'
+            'if(!allow){out({hookSpecificOutput:{permissionDecision:"deny"}})}')
+        self.assertTrue(li.plan_digest(good))
+        observe_only = self.plan('hooks/watch.cjs',
+            'writeEvent();process.exit(0);')
+        self.assertTrue(li.plan_digest(observe_only))
+        py = self.plan('hooks/ctl.py', 'print("deny")')
+        self.assertTrue(li.plan_digest(py))
     def test_no_product_adapter_required(self):
         plan=self.plan('.anything/hook.py','def callback(): pass')
         self.assertEqual(self.install(plan)['status'],'installed')
