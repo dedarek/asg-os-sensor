@@ -1,0 +1,16 @@
+release/build_release.py
+  h_c6bfc5197c52f3 38-42
+test_release_dependencies.py
+  h_c6bfc5197c52f3 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5f5a255463d29278a4a1d5f1c8836bccf4b84945",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
