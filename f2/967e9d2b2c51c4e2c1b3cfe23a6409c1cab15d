@@ -1,0 +1,16 @@
+integrations/soc_inventory/endpoint.py
+  h_c6bfc5197c52f3 90-104,107-118,259-262,286-290
+integrations/soc_inventory/test_discovery.py
+  h_c6bfc5197c52f3 303-342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f2967e9d2b2c51c4e2c1b3cfe23a6409c1cab15d",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
