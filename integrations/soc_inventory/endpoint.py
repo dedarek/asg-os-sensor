@@ -87,11 +87,35 @@ class Endpoint:
         ''')
         self.db.execute('CREATE TABLE IF NOT EXISTS collection_requests(id INTEGER PRIMARY KEY AUTOINCREMENT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS pending_discoveries(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL,envelope BLOB NOT NULL)')
-        self.agents={a['agent_id']:a for a in configuration.get('agents',[])}
+        self.agents={}
+        self.health_file=root/'soc-health.json';self.beat_file=root/'loop-beat.json'
+        self.reload_agents()
+    def reload_agents(self):
+        """Rebuild in-memory enrollments from durable state; retire ghosts.
+
+        Crazytest B14: when enrollment dedup replaces an identity (an old card
+        is superseded by re-registration), the removed row must disappear from
+        every running loop too. A merge-only dictionary let the retired agent
+        keep heartbeating and reporting under the same live instance forever,
+        so SOC saw two runtime cards for one process. Durable state (config
+        plus the enrolled table) is the single source of truth; orphaned key
+        files left by retired identities are deleted with their entry.
+        """
+        agents={a['agent_id']:a for a in self.config.get('agents',[])}
         if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='enrolled'").fetchone():
             for row in self.db.execute('SELECT configuration FROM enrolled'):
-                a=json.loads(row[0]);self.agents[a['agent_id']]=a
-        self.health_file=root/'soc-health.json';self.beat_file=root/'loop-beat.json'
+                a=json.loads(row[0]);agents[a['agent_id']]=a
+        self.agents=agents
+        keep={str(a.get('key_file','')) for a in agents.values()}|{a+'.key' for a in agents}
+        for orphan in self.health_file.parent.glob('asg-*.key'):
+            if str(orphan) in keep or orphan.name in keep:continue
+            # A concurrent enrollment writes its key before committing the
+            # enrolled row; a key newer than this pass must survive until the
+            # next reload confirms it is truly orphaned.
+            try:
+                if time.time()-orphan.stat().st_mtime<300:continue
+                orphan.unlink()
+            except OSError:pass
     def note(self,path,value):
         # Durable single-file snapshot for the supervisor: work-loop beat and the
         # latest SOC outcome. Reachability and credential rejection stay distinct
@@ -232,8 +256,10 @@ class Endpoint:
                 while True:
                     try:
                         if self.config.get('discovery'):
-                            for row in client.db.execute('SELECT configuration FROM enrolled'):
-                                a=json.loads(row[0]);client.agents[a['agent_id']]=a
+                            # Authoritative rebuild: identities retired from
+                            # enrolled (dedup/re-registration) must stop
+                            # reporting in this thread, not linger in memory.
+                            client.reload_agents()
                         bridge.run_once()
                     except (OSError,ValueError,KeyError) as exc:LOG.warning('Runtime report pending: %s',type(exc).__name__)
                     self.note(self.health_file.parent/'bridge-beat.json',{'pid':os.getpid(),'t':time.time()})
@@ -257,6 +283,11 @@ class Endpoint:
                 # finding/enrolling new instances or retrying queued receipts.
                 try:
                     discovered=set(discovery.refresh())
+                    # Crazytest B14: superseded identities must leave every
+                    # loop; refresh only adds, so sync against durable truth
+                    # and drop discovery results that no longer exist locally.
+                    self.reload_agents()
+                    discovered &= set(self.agents)
                     active=discovered | {a['agent_id'] for a in self.config.get('agents',[])}
                     discovery_pending=self.db.execute('SELECT count(*) FROM pending_discoveries').fetchone()[0]
                 except (OSError,ValueError,KeyError) as e:

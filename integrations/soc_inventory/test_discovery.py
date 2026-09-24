@@ -300,4 +300,44 @@ class DiscoveryTest(unittest.TestCase):
             self.assertNotIn('investigation_requested',saved)
             endpoint.db.close()
 
+    def test_superseded_identity_leaves_memory_and_orphan_key_is_removed(self):
+        # Crazytest B14: enrollment dedup removed the old row from enrolled,
+        # but the running endpoint kept reporting the retired agent id under
+        # the same live instance, producing two SOC runtime cards per process.
+        import json, tempfile
+        from pathlib import Path
+        from .endpoint import Endpoint
+        with tempfile.TemporaryDirectory() as directory:
+            config={"backend_url":"http://127.0.0.1:1","state_dir":directory,
+                    "agents":[{"agent_id":"static-1","key_file":str(Path(directory)/"static.key")}],
+                    "discovery":{"application_key_file":"unused"}}
+            Path(directory,"static.key").write_text("k")
+            endpoint=Endpoint(config)
+            endpoint.db.execute("CREATE TABLE IF NOT EXISTS enrolled(instance TEXT PRIMARY KEY,configuration TEXT NOT NULL)")
+            ghost={"agent_id":"asg-ghost","asg_instance_id":"9:1.0",
+                   "key_file":str(Path(directory)/"asg-ghost.key")}
+            Path(ghost["key_file"]).write_text("k")
+            import os as _os,time as _time
+            _old=_time.time()-3600
+            _os.utime(ghost["key_file"],(_old,_old))
+            endpoint.db.execute("INSERT INTO enrolled VALUES(?,?)",
+                                ("9:1.0",json.dumps(ghost)))
+            endpoint.reload_agents()
+            self.assertIn("asg-ghost",endpoint.agents)
+            fresh={"agent_id":"asg-real","asg_instance_id":"9:1.0",
+                   "key_file":str(Path(directory)/"asg-real.key")}
+            Path(fresh["key_file"]).write_text("k")
+            with endpoint.db:
+                endpoint.db.execute("DELETE FROM enrolled WHERE instance=?",("9:1.0",))
+                endpoint.db.execute("INSERT INTO enrolled VALUES(?,?)",
+                                    ("9:1.0",json.dumps(fresh)))
+            endpoint.reload_agents()
+            self.assertNotIn("asg-ghost",endpoint.agents)
+            self.assertIn("asg-real",endpoint.agents)
+            self.assertIn("static-1",endpoint.agents)
+            self.assertFalse((Path(directory)/"asg-ghost.key").exists())
+            self.assertTrue((Path(directory)/"asg-real.key").exists())
+            self.assertTrue((Path(directory)/"static.key").exists())
+            endpoint.db.close()
+
 if __name__=='__main__':unittest.main()
