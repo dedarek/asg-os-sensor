@@ -1,0 +1,20 @@
+docs/stage1/QA_NIGHT_20260924.md
+  h_c6bfc5197c52f3 241-264
+integrations/soc_inventory/test_deployment_package.py
+  h_c6bfc5197c52f3 180-181,222,270-271
+runtime/learned_install.py
+  h_c6bfc5197c52f3 54,60-82
+test_learned_install.py
+  h_c6bfc5197c52f3 60-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "aa86edca7402439ae01b1df9bc00781b0e3f60ef",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
