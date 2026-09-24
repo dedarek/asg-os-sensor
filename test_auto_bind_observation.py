@@ -25,7 +25,9 @@ class AutoBindObservationTests(unittest.TestCase):
             run.mkdir()
             workspace = Path(tmp) / 'workspace'
             (workspace / '.hook').mkdir(parents=True)
-            (workspace / '.hook' / 'events.jsonl').write_text('{"event":"user.input"}\n')
+            # The new rule: the log tail must carry the live instance's own pid.
+            (workspace / '.hook' / 'events.jsonl').write_text(
+                '{"event":"user.input","pid":4242}\n')
             old = os.environ.get('ASG_RUN_DIR')
             os.environ['ASG_RUN_DIR'] = str(run)
             try:
@@ -40,6 +42,70 @@ class AutoBindObservationTests(unittest.TestCase):
                     os.environ.pop('ASG_RUN_DIR', None)
                 else:
                     os.environ['ASG_RUN_DIR'] = old
+
+    def test_stale_log_from_other_pid_is_not_bound(self):
+        # Regression: a live instance was once bound to a dead test-profile log
+        # that existed on disk but only carried another instance's records.
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / 'run'
+            run.mkdir()
+            workspace = Path(tmp) / 'workspace'
+            (workspace / '.hook').mkdir(parents=True)
+            (workspace / '.hook' / 'events.jsonl').write_text(
+                '{"event":"user.input","pid":99999}\n')
+            old = os.environ.get('ASG_RUN_DIR')
+            os.environ['ASG_RUN_DIR'] = str(run)
+            try:
+                agent = {'instance_id': '4242:1000.5',
+                         'adapter': {'match_status': 'exact', 'historical_recipe': self._recipe(workspace)}}
+                monitor_dashboard._auto_bind_observations([agent])
+                self.assertFalse((run / 'observations.json').exists())
+            finally:
+                if old is None:
+                    os.environ.pop('ASG_RUN_DIR', None)
+                else:
+                    os.environ['ASG_RUN_DIR'] = old
+
+    def test_receipt_log_outranks_learned_workspace(self):
+        # The endpoint receipt names the log this instance provably writes to;
+        # it must win over the (possibly stale) learned recipe workspace.
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / 'run'
+            run.mkdir()
+            workspace = Path(tmp) / 'workspace'
+            (workspace / '.hook').mkdir(parents=True)
+            (workspace / '.hook' / 'events.jsonl').write_text('{"event":"user.input","pid":111}\n')
+            receipt_dir = Path(tmp) / 'endpoint'
+            receipt_dir.mkdir()
+            import sqlite3
+            con = sqlite3.connect(receipt_dir / 'outbox.sqlite')
+            con.execute('CREATE TABLE soc_onboarding(instance TEXT PRIMARY KEY, result TEXT)')
+            receipt = {'status': 'activation_verified', 'result': {'activation': {
+                'status': 'activation_verified', 'pid': 4242, 'create_time': 1000.5,
+                'log_path': str(workspace / 'real' / 'events.jsonl')}}}
+            con.execute('INSERT INTO soc_onboarding VALUES (?,?)',
+                        ('4242:1000.5', json.dumps(receipt)))
+            con.commit()
+            con.close()
+            real = workspace / 'real'
+            real.mkdir()
+            (real / 'events.jsonl').write_text('{"event":"user.input","pid":4242}\n')
+            old = {k: os.environ.get(k) for k in ('ASG_RUN_DIR', 'ASG_ENDPOINT_DB')}
+            os.environ['ASG_RUN_DIR'] = str(run)
+            os.environ['ASG_ENDPOINT_DB'] = str(receipt_dir / 'outbox.sqlite')
+            try:
+                agent = {'instance_id': '4242:1000.5',
+                         'adapter': {'match_status': 'exact', 'historical_recipe': self._recipe(workspace)}}
+                monitor_dashboard._auto_bind_observations([agent])
+                data = json.loads((run / 'observations.json').read_text())
+                bound = json.loads(Path(data['4242:1000.5']['config_path']).read_text())
+                self.assertEqual(bound['log_path'], str(real / 'events.jsonl'))
+            finally:
+                for k, v in old.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
 
     def test_skips_when_log_absent_or_not_exact(self):
         with tempfile.TemporaryDirectory() as tmp:

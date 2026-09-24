@@ -812,7 +812,7 @@ def _auto_bind_observations(agents):
             if not isinstance(recipe, dict) or not recipe.get('observation_source'):
                 continue
             workspace = (recipe.get('hook') or {}).get('workspace')
-            if not workspace or ':' not in instance_id or instance_id in known:
+            if not workspace or ':' not in instance_id:
                 continue
             pid_text, _, created_text = instance_id.partition(':')
             try:
@@ -826,8 +826,31 @@ def _auto_bind_observations(agents):
             if prepared.get('status') != 'configured':
                 continue
             config = prepared['config']
+            # Evidence order: the endpoint's durable install receipt names the
+            # log this exact instance has proven it writes to. It outranks the
+            # learned workspace, which may still point at the profile that was
+            # active when the recipe was learned (observed: a live process was
+            # bound to a dead test-profile log and every capture read empty).
+            receipt_log = _endpoint_activation_log(instance_id)
+            if receipt_log:
+                config = {**config, 'log_path': receipt_log}
             if not Path(config.get('log_path') or '').is_file():
                 continue
+            # The log must carry a record written by this very pid. Existence
+            # alone once passed for a stale log whose records all belonged to
+            # another instance.
+            if not _log_has_instance(config['log_path'], target['pid'],
+                                     (config.get('fields') or {}).get('pid', 'pid')):
+                continue
+            # Self-heal: replace an existing binding that points somewhere the
+            # current evidence no longer supports; identical bindings stay put.
+            if instance_id in known:
+                try:
+                    bound = json.loads(Path(registry._read()[instance_id]['config_path']).read_text())
+                except (OSError, ValueError, KeyError):
+                    bound = {}
+                if str(bound.get('log_path')) == str(config['log_path']):
+                    continue
             state_dir = run_dir / 'auto-bind' / instance_id.replace(':', '_')
             try:
                 state_dir.mkdir(parents=True, exist_ok=True)
@@ -845,6 +868,70 @@ def _auto_bind_observations(agents):
 
 def _observation_pointer_path():
     return Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard'))) / 'active_observation.json'
+
+
+def _endpoint_activation_log(instance_id: str):
+    """Return the log path proven by the endpoint's durable install receipt.
+
+    The endpoint writes this receipt only after the installed package emitted a
+    callback bound to this exact pid/create_time, so the receipt names the log
+    the current instance really writes to. A learned recipe's workspace may be
+    stale (for example a test profile captured at learning time) and must
+    never outrank this evidence — that mismatch is how a live instance got
+    bound to a dead five-day-old log file.
+    """
+    run_dir = Path(os.environ.get('ASG_RUN_DIR', str(ROOT / 'artifacts' / 'stage1' / 'dashboard')))
+    db = Path(os.environ.get('ASG_ENDPOINT_DB', str(run_dir.parent / 'endpoint' / 'outbox.sqlite')))
+    try:
+        import sqlite3
+        con = sqlite3.connect('file:%s?mode=ro' % db, uri=True, timeout=0.5)
+        try:
+            row = con.execute('SELECT result FROM soc_onboarding WHERE instance=?', (instance_id,)).fetchone()
+        finally:
+            con.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    try:
+        receipt = json.loads(row[0])
+    except ValueError:
+        return None
+    activation = ((receipt.get('result') or {}).get('activation') or {})
+    if activation.get('status') != 'activation_verified':
+        return None
+    if str(activation.get('pid', '')) != instance_id.partition(':')[0]:
+        return None
+    path = str(activation.get('log_path') or '')
+    return path if path and Path(path).is_file() else None
+
+
+def _log_has_instance(log_path: str, pid: int, pid_field: str = 'pid', max_bytes: int = 262144) -> bool:
+    """True only when the log tail carries a record actually written by this pid.
+
+    File existence alone once passed for a stale test-profile log whose records
+    all belonged to a dead instance, silently binding a live process to dead
+    evidence. The tail must contain the current instance's own pid.
+    """
+    try:
+        size = Path(log_path).stat().st_size
+        with open(log_path, 'rb') as stream:
+            if size > max_bytes:
+                stream.seek(size - max_bytes)
+                stream.readline()
+            tail = stream.read()
+    except OSError:
+        return False
+    for line in tail.splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and str(record.get(pid_field)) == str(pid):
+            return True
+    return False
 
 
 def _wire_observe_config(result, target, *, persist=True):
