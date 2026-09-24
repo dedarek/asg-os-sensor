@@ -243,7 +243,7 @@ def confirmed(state, conversation_proof=None):
         # as the durable card id. Hash the local path before it leaves the host.
         agent={'platform':platform,'workspace':workspace,'executable':process.exe(),
                'hook_workspace':hook_workspace,'hook_workspace_binding':workspace_binding,'collection_environment':environment,'asg_instance_id':instance,'source_instance_id':source_instance,'identity_refreshed':changed,
-               'hook_fingerprint':plan.get('fingerprint_id'),'agent_version':str(identity.get('version') or target.get('version') or 'unknown'),'classification':classification.get('status','pending'),'name':target.get('name') or platform,'learned_skill_roots':[],'learned_mcp_configs':[]}
+               'hook_fingerprint':plan.get('fingerprint_id'),'agent_version':str(identity.get('version') or target.get('version') or 'unknown'),'classification':classification.get('status','pending'),'name':target.get('name') or platform,'learned_skill_roots':[],'learned_mcp_configs':[],'learned_prompt_files':[],'learned_model_configs':[]}
         agent['asset_id']=durable_asset_id(agent)
         # Only explicit resource paths in structured evidence, no prose extraction.
         assets=adapter.get('assets') or {}
@@ -270,6 +270,14 @@ def confirmed(state, conversation_proof=None):
             except Exception:
                 continue
             if field:agent['learned_mcp_configs'].append({'path':config_path,'field':field});known.add(config_path)
+        # Prompt/model declarations settled by an earlier investigation are
+        # scanned directly next time; files that vanished simply stay omitted.
+        for prompt_path in settled.get('prompt_files') or []:
+            if prompt_path not in agent['learned_prompt_files'] and Path(prompt_path).is_absolute():
+                agent['learned_prompt_files'].append(prompt_path)
+        for model_path in settled.get('model_configs') or []:
+            if model_path not in agent['learned_model_configs'] and Path(model_path).is_absolute():
+                agent['learned_model_configs'].append(model_path)
         yield agent
 
 

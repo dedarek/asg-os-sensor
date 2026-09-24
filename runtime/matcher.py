@@ -435,8 +435,13 @@ def remember_verified(struct, recipe, evidence, mount_ms=0, source='goose', asse
                                   if isinstance(p, str) and Path(p).is_absolute()})[:50]
             safe_mcps = sorted({str(p) for p in (asset_paths.get('mcp_configs') or [])
                                 if isinstance(p, str) and Path(p).is_absolute()})[:50]
-            if safe_skills or safe_mcps:
+            safe_prompts = sorted({str(p) for p in (asset_paths.get('prompt_files') or [])
+                                   if isinstance(p, str) and Path(p).is_absolute()})[:50]
+            safe_models = sorted({str(p) for p in (asset_paths.get('model_configs') or [])
+                                  if isinstance(p, str) and Path(p).is_absolute()})[:50]
+            if safe_skills or safe_mcps or safe_prompts or safe_models:
                 entry['asset_paths'] = {'skill_roots': safe_skills, 'mcp_configs': safe_mcps,
+                                        'prompt_files': safe_prompts, 'model_configs': safe_models,
                                         'source': 'goose-investigation'}
         entry.update(name=stored_recipe['agent_identity_name'], hook_recipe=deepcopy(stored_recipe), revision=revision,
                      investigation_verified=True, hook_verified=False, mount_ms=mount_ms,

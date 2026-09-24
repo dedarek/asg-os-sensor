@@ -617,7 +617,7 @@ def _asset_paths_from_findings(run_dir: Path | None) -> dict[str, list[str]]:
 
     只接受结构化 findings 里的绝对路径，不从自由文本抽取；无 findings 时为空。
     """
-    result = {'skill_roots': [], 'mcp_configs': []}
+    result = {'skill_roots': [], 'mcp_configs': [], 'prompt_files': [], 'model_configs': []}
     if not run_dir:
         return result
     candidate = Path(run_dir) / 'findings.json'
@@ -669,6 +669,39 @@ def _asset_paths_from_findings(run_dir: Path | None) -> dict[str, list[str]]:
                     or item.get('cwd'))
         if isinstance(path, str) and Path(path).is_absolute():
             result['mcp_configs'].append(path)
+    # Prompt/model sedimentation: accept only whitelisted file names so a noisy
+    # finding never turns an unrelated path into a permanent collection root.
+    prompt_names = {'agents.md', 'soul.md', 'claude.md', 'qwen.md', 'gemini.md'}
+    model_suffixes = {'.toml', '.json', '.jsonc', '.yaml', '.yml'}
+    for key in ('system_prompt_rules', 'rules'):
+        for item in items_of(key):
+            path = None
+            if isinstance(item, dict):
+                path = (item.get('path') or item.get('config_path')
+                        or item.get('source_path'))
+            if isinstance(path, str) and Path(path).is_absolute()                     and Path(path).name.lower() in prompt_names:
+                result['prompt_files'].append(path)
+    for key in ('model_routing', 'model_gateway'):
+        for item in items_of(key):
+            path = None
+            if isinstance(item, dict):
+                path = (item.get('config_path') or item.get('source_path')
+                        or item.get('path'))
+            if isinstance(path, str) and Path(path).is_absolute()                     and Path(path).suffix.lower() in model_suffixes:
+                result['model_configs'].append(path)
+        record = assets.get(key) or {}
+        value = record.get('value') or {}
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                value = {}
+        if isinstance(value, dict):
+            # Some platforms report the model config file as a top-level path.
+            for field in ('config_path', 'source_path', 'path'):
+                path = value.get(field)
+                if isinstance(path, str) and Path(path).is_absolute()                         and Path(path).suffix.lower() in model_suffixes:
+                    result['model_configs'].append(path)
     return result
 
 

@@ -9,6 +9,46 @@ from .protocol import collect_contract, sha, canonical, workspace_identity
 from .endpoint import parts_for, pack_skill, Endpoint
 
 class ContractTest(unittest.TestCase):
+    def test_prompt_and_model_real_categories_with_redaction(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); home=root/'home';cwd=root/'repo';cwd.mkdir();(cwd/'.git').mkdir()
+            (cwd/'AGENTS.md').write_text('# project rules with SECRET marker')
+            (home/'.codex').mkdir(parents=True)
+            (home/'.codex/config.toml').write_text(
+                'model="deepseek/deepseek-v4.1-flash"\n'
+                '[model_providers.demo]\nurl="https://api.example.test/v1?token=SECRET"\nenv_key="DEMO_TOKEN"\n'
+                '[model_providers.local]\nbase_url="http://127.0.0.1:7777/v1"\n')
+            agent={'agent_id':'a','platform':'codex','workspace':str(cwd)}
+            report=collect_contract(agent,'e',1,home=home,env={})
+            prompts=report['categories']['prompt']
+            self.assertEqual(prompts['status'],'success')
+            pitems=[i for s in prompts['scopes'] for i in s['items']]
+            self.assertIn('AGENTS.md',[i['name'] for i in pitems])
+            self.assertTrue(all(i['installation_key'].startswith(s['scope_key']+'/') for s in prompts['scopes'] for i in s['items']))
+            self.assertTrue(all(i['fingerprint_version']=='prompt-file-v1' and len(i['manifest_digest'])==64 for i in pitems))
+            self.assertNotIn('content_base64',json.dumps(pitems))
+            models=report['categories']['model']
+            self.assertEqual(models['status'],'success')
+            mitems={i['name']:i for s in models['scopes'] for i in s['items']}
+            self.assertEqual(mitems['default']['default_model'],'deepseek/deepseek-v4.1-flash')
+            self.assertEqual(mitems['demo']['url'],'https://api.example.test')
+            self.assertIn('env_key',mitems['demo']['credential_ref'])
+            self.assertNotIn('env_key',mitems['demo'])
+            self.assertNotIn(b'SECRET',canonical(report))
+            # Runtime enumeration stays honestly unsupported (P0 contract).
+            self.assertEqual(report['categories']['tool'],{'status':'unsupported'})
+            self.assertEqual(report['categories']['mcp_tool'],{'status':'unsupported'})
+    def test_prompt_model_absent_files_are_omitted_not_failed(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'.hermes').mkdir()
+            agent={'agent_id':'a','platform':'hermes','workspace':d}
+            report=collect_contract(agent,'e',1,root,{})
+            self.assertEqual(report['categories']['prompt']['status'],'success')
+            self.assertEqual(report['categories']['prompt']['scopes'],[])
+            self.assertEqual(report['categories']['model']['status'],'success')
+            broken=root/'.hermes/config.yaml';broken.write_text('model: [broken')
+            again=collect_contract(agent,'e',2,root,{})
+            self.assertEqual(again['categories']['model']['status'],'failed')
     def test_codex_three_skills_two_mcp_and_no_secrets(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); home=root/'home';cwd=root/'repo';cwd.mkdir();(cwd/'.git').mkdir()
