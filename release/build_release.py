@@ -35,7 +35,11 @@ PYTHON_SHA256 = ('768f05cf200273bbdda9a5955a5a6892a4b22f2a0b1e4b0'
 
 # Third-party modules imported (even lazily) by the engine or the endpoint.
 DEPENDENCIES = ['psutil', 'pyyaml', 'tomlkit', 'json5', 'python-dotenv',
-                'protobuf', 'opentelemetry-proto']
+                'protobuf', 'opentelemetry-proto',
+                # runtime/llm_proxy.py imports requests at module scope; the
+                # 0.9.49 release shipped without it and every goose
+                # investigation died with ModuleNotFoundError on first use.
+                'requests']
 
 # Repo files copied into app/ (paths relative to the repository root).
 # Root data files are read relative to the app directory (monitor_dashboard
