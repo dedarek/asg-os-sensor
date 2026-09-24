@@ -1,0 +1,16 @@
+integrations/soc_inventory/package_runtime/install.py
+  h_cc496700febce9 328-332,335-343
+integrations/soc_inventory/test_deployment_package.py
+  h_cc496700febce9 92,115-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "39ac560983264aeffd123c6f1cbfb30980a44b49",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
