@@ -1,0 +1,14 @@
+docs/stage1/QA_NIGHT_20260924.md
+  h_c6bfc5197c52f3 117-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7ffb5f5ce83dda6d7f2dd07e616fef45e3dd2268",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
