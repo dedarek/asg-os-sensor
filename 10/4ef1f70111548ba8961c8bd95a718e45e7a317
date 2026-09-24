@@ -1,0 +1,16 @@
+monitor_dashboard.py
+  h_cc496700febce9 815,829-836,839-853,873-936
+test_auto_bind_observation.py
+  h_cc496700febce9 28-30,46-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "104ef1f70111548ba8961c8bd95a718e45e7a317",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
