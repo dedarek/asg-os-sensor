@@ -62,9 +62,11 @@ class EventSpool:
             groups.setdefault(instance,[]).append(row)
         for instance,group in groups.items():
             # Bound each request including large model/tool records.
+            # The gateway accepts at most 50 events per batch; exceeding that
+            # rejects the whole request and strands the outbox forever.
             selected=[];size=0
             for row in group:
-                if selected and size+len(row[1])>1024*1024:break
+                if selected and (len(selected)>=50 or size+len(row[1])>1024*1024):break
                 selected.append(row);size+=len(row[1])
             if not selected:continue
             try:
