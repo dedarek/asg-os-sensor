@@ -216,6 +216,28 @@ def unregister_service(label):
 LEGACY_COLLECTOR_LABEL = 'com.asg.soc-collector'
 
 
+def legacy_collector_present():
+    """True when the pre-supervisor standalone collector definition still exists."""
+    try:
+        if sys.platform == 'darwin':
+            return plist_path(LEGACY_COLLECTOR_LABEL).exists()
+        if os.name == 'nt':
+            probe = subprocess.run(['schtasks', '/Query', '/TN', LEGACY_COLLECTOR_LABEL],
+                                   capture_output=True)
+            return probe.returncode == 0
+        return (Path.home() / '.config/systemd/user'
+                / (LEGACY_COLLECTOR_LABEL + '.service')).exists()
+    except OSError:
+        return False
+
+
+def legacy_collector_detail():
+    return '未发现旧版独立采集服务残留' if not legacy_collector_present() else (
+        '发现旧版独立采集服务 ' + LEGACY_COLLECTOR_LABEL
+        + '；endpoint 现由 service_main 托管，残留定义会导致重复上报，'
+        + '请重新运行安装或 asgctl start 以清理')
+
+
 def _retire_legacy_collector_service():
     """Remove the pre-supervisor standalone collector service left behind by
     older installs.  The endpoint now runs under service_main, so a leftover
@@ -858,6 +880,8 @@ def cmd_doctor(home, args):
         check('服务身份', False, '心跳进程 %s 与服务管理器 pid %s 不一致' % (hb.get('pid'), pid))
     else:
         check('服务身份', True, 'pid=%s 与心跳进程一致' % pid)
+    # 4b leftover pre-supervisor collector service would double-report to SOC
+    check('遗留服务', not legacy_collector_present(), legacy_collector_detail())
     # 5 work loops
     engine = hb.get('engine') or {}
     endpoint = hb.get('endpoint') or {}

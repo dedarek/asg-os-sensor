@@ -40,3 +40,32 @@ class LegacyCollectorRetirementTests(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
 
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from release import asgctl
+
+
+class LegacyCollectorDoctorTests(unittest.TestCase):
+    def test_absent_collector_passes_doctor_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agents = Path(directory) / 'LaunchAgents'
+            agents.mkdir()
+            with mock.patch.object(asgctl, 'plist_path',
+                                   lambda label: agents / (label + '.plist')):
+                self.assertFalse(asgctl.legacy_collector_present())
+                self.assertIn('未发现', asgctl.legacy_collector_detail())
+
+    def test_leftover_collector_fails_doctor_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agents = Path(directory) / 'LaunchAgents'
+            agents.mkdir()
+            (agents / (asgctl.LEGACY_COLLECTOR_LABEL + '.plist')).write_text('stub')
+            with mock.patch.object(asgctl, 'plist_path',
+                                   lambda label: agents / (label + '.plist')):
+                self.assertTrue(asgctl.legacy_collector_present())
+                self.assertIn('重复上报', asgctl.legacy_collector_detail())
+
