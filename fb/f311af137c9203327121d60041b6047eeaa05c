@@ -1,0 +1,24 @@
+integrations/soc_inventory/collection_worker.py
+  h_cc496700febce9 5,10-12,21-29
+integrations/soc_inventory/discovery.py
+  h_cc496700febce9 246,273-280
+integrations/soc_inventory/protocol.py
+  h_cc496700febce9 15,56-60,70-71,77-78,89-90,103-104,134-135,151-153,155-161,262-353,391-393,395-398,402-405,407-412,416,418-420,422,428
+integrations/soc_inventory/test_protocol.py
+  h_cc496700febce9 12-51
+monitor_dashboard.py
+  h_cc496700febce9 620,672-704
+runtime/matcher.py
+  h_cc496700febce9 438-442,444
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbf311af137c9203327121d60041b6047eeaa05c",
+  "prompts": {},
+  "humans": {
+    "h_cc496700febce9": {
+      "author": "yyc <mac@macdeMacBook-Air.local>"
+    }
+  }
+}
