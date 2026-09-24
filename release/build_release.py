@@ -76,7 +76,6 @@ def copy_app(pkg):
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-    sanitize_portability(pkg)
     # goose is optional: investigation falls back without it, but bundle it
     # when available on the build machine (copied dereferenced, chmod 0755).
     goose = Path(os.environ.get('ASG_GOOSE_BIN', '/opt/homebrew/bin/goose'))
@@ -123,7 +122,8 @@ def sanitize_portability(pkg):
         {'build_home_redacted': True, 'fingerprints_kept': len(kept),
          'fingerprints_dropped': dropped}, ensure_ascii=False, indent=1))
     if dropped:
-        (pkg / 'README.md').open('a').write(
+        with (pkg / 'README.md').open('a') as readme:
+            readme.write(
             '\n## 指纹库可移植性\n构建期从包内指纹库剔除了 %d 个含构建机路径的配方'
             '（清单见 release/portability-scan.json）。目标机器首次遇到这些类型时'
             '由发现/调查链路现场学习，学习结果保留在运行库中，不回写发布包。\n' % len(dropped))
@@ -283,6 +283,9 @@ def main():
     write_launcher(pkg)
     write_services(pkg)
     (pkg / 'README.md').write_text(README)
+    # The sanitizer writes a release audit and appends a README note. Run it
+    # after both destinations exist, before manifest_files hashes the package.
+    sanitize_portability(pkg)
 
     release = {'asg_version': args.version, 'git_commit': commit,
                'platform': platform.system(), 'architecture': platform.machine(),
