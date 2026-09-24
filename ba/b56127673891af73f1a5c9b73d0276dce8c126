@@ -1,0 +1,18 @@
+integrations/soc_inventory/endpoint.py
+  h_c6bfc5197c52f3 130-153,329,336-341
+integrations/soc_inventory/runtime_bridge.py
+  h_c6bfc5197c52f3 187-198
+integrations/soc_inventory/test_retired_identity.py
+  h_c6bfc5197c52f3 1-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bab56127673891af73f1a5c9b73d0276dce8c126",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
