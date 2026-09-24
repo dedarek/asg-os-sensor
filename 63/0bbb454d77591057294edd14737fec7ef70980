@@ -1,0 +1,16 @@
+integrations/soc_inventory/runtime_bridge.py
+  h_c6bfc5197c52f3 11,246-255
+integrations/soc_inventory/test_direct_policy.py
+  h_c6bfc5197c52f3 40-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "630bbb454d77591057294edd14737fec7ef70980",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
