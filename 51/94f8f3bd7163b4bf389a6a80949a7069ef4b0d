@@ -1,0 +1,16 @@
+release/asgctl.py
+  h_c6bfc5197c52f3 176,213-243
+test_release_legacy_collector.py
+  h_c6bfc5197c52f3 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5194f8f3bd7163b4bf389a6a80949a7069ef4b0d",
+  "prompts": {},
+  "humans": {
+    "h_c6bfc5197c52f3": {
+      "author": "yyc <mac@WRENTAO-F45EFSA.lenovo.com>"
+    }
+  }
+}
